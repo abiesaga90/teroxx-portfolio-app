@@ -1,6 +1,6 @@
-/* ── Teroxx Brand Theme — Light Mode ──
-   Matches teroxx.com: warm cream backgrounds, deep navy text,
-   pill buttons, SometimesTimes headings, Söhne body.
+/* ── Teroxx Portfolio App — Brand-Matched Theme ──
+   Sourced from www.teroxx.com design system.
+   Colors, typography, spacing, and patterns matched exactly.
 */
 
 @font-face {
@@ -32,80 +32,84 @@
     font-display: swap;
 }
 
+/* ── Design tokens from teroxx.com ── */
 :root {
+    /* Brand colors */
     --nightblue: #010626;
-    --deep-indigo: #060d43;
+    --deep-indigo: #060D43;
+    --header-bg: rgba(23, 30, 75, 1.0);
     --electric-sky: #0b688c;
     --sandstone: #bfb3a8;
     --cream: #ECE8E5;
     --cream-dark: #D9D2CB;
     --sunset-ember: #d06643;
-    --ember-warm: #ef6b51;
     --white: #ffffff;
 
-    /* Light theme tokens */
+    /* Semantic tokens */
     --bg-page: #ECE8E5;
+    --bg-section-alt: #D9D2CB;
     --bg-card: #ffffff;
     --bg-card-alt: #F5F2F0;
-    --bg-header: rgba(23, 30, 75, 0.97);
-    --bg-table-header: #F5F2F0;
-    --bg-table-hover: rgba(11, 104, 140, 0.04);
     --border: rgba(6, 13, 67, 0.10);
-    --border-strong: rgba(6, 13, 67, 0.18);
-    --text-primary: #060d43;
+    --border-strong: rgba(6, 13, 67, 0.15);
+    --text-heading: #060D43;
+    --text-body: #060D43;
     --text-secondary: #4a4f6a;
     --text-muted: rgba(6, 13, 67, 0.45);
+    --text-light: #FFFFFF;
     --success: #1a8a4a;
     --danger: #c0432a;
-    --transition: all 0.3s ease-in-out;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 html {
-    font-size: 14px;
+    font-size: 16px;  /* teroxx.com uses 18px body, we use 16 for data density */
     scroll-behavior: smooth;
 }
 
 body {
     font-family: 'Sohne', Arial, Helvetica, sans-serif;
+    font-weight: 400;
     background: var(--bg-page);
-    color: var(--text-primary);
+    color: var(--text-body);
     min-height: 100vh;
-    line-height: 1.5;
+    line-height: 1.4;
 }
 
-/* ── Header (dark nav bar from teroxx.com) ── */
+/* ── Header — 80px, dark navy, sticky ── */
 .header {
-    background: var(--bg-header);
+    background: var(--header-bg);
     backdrop-filter: blur(50px);
     -webkit-backdrop-filter: blur(50px);
-    padding: 1.1rem 2rem;
+    height: 80px;
+    padding: 0 40px;
     display: flex;
     align-items: center;
     justify-content: space-between;
     position: sticky;
     top: 0;
     z-index: 100;
-    transition: background 0.5s ease;
 }
 
-.header-logo { height: 32px; }
+.header-logo {
+    height: 30px;
+}
 
 .header-title {
     font-family: 'SometimesTimes', Georgia, 'Times New Roman', serif;
-    font-size: 1.15rem;
+    font-size: 1.125rem;
     font-weight: 500;
     color: var(--cream);
     letter-spacing: 0.02em;
 }
 
 .header-meta {
-    font-size: 0.75rem;
-    color: rgba(236, 232, 229, 0.5);
+    font-size: 0.875rem;
+    color: rgba(255, 255, 255, 0.5);
 }
 
-/* ── Tab Navigation (dark strip below header) ── */
+/* ── Tab Navigation — dark strip below header ── */
 .tab-nav {
     display: flex;
     gap: 0;
@@ -117,36 +121,35 @@ body {
 .tab-nav::-webkit-scrollbar { display: none; }
 
 .tab-btn {
-    padding: 0.7rem 1.3rem;
+    padding: 20px 24px 18px;
     background: none;
     border: none;
-    color: rgba(236, 232, 229, 0.6);
+    color: rgba(255, 255, 255, 0.55);
     font-family: 'Sohne', Arial, sans-serif;
-    font-size: 0.8rem;
-    font-weight: 400;
+    font-size: 0.875rem;
+    font-weight: 500;
     cursor: pointer;
     white-space: nowrap;
-    border-bottom: 2px solid transparent;
-    transition: var(--transition);
-    letter-spacing: 0.01em;
+    border-bottom: 3px solid transparent;
+    transition: all 0.3s ease-in-out;
+    line-height: 1;
 }
 
 .tab-btn:hover {
-    color: var(--cream);
-    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.85);
 }
 
 .tab-btn.active {
     color: #ffffff;
-    border-bottom-color: var(--electric-sky);
+    border-bottom-color: var(--white);
     font-weight: 600;
 }
 
 /* ── Main Content ── */
 .main {
-    max-width: 1440px;
+    max-width: 1130px;
     margin: 0 auto;
-    padding: 1.75rem 2rem;
+    padding: 40px 20px 80px;
 }
 
 .tab-panel {
@@ -158,71 +161,72 @@ body {
 }
 
 @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(6px); }
+    from { opacity: 0; transform: translateY(4px); }
     to { opacity: 1; transform: translateY(0); }
 }
 
-/* ── Cards ── */
+/* ── Section Title (Sometimes Times serif) ── */
+.section-title {
+    font-family: 'SometimesTimes', Georgia, serif;
+    font-size: 2rem;
+    font-weight: 500;
+    color: var(--text-heading);
+    margin-bottom: 24px;
+    line-height: 1.1;
+}
+
+/* ── Cards — white, 16px radius, no shadow ── */
 .card {
     background: var(--bg-card);
     border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 1.5rem;
-    margin-bottom: 1.25rem;
-    box-shadow: 0 1px 3px rgba(6, 13, 67, 0.04);
-    transition: box-shadow 0.3s ease, border-color 0.3s ease;
-}
-
-.card:hover {
-    box-shadow: 0 4px 12px rgba(6, 13, 67, 0.06);
-    border-color: var(--border-strong);
+    border-radius: 16px;
+    padding: 32px;
+    margin-bottom: 20px;
 }
 
 .card-header {
     font-family: 'SometimesTimes', Georgia, serif;
-    font-size: 1.2rem;
+    font-size: 1.25rem;
     font-weight: 500;
-    margin-bottom: 1rem;
-    color: var(--deep-indigo);
-    letter-spacing: 0.01em;
+    margin-bottom: 20px;
+    color: var(--text-heading);
+    line-height: 1.1;
 }
 
 /* ── Summary Cards Row ── */
 .summary-row {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 1rem;
-    margin-bottom: 1.25rem;
+    gap: 16px;
+    margin-bottom: 20px;
 }
 
 .summary-card {
     background: var(--bg-card);
     border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 1.1rem 1.25rem;
+    border-radius: 16px;
+    padding: 24px;
     text-align: center;
-    box-shadow: 0 1px 3px rgba(6, 13, 67, 0.04);
-    transition: var(--transition);
+    transition: all 0.3s ease-in-out;
 }
 
 .summary-card:hover {
-    border-color: var(--electric-sky);
-    transform: translateY(-2px);
-    box-shadow: 0 6px 16px rgba(11, 104, 140, 0.10);
+    border-color: var(--deep-indigo);
 }
 
 .summary-label {
-    font-size: 0.68rem;
+    font-size: 0.75rem;
     color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    margin-bottom: 0.35rem;
+    margin-bottom: 8px;
+    font-weight: 600;
 }
 
 .summary-value {
     font-size: 1.5rem;
     font-weight: 700;
-    color: var(--electric-sky);
+    color: var(--deep-indigo);
 }
 
 .summary-value.danger { color: var(--danger); }
@@ -232,95 +236,79 @@ body {
 .controls {
     display: flex;
     flex-wrap: wrap;
-    gap: 1rem;
-    margin-bottom: 1.25rem;
+    gap: 16px;
+    margin-bottom: 24px;
     align-items: flex-end;
 }
 
 .control-group {
     display: flex;
     flex-direction: column;
-    gap: 0.35rem;
+    gap: 6px;
 }
 
 .control-label {
-    font-size: 0.68rem;
+    font-size: 0.75rem;
     color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.08em;
+    font-weight: 600;
 }
 
+/* Inputs: 8px radius (from teroxx.com forms), NOT pill */
 select, input[type="number"], input[type="text"], input[type="date"] {
     background: var(--bg-card);
     border: 1px solid var(--border-strong);
-    color: var(--text-primary);
+    color: var(--text-body);
     font-family: 'Sohne', Arial, sans-serif;
-    font-size: 0.85rem;
-    padding: 0.55rem 0.85rem;
-    border-radius: 50px;
+    font-size: 0.875rem;
+    padding: 8px 16px;
+    border-radius: 8px;
     outline: none;
-    transition: var(--transition);
+    transition: all 0.3s ease-in-out;
     min-width: 170px;
 }
 
 select:focus, input:focus {
-    border-color: var(--electric-sky);
-    box-shadow: 0 0 0 3px rgba(11, 104, 140, 0.12);
+    border-color: var(--deep-indigo);
 }
 
 select option {
     background: var(--bg-card);
-    color: var(--text-primary);
+    color: var(--text-body);
 }
 
-/* ── Buttons (pill shape from teroxx.com) ── */
+/* ── Buttons — pill shape, navy bg, inverts on hover ── */
 button, .btn {
     font-family: 'Sohne', Arial, sans-serif;
-    font-weight: 400;
+    font-weight: 500;
     border-radius: 50px;
-    transition: var(--transition);
     cursor: pointer;
-}
-
-.btn-primary {
-    background: var(--nightblue);
-    border: 1px solid var(--nightblue);
-    color: var(--white);
-    padding: 0.55rem 1.5rem;
-    font-size: 0.85rem;
-}
-
-.btn-primary:hover {
-    background: var(--deep-indigo);
-    border-color: var(--deep-indigo);
+    line-height: 1;
+    transition: all 0.15s linear;
 }
 
 .btn-accent {
-    background: var(--nightblue);
-    border: 1px solid var(--nightblue);
+    background: var(--deep-indigo);
+    border: 1px solid var(--deep-indigo);
     color: var(--white);
-    padding: 0.6rem 1.75rem;
-    font-size: 0.85rem;
+    padding: 12.5px 24px;
+    font-size: 0.875rem;
     font-weight: 600;
 }
 
 .btn-accent:hover {
-    background: var(--deep-indigo);
+    background: var(--cream);
+    color: var(--deep-indigo);
     border-color: var(--deep-indigo);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(6, 13, 67, 0.15);
-}
-
-.btn-accent:active {
-    transform: translateY(0);
 }
 
 .btn-outline {
     background: transparent;
     border: 1px solid var(--deep-indigo);
     color: var(--deep-indigo);
-    padding: 0.55rem 1.5rem;
-    font-size: 0.85rem;
+    padding: 12.5px 24px;
+    font-size: 0.875rem;
 }
 
 .btn-outline:hover {
@@ -338,17 +326,17 @@ button, .btn {
 table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 0.8rem;
+    font-size: 0.8125rem;
 }
 
 thead th {
-    background: var(--bg-table-header);
+    background: var(--cream);
     color: var(--text-secondary);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    font-size: 0.68rem;
-    padding: 0.65rem 0.75rem;
+    font-size: 0.6875rem;
+    padding: 12px 16px;
     text-align: left;
     white-space: nowrap;
     position: sticky;
@@ -361,52 +349,52 @@ thead th.center, td.center { text-align: center; }
 
 tbody tr {
     border-bottom: 1px solid var(--border);
-    transition: background 0.15s ease;
+    transition: background 0.15s linear;
 }
 
 tbody tr:last-child { border-bottom: none; }
 
 tbody tr:hover {
-    background: var(--bg-table-hover);
+    background: rgba(236, 232, 229, 0.4);
 }
 
 td {
-    padding: 0.55rem 0.75rem;
-    color: var(--text-primary);
+    padding: 10px 16px;
+    color: var(--text-body);
     white-space: nowrap;
 }
 
 .ticker {
     font-weight: 700;
-    color: var(--electric-sky);
+    color: var(--deep-indigo);
 }
 
-/* ── Tier & Action Badges (pill shape) ── */
+/* ── Tier & Action Badges — pill-shaped ── */
 .tier-badge {
     display: inline-block;
-    padding: 0.18rem 0.6rem;
+    padding: 3px 10px;
     border-radius: 50px;
-    font-size: 0.62rem;
+    font-size: 0.6875rem;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.03em;
 }
 
-.tier-fixed      { background: #f0ede9; color: #8a7e72; }
-.tier-core       { background: rgba(11, 104, 140, 0.10); color: var(--electric-sky); }
-.tier-growth     { background: rgba(26, 138, 74, 0.10); color: var(--success); }
-.tier-speculative{ background: rgba(208, 102, 67, 0.10); color: var(--danger); }
+.tier-fixed      { background: var(--cream-dark); color: #6b5f54; }
+.tier-core       { background: rgba(6, 13, 67, 0.08); color: var(--deep-indigo); }
+.tier-growth     { background: rgba(26, 138, 74, 0.08); color: var(--success); }
+.tier-speculative{ background: rgba(192, 67, 42, 0.08); color: var(--danger); }
 
 .action-badge {
     display: inline-block;
-    padding: 0.22rem 0.75rem;
+    padding: 4px 12px;
     border-radius: 50px;
-    font-size: 0.68rem;
+    font-size: 0.75rem;
     font-weight: 700;
 }
 
-.action-buy  { background: rgba(26, 138, 74, 0.10); color: var(--success); }
-.action-sell { background: rgba(192, 67, 42, 0.10); color: var(--danger); }
+.action-buy  { background: rgba(26, 138, 74, 0.08); color: var(--success); }
+.action-sell { background: rgba(192, 67, 42, 0.08); color: var(--danger); }
 
 .pnl-positive { color: var(--success); font-weight: 600; }
 .pnl-negative { color: var(--danger); font-weight: 600; }
@@ -416,27 +404,27 @@ td {
     border: 1px solid var(--border);
     border-radius: 8px;
     overflow: hidden;
-    margin-bottom: 1.25rem;
+    margin-bottom: 20px;
 }
 
 .weight-matrix table { margin: 0; }
-.weight-matrix .table-wrap { border: none; }
+.weight-matrix .table-wrap { border: none; border-radius: 0; }
 
 .weight-matrix th.active-col {
-    background: rgba(11, 104, 140, 0.12);
-    color: var(--electric-sky);
+    background: rgba(6, 13, 67, 0.08);
+    color: var(--deep-indigo);
 }
 
 .weight-matrix td.active-col {
-    background: rgba(11, 104, 140, 0.04);
-    font-weight: 600;
-    color: var(--electric-sky);
+    background: rgba(6, 13, 67, 0.03);
+    font-weight: 700;
+    color: var(--deep-indigo);
 }
 
 /* ── Chart Container ── */
 .chart-container {
-    max-width: 320px;
-    margin: 1rem auto;
+    max-width: 300px;
+    margin: 16px auto;
 }
 
 /* ── Loading State ── */
@@ -446,42 +434,35 @@ td {
 .htmx-request .htmx-indicator {
     display: inline-block;
 }
-.htmx-request .htmx-hide {
-    opacity: 0.35;
-    pointer-events: none;
-    transition: opacity 0.2s ease;
-}
 
 .spinner {
     display: inline-block;
     width: 16px;
     height: 16px;
     border: 2px solid var(--border);
-    border-top-color: var(--electric-sky);
+    border-top-color: var(--deep-indigo);
     border-radius: 50%;
     animation: spin 0.6s linear infinite;
     vertical-align: middle;
-    margin-right: 0.3rem;
+    margin-right: 6px;
 }
 
 @keyframes spin {
     to { transform: rotate(360deg); }
 }
 
-/* ── Footer (dark, matches teroxx.com) ── */
+/* ── Footer — dark navy, matching teroxx.com ── */
 .footer {
     text-align: center;
-    padding: 2.5rem 2rem;
-    font-size: 0.72rem;
+    padding: 40px 20px;
+    font-size: 0.875rem;
     background: var(--deep-indigo);
     color: rgba(236, 232, 229, 0.5);
-    margin-top: 3rem;
 }
 
 .footer a {
     color: var(--cream);
     text-decoration: none;
-    transition: color 0.15s;
 }
 .footer a:hover { color: #fff; }
 
@@ -489,16 +470,16 @@ td {
 .chart-legend {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.5rem 1rem;
+    gap: 8px 16px;
     justify-content: center;
-    margin-top: 0.75rem;
+    margin-top: 12px;
 }
 
 .legend-item {
     display: flex;
     align-items: center;
-    gap: 0.3rem;
-    font-size: 0.7rem;
+    gap: 6px;
+    font-size: 0.75rem;
     color: var(--text-secondary);
 }
 
@@ -511,70 +492,71 @@ td {
 
 /* ── Editable input in tables ── */
 .inline-input {
-    background: var(--bg-card-alt);
+    background: var(--cream);
     border: 1px solid var(--border-strong);
-    color: var(--text-primary);
+    color: var(--text-body);
     font-family: 'Sohne', Arial, sans-serif;
-    font-size: 0.8rem;
-    padding: 0.25rem 0.5rem;
-    border-radius: 50px;
+    font-size: 0.8125rem;
+    padding: 4px 8px;
+    border-radius: 8px;
     width: 100px;
     text-align: right;
-    transition: var(--transition);
+    transition: all 0.3s ease-in-out;
 }
 
 .inline-input:focus {
-    border-color: var(--electric-sky);
-    box-shadow: 0 0 0 3px rgba(11, 104, 140, 0.10);
+    border-color: var(--deep-indigo);
 }
 
 /* ── Score bar ── */
 .score-bar {
-    height: 5px;
+    height: 4px;
     background: var(--border);
-    border-radius: 3px;
+    border-radius: 2px;
     overflow: hidden;
     min-width: 60px;
 }
 
 .score-fill {
     height: 100%;
-    background: linear-gradient(90deg, var(--electric-sky), #0d7aa3);
-    border-radius: 3px;
+    background: var(--deep-indigo);
+    border-radius: 2px;
     transition: width 0.5s ease-in-out;
 }
 
 /* ── Total row ── */
 .total-row {
     font-weight: 700;
-    background: var(--bg-table-header) !important;
+    background: var(--cream) !important;
 }
 
 .total-row td {
     border-top: 2px solid var(--deep-indigo);
-    padding-top: 0.65rem;
+    padding-top: 12px;
 }
 
 /* ── Two-column layout for allocator ── */
 .grid-2col {
     display: grid;
     grid-template-columns: 1fr 380px;
-    gap: 1.25rem;
+    gap: 20px;
     align-items: start;
 }
 
 /* ── Responsive ── */
 @media (max-width: 1024px) {
     .grid-2col { grid-template-columns: 1fr; }
+    .main { padding: 32px 20px 60px; }
 }
 
 @media (max-width: 768px) {
-    .header { padding: 1rem; flex-wrap: wrap; gap: 0.5rem; }
-    .main { padding: 1rem; }
+    .header { padding: 0 20px; height: 64px; flex-wrap: wrap; }
+    .main { padding: 24px 16px 50px; }
+    .card { padding: 24px; }
     .controls { flex-direction: column; }
     select, input[type="number"] { min-width: 100%; }
     .summary-row { grid-template-columns: 1fr 1fr; }
-    .tab-btn { padding: 0.6rem 0.75rem; font-size: 0.7rem; }
+    .tab-btn { padding: 14px 16px 12px; font-size: 0.8125rem; }
 }
 
 @media (max-width: 480px) {
