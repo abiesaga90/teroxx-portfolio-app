@@ -27,7 +27,8 @@ function getSharedParams() {
 }
 
 // ── Donut chart rendering ──
-const CHART_COLORS = ['#010626', '#0b688c', '#d06643', '#bfb3a8', '#060d43', '#2ecc71', '#9b59b6', '#e67e22'];
+// Teroxx brand chart palette order (from brand guidelines)
+const CHART_COLORS = ['#010626', '#0b688c', '#d06643', '#4A8FA4', '#bfb3a8', '#060d43'];
 
 let allocChart = null;
 function renderAllocChart(labels, values) {
@@ -42,7 +43,7 @@ function renderAllocChart(labels, values) {
             datasets: [{
                 data: values,
                 backgroundColor: CHART_COLORS.slice(0, labels.length),
-                borderColor: '#010626',
+                borderColor: '#ffffff',
                 borderWidth: 2,
             }],
         },

@@ -1,6 +1,6 @@
-/* ── Teroxx Brand Theme ──
-   Inspired by teroxx.com (warm cream + deep navy palette)
-   adapted for a dark data-dashboard context.
+/* ── Teroxx Brand Theme — Light Mode ──
+   Matches teroxx.com: warm cream backgrounds, deep navy text,
+   pill buttons, SometimesTimes headings, Söhne body.
 */
 
 @font-face {
@@ -38,19 +38,25 @@
     --electric-sky: #0b688c;
     --sandstone: #bfb3a8;
     --cream: #ECE8E5;
-    --taupe: #D9D2CB;
+    --cream-dark: #D9D2CB;
     --sunset-ember: #d06643;
     --ember-warm: #ef6b51;
     --white: #ffffff;
-    --black: #000000;
-    --card-bg: rgba(6, 13, 67, 0.85);
-    --card-border: rgba(11, 104, 140, 0.18);
-    --card-hover: rgba(11, 104, 140, 0.10);
-    --text-primary: #ffffff;
-    --text-secondary: #bfb3a8;
-    --text-muted: rgba(191, 179, 168, 0.55);
-    --success: #2ecc71;
-    --danger: #d06643;
+
+    /* Light theme tokens */
+    --bg-page: #ECE8E5;
+    --bg-card: #ffffff;
+    --bg-card-alt: #F5F2F0;
+    --bg-header: rgba(23, 30, 75, 0.97);
+    --bg-table-header: #F5F2F0;
+    --bg-table-hover: rgba(11, 104, 140, 0.04);
+    --border: rgba(6, 13, 67, 0.10);
+    --border-strong: rgba(6, 13, 67, 0.18);
+    --text-primary: #060d43;
+    --text-secondary: #4a4f6a;
+    --text-muted: rgba(6, 13, 67, 0.45);
+    --success: #1a8a4a;
+    --danger: #c0432a;
     --transition: all 0.3s ease-in-out;
 }
 
@@ -63,19 +69,18 @@ html {
 
 body {
     font-family: 'Sohne', Arial, Helvetica, sans-serif;
-    background: var(--nightblue);
+    background: var(--bg-page);
     color: var(--text-primary);
     min-height: 100vh;
     line-height: 1.5;
 }
 
-/* ── Header (matches teroxx.com sticky nav) ── */
+/* ── Header (dark nav bar from teroxx.com) ── */
 .header {
-    background: rgba(23, 30, 75, 0.95);
+    background: var(--bg-header);
     backdrop-filter: blur(50px);
     -webkit-backdrop-filter: blur(50px);
-    border-bottom: 1px solid var(--card-border);
-    padding: 1.25rem 2rem;
+    padding: 1.1rem 2rem;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -85,11 +90,11 @@ body {
     transition: background 0.5s ease;
 }
 
-.header-logo { height: 30px; }
+.header-logo { height: 28px; }
 
 .header-title {
     font-family: 'SometimesTimes', Georgia, 'Times New Roman', serif;
-    font-size: 1.2rem;
+    font-size: 1.15rem;
     font-weight: 500;
     color: var(--cream);
     letter-spacing: 0.02em;
@@ -97,15 +102,14 @@ body {
 
 .header-meta {
     font-size: 0.75rem;
-    color: var(--text-muted);
+    color: rgba(236, 232, 229, 0.5);
 }
 
-/* ── Tab Navigation ── */
+/* ── Tab Navigation (dark strip below header) ── */
 .tab-nav {
     display: flex;
     gap: 0;
     background: var(--deep-indigo);
-    border-bottom: 1px solid var(--card-border);
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
@@ -113,10 +117,10 @@ body {
 .tab-nav::-webkit-scrollbar { display: none; }
 
 .tab-btn {
-    padding: 0.75rem 1.25rem;
+    padding: 0.7rem 1.3rem;
     background: none;
     border: none;
-    color: var(--text-secondary);
+    color: rgba(236, 232, 229, 0.6);
     font-family: 'Sohne', Arial, sans-serif;
     font-size: 0.8rem;
     font-weight: 400;
@@ -125,16 +129,15 @@ body {
     border-bottom: 2px solid transparent;
     transition: var(--transition);
     letter-spacing: 0.01em;
-    position: relative;
 }
 
 .tab-btn:hover {
-    color: var(--white);
-    background: rgba(11, 104, 140, 0.08);
+    color: var(--cream);
+    background: rgba(255, 255, 255, 0.05);
 }
 
 .tab-btn.active {
-    color: var(--cream);
+    color: #ffffff;
     border-bottom-color: var(--electric-sky);
     font-weight: 600;
 }
@@ -143,7 +146,7 @@ body {
 .main {
     max-width: 1440px;
     margin: 0 auto;
-    padding: 1.5rem 2rem;
+    padding: 1.75rem 2rem;
 }
 
 .tab-panel {
@@ -161,24 +164,26 @@ body {
 
 /* ── Cards ── */
 .card {
-    background: var(--card-bg);
-    border: 1px solid var(--card-border);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
     border-radius: 12px;
     padding: 1.5rem;
     margin-bottom: 1.25rem;
-    transition: border-color 0.3s ease;
+    box-shadow: 0 1px 3px rgba(6, 13, 67, 0.04);
+    transition: box-shadow 0.3s ease, border-color 0.3s ease;
 }
 
 .card:hover {
-    border-color: rgba(11, 104, 140, 0.3);
+    box-shadow: 0 4px 12px rgba(6, 13, 67, 0.06);
+    border-color: var(--border-strong);
 }
 
 .card-header {
     font-family: 'SometimesTimes', Georgia, serif;
-    font-size: 1.15rem;
+    font-size: 1.2rem;
     font-weight: 500;
     margin-bottom: 1rem;
-    color: var(--cream);
+    color: var(--deep-indigo);
     letter-spacing: 0.01em;
 }
 
@@ -191,17 +196,19 @@ body {
 }
 
 .summary-card {
-    background: linear-gradient(145deg, var(--deep-indigo) 0%, rgba(11, 104, 140, 0.06) 100%);
-    border: 1px solid var(--card-border);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
     border-radius: 10px;
     padding: 1.1rem 1.25rem;
     text-align: center;
+    box-shadow: 0 1px 3px rgba(6, 13, 67, 0.04);
     transition: var(--transition);
 }
 
 .summary-card:hover {
-    border-color: rgba(11, 104, 140, 0.35);
-    transform: translateY(-1px);
+    border-color: var(--electric-sky);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(11, 104, 140, 0.10);
 }
 
 .summary-label {
@@ -218,7 +225,7 @@ body {
     color: var(--electric-sky);
 }
 
-.summary-value.danger { color: var(--sunset-ember); }
+.summary-value.danger { color: var(--danger); }
 .summary-value.success { color: var(--success); }
 
 /* ── Controls ── */
@@ -244,13 +251,13 @@ body {
 }
 
 select, input[type="number"], input[type="text"], input[type="date"] {
-    background: rgba(11, 104, 140, 0.08);
-    border: 1px solid var(--card-border);
-    color: var(--white);
+    background: var(--bg-card);
+    border: 1px solid var(--border-strong);
+    color: var(--text-primary);
     font-family: 'Sohne', Arial, sans-serif;
     font-size: 0.85rem;
     padding: 0.55rem 0.85rem;
-    border-radius: 50px;           /* pill shape from teroxx.com */
+    border-radius: 50px;
     outline: none;
     transition: var(--transition);
     min-width: 170px;
@@ -258,12 +265,12 @@ select, input[type="number"], input[type="text"], input[type="date"] {
 
 select:focus, input:focus {
     border-color: var(--electric-sky);
-    box-shadow: 0 0 0 2px rgba(11, 104, 140, 0.15);
+    box-shadow: 0 0 0 3px rgba(11, 104, 140, 0.12);
 }
 
 select option {
-    background: var(--deep-indigo);
-    color: var(--white);
+    background: var(--bg-card);
+    color: var(--text-primary);
 }
 
 /* ── Buttons (pill shape from teroxx.com) ── */
@@ -289,57 +296,43 @@ button, .btn {
 }
 
 .btn-accent {
-    background: var(--electric-sky);
-    border: 1px solid var(--electric-sky);
+    background: var(--nightblue);
+    border: 1px solid var(--nightblue);
     color: var(--white);
-    padding: 0.55rem 1.5rem;
+    padding: 0.6rem 1.75rem;
     font-size: 0.85rem;
     font-weight: 600;
 }
 
 .btn-accent:hover {
-    background: #0d7aa3;
-    border-color: #0d7aa3;
+    background: var(--deep-indigo);
+    border-color: var(--deep-indigo);
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(11, 104, 140, 0.3);
+    box-shadow: 0 4px 12px rgba(6, 13, 67, 0.15);
 }
 
 .btn-accent:active {
-    background: #095a75;
     transform: translateY(0);
 }
 
-/* ── Profile Toggle (segmented control) ── */
-.profile-toggle {
-    display: inline-flex;
-    border: 1px solid var(--card-border);
-    border-radius: 50px;
-    overflow: hidden;
+.btn-outline {
+    background: transparent;
+    border: 1px solid var(--deep-indigo);
+    color: var(--deep-indigo);
+    padding: 0.55rem 1.5rem;
+    font-size: 0.85rem;
 }
 
-.profile-toggle label {
-    padding: 0.5rem 1.1rem;
-    font-size: 0.8rem;
-    cursor: pointer;
-    color: var(--text-secondary);
-    transition: var(--transition);
-    border-right: 1px solid var(--card-border);
-    user-select: none;
-}
-.profile-toggle label:last-child { border-right: none; }
-
-.profile-toggle input[type="radio"] { display: none; }
-.profile-toggle input[type="radio"]:checked + label,
-.profile-toggle label.active-profile {
-    background: var(--electric-sky);
+.btn-outline:hover {
+    background: var(--deep-indigo);
     color: var(--white);
-    font-weight: 600;
 }
 
 /* ── Tables ── */
 .table-wrap {
     overflow-x: auto;
     border-radius: 8px;
+    border: 1px solid var(--border);
 }
 
 table {
@@ -349,8 +342,8 @@ table {
 }
 
 thead th {
-    background: rgba(11, 104, 140, 0.10);
-    color: var(--sandstone);
+    background: var(--bg-table-header);
+    color: var(--text-secondary);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.06em;
@@ -360,36 +353,38 @@ thead th {
     white-space: nowrap;
     position: sticky;
     top: 0;
-    border-bottom: 1px solid var(--card-border);
+    border-bottom: 1px solid var(--border);
 }
 
 thead th.right, td.right { text-align: right; }
 thead th.center, td.center { text-align: center; }
 
 tbody tr {
-    border-bottom: 1px solid rgba(11, 104, 140, 0.06);
+    border-bottom: 1px solid var(--border);
     transition: background 0.15s ease;
 }
 
+tbody tr:last-child { border-bottom: none; }
+
 tbody tr:hover {
-    background: var(--card-hover);
+    background: var(--bg-table-hover);
 }
 
 td {
-    padding: 0.5rem 0.75rem;
+    padding: 0.55rem 0.75rem;
     color: var(--text-primary);
     white-space: nowrap;
 }
 
 .ticker {
-    font-weight: 600;
+    font-weight: 700;
     color: var(--electric-sky);
 }
 
 /* ── Tier & Action Badges (pill shape) ── */
 .tier-badge {
     display: inline-block;
-    padding: 0.15rem 0.6rem;
+    padding: 0.18rem 0.6rem;
     border-radius: 50px;
     font-size: 0.62rem;
     font-weight: 600;
@@ -397,49 +392,50 @@ td {
     letter-spacing: 0.04em;
 }
 
-.tier-fixed      { background: rgba(191, 179, 168, 0.15); color: var(--sandstone); }
-.tier-core       { background: rgba(11, 104, 140, 0.2); color: var(--electric-sky); }
-.tier-growth     { background: rgba(46, 204, 113, 0.15); color: var(--success); }
-.tier-speculative{ background: rgba(208, 102, 67, 0.15); color: var(--sunset-ember); }
+.tier-fixed      { background: #f0ede9; color: #8a7e72; }
+.tier-core       { background: rgba(11, 104, 140, 0.10); color: var(--electric-sky); }
+.tier-growth     { background: rgba(26, 138, 74, 0.10); color: var(--success); }
+.tier-speculative{ background: rgba(208, 102, 67, 0.10); color: var(--danger); }
 
 .action-badge {
     display: inline-block;
-    padding: 0.2rem 0.7rem;
+    padding: 0.22rem 0.75rem;
     border-radius: 50px;
     font-size: 0.68rem;
     font-weight: 700;
 }
 
-.action-buy  { background: rgba(46, 204, 113, 0.15); color: var(--success); }
-.action-sell { background: rgba(208, 102, 67, 0.15); color: var(--sunset-ember); }
+.action-buy  { background: rgba(26, 138, 74, 0.10); color: var(--success); }
+.action-sell { background: rgba(192, 67, 42, 0.10); color: var(--danger); }
 
-.pnl-positive { color: var(--success); }
-.pnl-negative { color: var(--sunset-ember); }
+.pnl-positive { color: var(--success); font-weight: 600; }
+.pnl-negative { color: var(--danger); font-weight: 600; }
 
 /* ── Weight Matrix ── */
 .weight-matrix {
-    border: 1px solid var(--card-border);
+    border: 1px solid var(--border);
     border-radius: 8px;
     overflow: hidden;
     margin-bottom: 1.25rem;
 }
 
 .weight-matrix table { margin: 0; }
+.weight-matrix .table-wrap { border: none; }
 
 .weight-matrix th.active-col {
-    background: rgba(11, 104, 140, 0.22);
+    background: rgba(11, 104, 140, 0.12);
     color: var(--electric-sky);
 }
 
 .weight-matrix td.active-col {
-    background: rgba(11, 104, 140, 0.06);
+    background: rgba(11, 104, 140, 0.04);
     font-weight: 600;
     color: var(--electric-sky);
 }
 
 /* ── Chart Container ── */
 .chart-container {
-    max-width: 350px;
+    max-width: 320px;
     margin: 1rem auto;
 }
 
@@ -460,7 +456,7 @@ td {
     display: inline-block;
     width: 16px;
     height: 16px;
-    border: 2px solid var(--card-border);
+    border: 2px solid var(--border);
     border-top-color: var(--electric-sky);
     border-radius: 50%;
     animation: spin 0.6s linear infinite;
@@ -472,23 +468,22 @@ td {
     to { transform: rotate(360deg); }
 }
 
-/* ── Footer (matches teroxx.com dark footer) ── */
+/* ── Footer (dark, matches teroxx.com) ── */
 .footer {
     text-align: center;
     padding: 2.5rem 2rem;
-    color: var(--text-muted);
-    font-size: 0.7rem;
+    font-size: 0.72rem;
     background: var(--deep-indigo);
-    border-top: 1px solid var(--card-border);
+    color: rgba(236, 232, 229, 0.5);
     margin-top: 3rem;
 }
 
 .footer a {
-    color: var(--sandstone);
+    color: var(--cream);
     text-decoration: none;
     transition: color 0.15s;
 }
-.footer a:hover { color: var(--cream); }
+.footer a:hover { color: #fff; }
 
 /* ── Donut Legend ── */
 .chart-legend {
@@ -516,9 +511,9 @@ td {
 
 /* ── Editable input in tables ── */
 .inline-input {
-    background: rgba(11, 104, 140, 0.08);
-    border: 1px solid var(--card-border);
-    color: var(--white);
+    background: var(--bg-card-alt);
+    border: 1px solid var(--border-strong);
+    color: var(--text-primary);
     font-family: 'Sohne', Arial, sans-serif;
     font-size: 0.8rem;
     padding: 0.25rem 0.5rem;
@@ -530,14 +525,14 @@ td {
 
 .inline-input:focus {
     border-color: var(--electric-sky);
-    box-shadow: 0 0 0 2px rgba(11, 104, 140, 0.12);
+    box-shadow: 0 0 0 3px rgba(11, 104, 140, 0.10);
 }
 
 /* ── Score bar ── */
 .score-bar {
-    height: 4px;
-    background: var(--card-border);
-    border-radius: 2px;
+    height: 5px;
+    background: var(--border);
+    border-radius: 3px;
     overflow: hidden;
     min-width: 60px;
 }
@@ -545,19 +540,19 @@ td {
 .score-fill {
     height: 100%;
     background: linear-gradient(90deg, var(--electric-sky), #0d7aa3);
-    border-radius: 2px;
+    border-radius: 3px;
     transition: width 0.5s ease-in-out;
 }
 
 /* ── Total row ── */
 .total-row {
     font-weight: 700;
-    background: rgba(11, 104, 140, 0.06) !important;
+    background: var(--bg-table-header) !important;
 }
 
 .total-row td {
-    border-top: 2px solid var(--electric-sky);
-    padding-top: 0.6rem;
+    border-top: 2px solid var(--deep-indigo);
+    padding-top: 0.65rem;
 }
 
 /* ── Two-column layout for allocator ── */
