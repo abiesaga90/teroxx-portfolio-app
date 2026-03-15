@@ -1,0 +1,123 @@
+<!-- Risk Tilt Parameters -->
+<div class="card">
+    <div class="card-header">Risk Tilt Parameters</div>
+    <div class="weight-matrix">
+        <table>
+            <thead>
+                <tr>
+                    <th>Tier</th>
+                    {% for p in profiles %}
+                    <th class="center {% if p == profile %}active-col{% endif %}">{{ p }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for tier, prof_vals in risk_tilts.items() %}
+                <tr>
+                    <td>{{ tier }}</td>
+                    {% for p in profiles %}
+                    <td class="center {% if p == profile %}active-col{% endif %}">{{ prof_vals[p] }}x</td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Fixed Strategic Allocations -->
+<div class="card">
+    <div class="card-header">Fixed Strategic Allocations</div>
+    <div class="weight-matrix">
+        <table>
+            <thead>
+                <tr>
+                    <th>Asset</th>
+                    {% for p in profiles %}
+                    <th class="center {% if p == profile %}active-col{% endif %}">{{ p }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for ticker, prof_vals in fixed.items() %}
+                <tr>
+                    <td class="ticker">{{ ticker }}</td>
+                    {% for p in profiles %}
+                    <td class="center {% if p == profile %}active-col{% endif %}">{{ (prof_vals[p] * 100)|round(1) }}%</td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Tier Allocation Budgets -->
+<div class="card">
+    <div class="card-header">Tier Allocation Budgets</div>
+    <div class="weight-matrix">
+        <table>
+            <thead>
+                <tr>
+                    <th>Tier</th>
+                    {% for p in profiles %}
+                    <th class="center {% if p == profile %}active-col{% endif %}">{{ p }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for tier, prof_vals in tier_allocs.items() %}
+                <tr>
+                    <td>{{ tier }}</td>
+                    {% for p in profiles %}
+                    <td class="center {% if p == profile %}active-col{% endif %}">{{ (prof_vals[p] * 100)|round(1) }}%</td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Per-Asset Detail -->
+<div class="card">
+    <div class="card-header">Per-Asset Allocations ({{ profile }})</div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Ticker</th>
+                    <th>Name</th>
+                    <th>Tier</th>
+                    <th>Risk Tier</th>
+                    <th class="right">Allocation %</th>
+                    <th>Bar</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for a in allocs %}
+                {% if a.alloc_pct > 0 %}
+                <tr>
+                    <td style="color:var(--text-muted)">{{ loop.index }}</td>
+                    <td class="ticker">{{ a.ticker }}</td>
+                    <td>{{ a.name }}</td>
+                    <td>{{ a.tier }}</td>
+                    <td>
+                        <span class="tier-badge tier-{% if a.risk_tier == 'Defensive' %}fixed{% elif a.risk_tier == 'Core' %}core{% elif a.risk_tier == 'Growth' %}growth{% else %}speculative{% endif %}">
+                            {{ a.risk_tier }}
+                        </span>
+                    </td>
+                    <td class="right">{{ a.alloc_pct|fmt_pct }}</td>
+                    <td style="min-width:100px;">
+                        <div class="score-bar" style="width:100%;">
+                            <div class="score-fill" style="width:{{ (a.alloc_pct / 0.35 * 100)|round(1) }}%;"></div>
+                        </div>
+                    </td>
+                </tr>
+                {% endif %}
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>

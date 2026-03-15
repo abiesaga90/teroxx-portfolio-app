@@ -1,0 +1,82 @@
+<!-- Asset Class Allocation Summary -->
+<div class="summary-row">
+    {% for cls, profiles_data in asset_class_allocs.items() %}
+    <div class="summary-card">
+        <div class="summary-label">{{ cls }}</div>
+        <div class="summary-value">{{ (profiles_data[profile] * 100)|round(1) }}%</div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Drawdown Impact -->
+<div class="card">
+    <div class="card-header">Drawdown Impact Analysis</div>
+    <div class="summary-row">
+        {% for scenario, profiles_data in drawdown.items() %}
+        <div class="summary-card">
+            <div class="summary-label">{{ scenario }}</div>
+            <div class="summary-value danger">{{ (profiles_data[profile] * 100)|round(1) }}%</div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="grid-2col">
+    <!-- Allocation Table -->
+    <div class="card">
+        <div class="card-header">Asset Allocations ({{ allocs|length }} assets)</div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Ticker</th>
+                        <th>Name</th>
+                        <th>Tier</th>
+                        <th class="right">Allocation</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for a in allocs %}
+                    {% if a.alloc_pct > 0 %}
+                    <tr>
+                        <td style="color:var(--text-muted)">{{ loop.index }}</td>
+                        <td class="ticker">{{ a.ticker }}</td>
+                        <td>{{ a.name }}</td>
+                        <td>
+                            <span class="tier-badge tier-{% if a.risk_tier == 'Defensive' %}fixed{% elif a.risk_tier == 'Core' %}core{% elif a.risk_tier == 'Growth' %}growth{% else %}speculative{% endif %}">
+                                {{ a.risk_tier }}
+                            </span>
+                        </td>
+                        <td class="right">{{ a.alloc_pct|fmt_pct }}</td>
+                    </tr>
+                    {% endif %}
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Donut Chart -->
+    <div class="card">
+        <div class="card-header">Allocation Breakdown</div>
+        <div class="chart-container">
+            <canvas id="alloc-chart"></canvas>
+        </div>
+        <div class="chart-legend" id="alloc-legend"></div>
+    </div>
+</div>
+
+<!-- Chart data for JS -->
+<script id="chart-data" type="application/json">{{ chart_data }}</script>
+<script>
+(function() {
+    const chartData = document.getElementById('chart-data');
+    if (chartData) {
+        try {
+            const data = JSON.parse(chartData.textContent);
+            renderAllocChart(data.labels, data.values);
+        } catch(e) {}
+    }
+})();
+</script>

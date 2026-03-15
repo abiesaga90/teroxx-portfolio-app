@@ -1,0 +1,67 @@
+<!-- Summary Cards -->
+<div class="summary-row">
+    <div class="summary-card">
+        <div class="summary-label">Risk Profile</div>
+        <div class="summary-value" style="font-size:1.2rem;">{{ profile }}</div>
+    </div>
+    <div class="summary-card">
+        <div class="summary-label">Defensive %</div>
+        <div class="summary-value">{{ (defensive_pct * 100)|round(1) }}%</div>
+    </div>
+    <div class="summary-card">
+        <div class="summary-label">Crypto %</div>
+        <div class="summary-value">{{ (crypto_pct * 100)|round(1) }}%</div>
+    </div>
+    <div class="summary-card">
+        <div class="summary-label">Drawdown Impact (-50%)</div>
+        <div class="summary-value danger">{{ (dd_50 * 100)|round(1) }}%</div>
+    </div>
+</div>
+
+<!-- Position Table -->
+<div class="card">
+    <div class="card-header">Position Breakdown &mdash; {{ portfolio_value|fmt_usd }}</div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Ticker</th>
+                    <th>Name</th>
+                    <th>Tier</th>
+                    <th class="right">Alloc %</th>
+                    <th class="right">Amount</th>
+                    <th class="right">Price</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in positions %}
+                {% if p.alloc_pct > 0 %}
+                <tr>
+                    <td style="color:var(--text-muted)">{{ loop.index }}</td>
+                    <td class="ticker">{{ p.ticker }}</td>
+                    <td>{{ p.name }}</td>
+                    <td>
+                        <span class="tier-badge tier-{% if p.risk_tier == 'Defensive' %}fixed{% elif p.risk_tier == 'Core' %}core{% elif p.risk_tier == 'Growth' %}growth{% else %}speculative{% endif %}">
+                            {{ p.risk_tier }}
+                        </span>
+                    </td>
+                    <td class="right">{{ p.alloc_pct|fmt_pct }}</td>
+                    <td class="right">{{ p.dollar_amount|fmt_usd }}</td>
+                    <td class="right">{% if p.price %}{{ p.price|fmt_usd }}{% else %}-{% endif %}</td>
+                    <td>
+                        {% if p.dollar_amount > 0 and p.ticker not in ['USDC', 'EURC'] %}
+                        <span class="action-badge action-buy">BUY {{ p.dollar_amount|fmt_usd }}</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endif %}
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div style="text-align:right;margin-top:0.5rem;color:var(--text-muted);font-size:0.7rem;">
+        Prices: {{ price_age }}
+    </div>
+</div>

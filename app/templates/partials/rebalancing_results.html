@@ -1,0 +1,69 @@
+<div class="card">
+    <div class="card-header">Rebalancing Actions &mdash; {{ portfolio_value|fmt_usd }}</div>
+    <p style="color:var(--text-muted);font-size:0.75rem;margin-bottom:1rem;">
+        Edit "Current $" values below and they will be saved in your browser. Actions show BUY/SELL to reach target allocation.
+    </p>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Ticker</th>
+                    <th>Name</th>
+                    <th>Tier</th>
+                    <th class="right">Target %</th>
+                    <th class="right">Target $</th>
+                    <th class="right">Current $</th>
+                    <th class="right">Difference</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% set ns = namespace(total_target=0, total_current=0) %}
+                {% for r in results %}
+                {% if r.target_pct > 0 %}
+                {% set ns.total_target = ns.total_target + r.target_usd %}
+                {% set ns.total_current = ns.total_current + r.current_usd %}
+                <tr>
+                    <td style="color:var(--text-muted)">{{ loop.index }}</td>
+                    <td class="ticker">{{ r.ticker }}</td>
+                    <td>{{ r.name }}</td>
+                    <td>{{ r.tier }}</td>
+                    <td class="right">{{ r.target_pct|fmt_pct }}</td>
+                    <td class="right">{{ r.target_usd|fmt_usd }}</td>
+                    <td class="right">
+                        <input type="number" class="inline-input holding-input"
+                               data-ticker="{{ r.ticker }}"
+                               value="{{ r.current_usd|round(2) }}"
+                               step="any"
+                               onchange="saveHoldings(); document.querySelector('#rebalance-form [name=current_holdings]').value=JSON.stringify(saveHoldings()); htmx.trigger(document.getElementById('rebalance-form'), 'change');">
+                    </td>
+                    <td class="right {% if r.difference > 0 %}pnl-positive{% elif r.difference < 0 %}pnl-negative{% endif %}">
+                        {{ r.difference|fmt_usd }}
+                    </td>
+                    <td>
+                        {% if r.action == 'BUY' %}
+                        <span class="action-badge action-buy">BUY {{ r.difference|abs|fmt_usd }}</span>
+                        {% elif r.action == 'SELL' %}
+                        <span class="action-badge action-sell">SELL {{ r.difference|abs|fmt_usd }}</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endif %}
+                {% endfor %}
+                <tr class="total-row">
+                    <td colspan="5" style="text-align:right;color:var(--sandstone);">Total</td>
+                    <td class="right">{{ ns.total_target|fmt_usd }}</td>
+                    <td class="right">{{ ns.total_current|fmt_usd }}</td>
+                    <td class="right {% if (ns.total_target - ns.total_current) > 0 %}pnl-positive{% elif (ns.total_target - ns.total_current) < 0 %}pnl-negative{% endif %}">
+                        {{ (ns.total_target - ns.total_current)|fmt_usd }}
+                    </td>
+                    <td></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    <div style="text-align:right;margin-top:0.5rem;color:var(--text-muted);font-size:0.7rem;">
+        Prices: {{ price_age }}
+    </div>
+</div>

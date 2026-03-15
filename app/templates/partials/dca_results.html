@@ -1,0 +1,66 @@
+<div class="summary-row">
+    <div class="summary-card">
+        <div class="summary-label">Monthly Investment</div>
+        <div class="summary-value">{{ monthly_amount|fmt_usd }}</div>
+    </div>
+    <div class="summary-card">
+        <div class="summary-label">Horizon</div>
+        <div class="summary-value" style="font-size:1.2rem;">{{ horizon_months }} months</div>
+    </div>
+    <div class="summary-card">
+        <div class="summary-label">Total Investment</div>
+        <div class="summary-value">{{ (monthly_amount * horizon_months)|fmt_usd }}</div>
+    </div>
+    <div class="summary-card">
+        <div class="summary-label">Assets in Plan</div>
+        <div class="summary-value">{{ schedule|length }}</div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">Monthly Buy Schedule</div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Ticker</th>
+                    <th>Name</th>
+                    <th>Tier</th>
+                    <th class="right">Portfolio %</th>
+                    <th class="right">DCA Weight</th>
+                    <th class="right">Monthly Buy</th>
+                    <th class="right">{{ horizon_months }}mo Total</th>
+                    <th class="right">Price</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% set ns = namespace(total_monthly=0, total_horizon=0) %}
+                {% for s in schedule %}
+                {% set ns.total_monthly = ns.total_monthly + s.monthly_buy %}
+                {% set ns.total_horizon = ns.total_horizon + s.horizon_total %}
+                <tr>
+                    <td style="color:var(--text-muted)">{{ loop.index }}</td>
+                    <td class="ticker">{{ s.ticker }}</td>
+                    <td>{{ s.name }}</td>
+                    <td>{{ s.tier }}</td>
+                    <td class="right">{{ s.portfolio_pct|fmt_pct }}</td>
+                    <td class="right">{{ s.dca_weight|fmt_pct }}</td>
+                    <td class="right">{{ s.monthly_buy|fmt_usd }}</td>
+                    <td class="right">{{ s.horizon_total|fmt_usd }}</td>
+                    <td class="right">{% if s.price %}{{ s.price|fmt_usd }}{% else %}-{% endif %}</td>
+                </tr>
+                {% endfor %}
+                <tr class="total-row">
+                    <td colspan="6" style="text-align:right;color:var(--sandstone);">Total</td>
+                    <td class="right">{{ ns.total_monthly|fmt_usd }}</td>
+                    <td class="right">{{ ns.total_horizon|fmt_usd }}</td>
+                    <td></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    <div style="text-align:right;margin-top:0.5rem;color:var(--text-muted);font-size:0.7rem;">
+        Prices: {{ price_age }}
+    </div>
+</div>

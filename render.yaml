@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: teroxx-portfolio-app
+    env: docker
+    plan: free
+    autoDeploy: true
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: PORT
+        value: "8000"
