@@ -203,6 +203,36 @@ TOKEN_MAP = {
     "USDC": "usd-coin", "EURC": "euro-coin",
 }
 
+# DefiLlama protocol slug mapping (for fees/TVL data)
+DEFILLAMA_MAP = {
+    "ETH": "ethereum", "SOL": "solana", "BNB": "bsc", "AVAX": "avalanche",
+    "DOT": "polkadot", "ATOM": "cosmos", "ADA": "cardano", "NEAR": "near",
+    "APT": "aptos", "ALGO": "algorand", "ICP": "icp", "SUI": "sui",
+    "ARB": "arbitrum", "OP": "optimism", "TRX": "tron", "HBAR": "hedera",
+    "FIL": "filecoin", "POL": "polygon", "IOTA": "iota",
+    # DeFi protocols (have fee/TVL data)
+    "AAVE": "aave", "UNI": "uniswap", "MKR": "maker", "CRV": "curve-dex",
+    "LDO": "lido", "GRT": "the-graph", "SNX": "synthetix", "COMP": "compound-finance",
+    "PENDLE": "pendle", "MORPHO": "morpho", "ETHFI": "ether.fi", "ENA": "ethena",
+    "CAKE": "pancakeswap", "1INCH": "1inch-network", "DEXE": "dexe",
+    "HYPE": "hyperliquid", "INJ": "injective",
+    # Gaming / other
+    "SAND": "sandbox", "MANA": "decentraland", "GALA": "gala",
+    "IMX": "immutable-x", "RNDR": "render", "FET": "fetch-ai",
+}
+
+# DefiLlama fees slug mapping (separate from protocol slugs)
+DEFILLAMA_FEES_MAP = {
+    "AAVE": "aave", "UNI": "uniswap", "CRV": "curve-finance",
+    "LDO": "lido", "SNX": "synthetix", "COMP": "compound-finance",
+    "PENDLE": "pendle", "MORPHO": "morpho", "ETHFI": "ether.fi",
+    "CAKE": "pancakeswap", "1INCH": "1inch", "HYPE": "hyperliquid",
+    "INJ": "injective", "MKR": "maker", "GRT": "the-graph",
+    "ENA": "ethena", "ETH": "ethereum", "SOL": "solana",
+    "BNB": "bsc", "AVAX": "avalanche", "ARB": "arbitrum",
+    "OP": "optimism", "TRX": "tron", "SUI": "sui",
+}
+
 # DCA scope options
 DCA_SCOPES = {
     "BTC Only": ["BTC"],

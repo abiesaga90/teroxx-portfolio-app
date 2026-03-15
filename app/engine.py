@@ -12,7 +12,7 @@ from app.data import (
     FIVE_FACTOR_WEIGHTS, TEN_FACTOR_WEIGHTS,
     DCA_SCOPES, get_alloc_tier,
 )
-from app.market_data import get_price, get_market_info
+from app.market_data import get_price, get_market_info, get_defillama_info
 
 
 def get_universe_tickers(universe_name: str) -> list[str]:
@@ -139,50 +139,112 @@ def compute_live_five_factor_scores(tickers: list[str]) -> dict[str, dict[str, f
 
 def compute_live_ten_factor_scores(tickers: list[str]) -> dict[str, dict[str, float]]:
     """
-    Compute 10-factor fundamental scores from available CoinGecko data:
-      Value (P/S)          — volume/mcap ratio (proxy for P/S)
-      Fee Momentum         — 7d price change (proxy for fee trend)
-      TVL Health           — inverse ATH drawdown (closer to ATH = healthier)
-      Revenue Quality      — volume consistency (volume/mcap)
-      Usage Growth         — 7d momentum
-      Risk (Low Vol)       — inverse 30d absolute change
-      Dilution Safety      — inverse of ATH drawdown (less diluted if near ATH)
-      Float Quality        — volume/mcap (liquid float)
-      Smart Money          — 30d momentum (smart money follows trends)
-      Developer Momentum   — 7d acceleration vs 30d
+    Compute 10-factor fundamental scores using DefiLlama (fees, TVL, revenue)
+    + CoinGecko (market cap, FDV, price momentum) data.
+
+    Mirrors nickel-ls-rv VA signals (long orientation = high score is good):
+      Value (P/S)          — lower P/S = better value (DefiLlama fees / CG mcap)
+      Fee Momentum         — positive fee trend = good (DefiLlama fee change)
+      TVL Health           — growing TVL = healthy (DefiLlama TVL change)
+      Revenue Quality      — high holder rev / fees = good capture (DefiLlama)
+      Usage Growth         — positive volume/price momentum (CoinGecko 7d)
+      Risk (Low Vol)       — lower volatility = safer (CoinGecko 30d abs change)
+      Dilution Safety      — low FDV/MCap = less dilution risk (DefiLlama/CG)
+      Float Quality        — mature float, low supply growth (CoinGecko)
+      Smart Money          — positive 30d momentum = SM accumulating (CG proxy)
+      Developer Momentum   — 7d acceleration vs 30d trend (CG proxy)
     """
     if not tickers:
         return {}
 
     raw = _get_raw_market_vectors(tickers)
+    factor_names = list(TEN_FACTOR_WEIGHTS.keys())
 
-    # Derive raw values for each factor
-    value_raw = raw["vol_mcap_ratios"]
-    fee_mom_raw = raw["change_7d"]
-    tvl_raw = [100 - dd for dd in raw["ath_drawdowns"]]  # closer to ATH = better
-    rev_qual_raw = raw["vol_mcap_ratios"]
-    usage_raw = raw["change_7d"]
-    risk_raw = [abs(c) for c in raw["change_30d"]]
-    dilution_raw = [100 - dd for dd in raw["ath_drawdowns"]]
-    float_raw = raw["vol_mcap_ratios"]
-    smart_raw = raw["change_30d"]
-    dev_raw = [c7 - c30 * 0.25 for c7, c30 in zip(raw["change_7d"], raw["change_30d"])]
+    # ── Collect raw values per factor ──
+    value_raw = []       # P/S: lower is better value
+    fee_mom_raw = []     # fee momentum %: higher is better
+    tvl_raw = []         # TVL change %: higher is better
+    rev_qual_raw = []    # revenue capture ratio: higher is better
+    usage_raw = []       # 7d change: higher is better
+    risk_raw = []        # abs 30d change: lower is better
+    dilution_raw = []    # FDV/MCap: lower is better (safer)
+    float_raw = []       # higher is better quality
+    smart_raw = []       # 30d momentum: higher is better
+    dev_raw = []         # 7d acceleration: higher is better
 
-    # Percentile rank each
+    for i, t in enumerate(tickers):
+        dl = get_defillama_info(t)
+        cg = get_market_info(t)
+        mc = raw["market_caps"][i]
+
+        # Value (P/S) — use DefiLlama fees if available, else vol/mcap proxy
+        if dl and dl.get("fees_30d", 0) > 0:
+            annual_fees = dl["fees_30d"] * 12
+            ps = mc / annual_fees if annual_fees > 0 else 999
+            value_raw.append(ps)
+        else:
+            # Fallback: vol/mcap as value proxy (higher turnover = cheaper)
+            value_raw.append(1 / raw["vol_mcap_ratios"][i] if raw["vol_mcap_ratios"][i] > 0 else 999)
+
+        # Fee Momentum — DefiLlama fee trend, fallback to 7d price change
+        if dl and "fee_momentum" in dl:
+            fee_mom_raw.append(dl["fee_momentum"])
+        else:
+            fee_mom_raw.append(raw["change_7d"][i])
+
+        # TVL Health — DefiLlama TVL 7d change, fallback to inverse ATH drawdown
+        if dl and "tvl_change_7d" in dl:
+            tvl_raw.append(dl["tvl_change_7d"])
+        else:
+            tvl_raw.append(100 - raw["ath_drawdowns"][i])
+
+        # Revenue Quality — DefiLlama rev capture ratio, fallback to vol/mcap
+        if dl and "revenue_capture" in dl and dl["revenue_capture"] > 0:
+            rev_qual_raw.append(dl["revenue_capture"] * 100)  # 0-100 scale
+        else:
+            rev_qual_raw.append(raw["vol_mcap_ratios"][i] * 100)
+
+        # Usage Growth — 7d price change as usage proxy
+        usage_raw.append(raw["change_7d"][i])
+
+        # Risk (Low Vol) — absolute 30d change (lower = safer)
+        risk_raw.append(abs(raw["change_30d"][i]))
+
+        # Dilution Safety — FDV/MCap ratio (lower = safer)
+        if dl and dl.get("fdv_mcap_ratio", 0) > 0:
+            dilution_raw.append(dl["fdv_mcap_ratio"])
+        elif cg and cg.get("market_cap", 0) > 0:
+            # Use ATH drawdown as dilution proxy (closer to ATH = less diluted)
+            dilution_raw.append(raw["ath_drawdowns"][i] / 10)  # normalize
+        else:
+            dilution_raw.append(2.0)  # neutral
+
+        # Float Quality — inverse of supply growth / dilution
+        # Higher vol/mcap = more liquid float
+        float_raw.append(raw["vol_mcap_ratios"][i])
+
+        # Smart Money — 30d momentum (proxy: SM follows strong trends)
+        smart_raw.append(raw["change_30d"][i])
+
+        # Developer Momentum — 7d acceleration vs 30d
+        c7 = raw["change_7d"][i]
+        c30 = raw["change_30d"][i]
+        dev_raw.append(c7 - c30 * 0.25)
+
+    # ── Percentile rank each factor ──
     scores_list = [
-        _percentile_rank(value_raw),
-        _percentile_rank(fee_mom_raw),
-        _percentile_rank(tvl_raw),
-        _percentile_rank(rev_qual_raw),
-        _percentile_rank(usage_raw),
-        _inverse_percentile_rank(risk_raw),
-        _percentile_rank(dilution_raw),
-        _percentile_rank(float_raw),
-        _percentile_rank(smart_raw),
-        _percentile_rank(dev_raw),
+        _inverse_percentile_rank(value_raw),     # Low P/S = high score
+        _percentile_rank(fee_mom_raw),            # High fee growth = high score
+        _percentile_rank(tvl_raw),                # Growing TVL = high score
+        _percentile_rank(rev_qual_raw),           # High rev capture = high score
+        _percentile_rank(usage_raw),              # High usage growth = high score
+        _inverse_percentile_rank(risk_raw),       # Low vol = high score
+        _inverse_percentile_rank(dilution_raw),   # Low dilution = high score
+        _percentile_rank(float_raw),              # High float quality = high score
+        _percentile_rank(smart_raw),              # Positive SM trend = high score
+        _percentile_rank(dev_raw),                # High dev momentum = high score
     ]
 
-    factor_names = list(TEN_FACTOR_WEIGHTS.keys())
     result = {}
     for i, t in enumerate(tickers):
         result[t] = {factor_names[j]: scores_list[j][i] for j in range(10)}
