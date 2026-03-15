@@ -90,7 +90,7 @@ body {
     transition: background 0.5s ease;
 }
 
-.header-logo { height: 28px; }
+.header-logo { height: 32px; }
 
 .header-title {
     font-family: 'SometimesTimes', Georgia, 'Times New Roman', serif;
