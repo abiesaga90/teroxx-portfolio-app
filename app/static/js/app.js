@@ -86,8 +86,8 @@ function toggleCollapsible(btn) {
     if (arrow) arrow.style.transform = isOpen ? 'rotate(90deg)' : '';
 }
 
-// ── HTMX event: after swap, re-render charts ──
-document.addEventListener('htmx:afterSwap', (event) => {
+// ── Render chart from embedded data ──
+function tryRenderChart() {
     const chartData = document.getElementById('chart-data');
     if (chartData) {
         try {
@@ -95,4 +95,10 @@ document.addEventListener('htmx:afterSwap', (event) => {
             renderAllocChart(data.labels, data.values);
         } catch (e) {}
     }
-});
+}
+
+// Initial page load
+document.addEventListener('DOMContentLoaded', tryRenderChart);
+
+// After HTMX swaps (tab changes, form updates)
+document.addEventListener('htmx:afterSwap', tryRenderChart);
