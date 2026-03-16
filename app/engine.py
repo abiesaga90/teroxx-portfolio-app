@@ -213,7 +213,7 @@ def compute_live_ten_factor_scores(tickers: list[str]) -> dict[str, dict[str, fl
         # Dilution Safety — FDV/MCap ratio (lower = safer)
         if dl and dl.get("fdv_mcap_ratio", 0) > 0:
             dilution_raw.append(dl["fdv_mcap_ratio"])
-        elif cg and cg.get("market_cap", 0) > 0:
+        elif cg and (cg.get("market_cap") or 0) > 0:
             # Use ATH drawdown as dilution proxy (closer to ATH = less diluted)
             dilution_raw.append(raw["ath_drawdowns"][i] / 10)  # normalize
         else:
@@ -495,3 +495,72 @@ def compute_pnl(positions: list[dict]) -> list[dict]:
             "pnl_pct": pnl_pct,
         })
     return results
+
+
+def compute_rebalance_pnl(
+    profile: str, universe: str, mode: str,
+    portfolio_value: float, positions: dict,
+) -> list[dict]:
+    """Combined rebalance + P&L: one row per asset with target, current, entry, live price, P&L, and action."""
+    allocs = compute_allocations(profile, universe, mode)
+    results = []
+    total_target = 0
+    total_current = 0
+    total_cost = 0
+    total_value = 0
+
+    for a in allocs:
+        ticker = a["ticker"]
+        target_usd = portfolio_value * a["alloc_pct"]
+        pos = positions.get(ticker, {})
+        current_usd = pos.get("current_usd", 0)
+        entry_price = pos.get("entry_price", 0)
+        live_price = get_price(ticker) or 0
+
+        # P&L from entry price
+        if entry_price > 0 and current_usd > 0:
+            qty = current_usd / entry_price
+            current_value = qty * live_price
+            pnl = current_value - current_usd
+            pnl_pct = (pnl / current_usd * 100) if current_usd else 0
+        else:
+            current_value = current_usd
+            pnl = 0
+            pnl_pct = 0
+
+        diff = target_usd - current_usd
+        action = ""
+        if abs(diff) > 1:
+            action = "BUY" if diff > 0 else "SELL"
+
+        total_target += target_usd
+        total_current += current_usd
+        total_cost += current_usd
+        total_value += current_value
+
+        results.append({
+            "ticker": ticker,
+            "name": a["name"],
+            "tier": a["tier"],
+            "target_pct": a["alloc_pct"],
+            "target_usd": target_usd,
+            "current_usd": current_usd,
+            "entry_price": entry_price,
+            "live_price": live_price,
+            "pnl": pnl,
+            "pnl_pct": pnl_pct,
+            "difference": diff,
+            "action": action,
+        })
+
+    total_pnl = total_value - total_cost
+    total_pnl_pct = (total_pnl / total_cost * 100) if total_cost else 0
+
+    return {
+        "rows": results,
+        "total_target": total_target,
+        "total_current": total_current,
+        "total_pnl": total_pnl,
+        "total_pnl_pct": total_pnl_pct,
+        "net_rebalance": total_target - total_current,
+    }

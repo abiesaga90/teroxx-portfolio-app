@@ -1,0 +1,137 @@
+<!-- Summary -->
+<div class="summary-row">
+    <div class="summary-card">
+        <div class="summary-label">Total Target</div>
+        <div class="summary-value">{{ data.total_target|fmt_usd }}</div>
+    </div>
+    <div class="summary-card">
+        <div class="summary-label">Total Current</div>
+        <div class="summary-value">{{ data.total_current|fmt_usd }}</div>
+    </div>
+    <div class="summary-card">
+        <div class="summary-label">Unrealized P&L</div>
+        <div class="summary-value {% if data.total_pnl >= 0 %}success{% else %}danger{% endif %}">
+            {{ data.total_pnl|fmt_usd }}
+        </div>
+    </div>
+    <div class="summary-card">
+        <div class="summary-label">Net Rebalance</div>
+        <div class="summary-value {% if data.net_rebalance >= 0 %}success{% else %}danger{% endif %}">
+            {{ data.net_rebalance|fmt_usd }}
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">Rebalancing &amp; P&L &mdash; {{ portfolio_value|fmt_usd }}</div>
+    <p style="color:var(--text-muted);font-size:0.75rem;margin-bottom:1rem;">
+        Edit "Current $" and "Entry Price" values below. All data is saved in your browser.
+    </p>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Ticker</th>
+                    <th class="right">Target %</th>
+                    <th class="right">Target $</th>
+                    <th class="right">Current $</th>
+                    <th class="right">Entry Price</th>
+                    <th class="right">Live Price</th>
+                    <th class="right">P&L ($)</th>
+                    <th class="right">P&L (%)</th>
+                    <th class="right">Difference</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in data.rows %}
+                {% if r.target_pct > 0 %}
+                <tr class="rpnl-row" data-ticker="{{ r.ticker }}">
+                    <td class="ticker"><div class="ticker-cell">{% set logo = get_logo(r.ticker) %}{% if logo %}<img src="{{ logo }}" class="token-logo" alt="{{ r.ticker }}">{% endif %}{{ r.ticker }}</div></td>
+                    <td class="right">{{ r.target_pct|fmt_pct }}</td>
+                    <td class="right">{{ r.target_usd|fmt_usd }}</td>
+                    <td class="right">
+                        <input type="number" class="inline-input rpnl-current"
+                               data-ticker="{{ r.ticker }}"
+                               value="{{ r.current_usd|round(2) if r.current_usd else '' }}"
+                               step="any" placeholder="0.00"
+                               onchange="saveRPnlPositions(); triggerRebalancePnl();">
+                    </td>
+                    <td class="right">
+                        <input type="number" class="inline-input rpnl-entry"
+                               data-ticker="{{ r.ticker }}"
+                               value="{{ r.entry_price|round(2) if r.entry_price else '' }}"
+                               step="any" placeholder="0.00"
+                               onchange="saveRPnlPositions(); triggerRebalancePnl();">
+                    </td>
+                    <td class="right">{% if r.live_price %}{{ r.live_price|fmt_usd }}{% else %}-{% endif %}</td>
+                    <td class="right {% if r.pnl > 0 %}pnl-positive{% elif r.pnl < 0 %}pnl-negative{% endif %}">
+                        {% if r.entry_price > 0 and r.current_usd > 0 %}{{ r.pnl|fmt_usd }}{% else %}-{% endif %}
+                    </td>
+                    <td class="right {% if r.pnl_pct > 0 %}pnl-positive{% elif r.pnl_pct < 0 %}pnl-negative{% endif %}">
+                        {% if r.entry_price > 0 and r.current_usd > 0 %}{{ r.pnl_pct|fmt_num }}%{% else %}-{% endif %}
+                    </td>
+                    <td class="right {% if r.difference > 0 %}pnl-positive{% elif r.difference < 0 %}pnl-negative{% endif %}">
+                        {{ r.difference|fmt_usd }}
+                    </td>
+                    <td>
+                        {% if r.action == 'BUY' %}
+                        <span class="action-badge action-buy">BUY {{ r.difference|abs|fmt_usd }}</span>
+                        {% elif r.action == 'SELL' %}
+                        <span class="action-badge action-sell">SELL {{ r.difference|abs|fmt_usd }}</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endif %}
+                {% endfor %}
+                <tr class="total-row">
+                    <td style="text-align:right;color:var(--sandstone);">Total</td>
+                    <td></td>
+                    <td class="right">{{ data.total_target|fmt_usd }}</td>
+                    <td class="right">{{ data.total_current|fmt_usd }}</td>
+                    <td></td>
+                    <td></td>
+                    <td class="right {% if data.total_pnl >= 0 %}pnl-positive{% else %}pnl-negative{% endif %}">
+                        {{ data.total_pnl|fmt_usd }}
+                    </td>
+                    <td class="right {% if data.total_pnl_pct >= 0 %}pnl-positive{% else %}pnl-negative{% endif %}">
+                        {{ data.total_pnl_pct|fmt_num }}%
+                    </td>
+                    <td class="right {% if data.net_rebalance > 0 %}pnl-positive{% elif data.net_rebalance < 0 %}pnl-negative{% endif %}">
+                        {{ data.net_rebalance|fmt_usd }}
+                    </td>
+                    <td></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div style="margin-top:16px;">
+        <button type="button" class="btn-outline" onclick="useTargetAsCurrent()">Use Target as Current</button>
+    </div>
+
+    <div class="sources">
+        <div class="sources-title">Sources</div>
+        <sup class="src">1</sup> Target allocations from Teroxx Portfolio Allocation Model v3.6.<br>
+        <sup class="src">2</sup> Current holdings and entry prices entered by user (saved in browser localStorage).<br>
+        <sup class="src">3</sup> Live spot prices from <a href="https://www.coingecko.com" target="_blank">CoinGecko API</a>. Updated: {{ price_age }}.<br>
+        <sup class="src">4</sup> P&L = (Live Price / Entry Price - 1) &times; Current $. Rebalance action = Target $ &minus; Current $.
+    </div>
+</div>
+
+<script>
+// Load saved positions into the newly rendered inputs
+(function() {
+    const positions = JSON.parse(localStorage.getItem('rpnlPositions') || '{}');
+    document.querySelectorAll('.rpnl-row').forEach(row => {
+        const ticker = row.dataset.ticker;
+        const pos = positions[ticker];
+        if (pos) {
+            const currentInput = row.querySelector('.rpnl-current');
+            const entryInput = row.querySelector('.rpnl-entry');
+            if (currentInput && pos.current_usd) currentInput.value = pos.current_usd;
+            if (entryInput && pos.entry_price) entryInput.value = pos.entry_price;
+        }
+    });
+})();
+</script>

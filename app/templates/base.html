@@ -24,34 +24,31 @@
     <input type="hidden" name="profile" value="{{ profile }}">
     <input type="hidden" name="universe" value="{{ universe }}">
     <input type="hidden" name="mode" value="{{ mode }}">
+    <input type="hidden" name="portfolio_value" value="100000">
 </form>
 
 <!-- Tab Navigation -->
 <nav class="tab-nav">
-    <button class="tab-btn active" data-tab="tab-allocator" onclick="switchTab('tab-allocator')">Allocator</button>
-    <button class="tab-btn" data-tab="tab-portfolio" onclick="switchTab('tab-portfolio')">Your Portfolio</button>
-    <button class="tab-btn" data-tab="tab-dca" onclick="switchTab('tab-dca')">Recurring Buys</button>
-    <button class="tab-btn" data-tab="tab-factors" onclick="switchTab('tab-factors')">Factor Scores</button>
-    <button class="tab-btn" data-tab="tab-fundamentals" onclick="switchTab('tab-fundamentals')">Fundamentals</button>
-    <button class="tab-btn" data-tab="tab-allocations" onclick="switchTab('tab-allocations')">Allocations</button>
-    <button class="tab-btn" data-tab="tab-rebalancing" onclick="switchTab('tab-rebalancing')">Rebalancing</button>
-    <button class="tab-btn" data-tab="tab-pnl" onclick="switchTab('tab-pnl')">P&L Tracker</button>
+    <button class="tab-btn active" data-tab="tab-portfolio" onclick="switchTab('tab-portfolio')">Portfolio</button>
+    <button class="tab-btn" data-tab="tab-scoring" onclick="switchTab('tab-scoring')">Scoring</button>
+    <button class="tab-btn" data-tab="tab-dca" onclick="switchTab('tab-dca')">DCA Planner</button>
+    <button class="tab-btn" data-tab="tab-rebalance-pnl" onclick="switchTab('tab-rebalance-pnl')">Rebalancing &amp; P&L</button>
 </nav>
 
 <main class="main">
 
-    <!-- ═══ Tab 1: Allocator ═══ -->
-    <div id="tab-allocator" class="tab-panel active">
+    <!-- ═══ Tab 1: Portfolio ═══ -->
+    <div id="tab-portfolio" class="tab-panel active">
         <div class="card">
-            <div class="card-header">Portfolio Allocator</div>
-            <form class="controls"
-                  hx-post="/api/allocator"
-                  hx-target="#allocator-results"
-                  hx-trigger="change"
-                  hx-indicator="#allocator-loading">
+            <div class="card-header">Portfolio</div>
+            <form id="portfolio-form" class="controls"
+                  hx-post="/api/portfolio"
+                  hx-target="#portfolio-results"
+                  hx-trigger="change, keyup changed delay:500ms from:[name=portfolio_value]"
+                  hx-indicator="#portfolio-loading">
                 <div class="control-group">
                     <span class="control-label">Risk Profile</span>
-                    <select name="profile" onchange="document.querySelector('#global-controls [name=profile]').value=this.value">
+                    <select name="profile" onchange="syncGlobal('profile', this.value)">
                         {% for p in profiles %}
                         <option value="{{ p }}" {% if p == profile %}selected{% endif %}>{{ p }}</option>
                         {% endfor %}
@@ -59,7 +56,7 @@
                 </div>
                 <div class="control-group">
                     <span class="control-label">Asset Universe</span>
-                    <select name="universe" onchange="document.querySelector('#global-controls [name=universe]').value=this.value">
+                    <select name="universe" onchange="syncGlobal('universe', this.value)">
                         {% for u in universes %}
                         <option value="{{ u }}" {% if u == universe %}selected{% endif %}>{{ u }}</option>
                         {% endfor %}
@@ -67,42 +64,48 @@
                 </div>
                 <div class="control-group">
                     <span class="control-label">Allocation Mode</span>
-                    <select name="mode" onchange="document.querySelector('#global-controls [name=mode]').value=this.value">
+                    <select name="mode" onchange="syncGlobal('mode', this.value)">
                         {% for m in modes %}
                         <option value="{{ m }}" {% if m == mode %}selected{% endif %}>{{ m }}</option>
                         {% endfor %}
                     </select>
                 </div>
-                <span id="allocator-loading" class="htmx-indicator"><span class="spinner"></span></span>
-            </form>
-        </div>
-
-        <div id="allocator-results">
-            {% include "partials/allocator_results.html" %}
-        </div>
-    </div>
-
-    <!-- ═══ Tab 2: Your Portfolio ═══ -->
-    <div id="tab-portfolio" class="tab-panel">
-        <div class="card">
-            <div class="card-header">Your Portfolio</div>
-            <form class="controls"
-                  hx-post="/api/portfolio"
-                  hx-target="#portfolio-results"
-                  hx-trigger="change, keyup changed delay:500ms from:[name=portfolio_value]"
-                  hx-include="#global-controls"
-                  hx-indicator="#portfolio-loading">
                 <div class="control-group">
                     <span class="control-label">Portfolio Value ($)</span>
-                    <input type="number" name="portfolio_value" value="100000" min="0" step="1000">
+                    <input type="number" name="portfolio_value" value="100000" min="0" step="1000"
+                           onchange="syncGlobal('portfolio_value', this.value)">
                 </div>
                 <span id="portfolio-loading" class="htmx-indicator"><span class="spinner"></span></span>
             </form>
         </div>
-        <div id="portfolio-results"></div>
+
+        <div id="portfolio-results">
+            {% include "partials/portfolio_results_new.html" %}
+        </div>
     </div>
 
-    <!-- ═══ Tab 3: Recurring Buys (DCA) ═══ -->
+    <!-- ═══ Tab 2: Scoring ═══ -->
+    <div id="tab-scoring" class="tab-panel">
+        <div class="card">
+            <div class="card-header">Scoring Models</div>
+            <div class="scoring-toggle">
+                <button class="scoring-toggle-btn active" data-model="factor" onclick="switchScoringModel('factor')">5-Factor Model</button>
+                <button class="scoring-toggle-btn" data-model="fundamental" onclick="switchScoringModel('fundamental')">10-Factor Fundamental</button>
+            </div>
+            <form id="scoring-form" class="controls" style="margin-top:16px;"
+                  hx-post="/api/scoring"
+                  hx-target="#scoring-results"
+                  hx-trigger="change"
+                  hx-include="#global-controls"
+                  hx-indicator="#scoring-loading">
+                <input type="hidden" name="model" value="factor">
+                <span id="scoring-loading" class="htmx-indicator"><span class="spinner"></span></span>
+            </form>
+        </div>
+        <div id="scoring-results"></div>
+    </div>
+
+    <!-- ═══ Tab 3: DCA Planner ═══ -->
     <div id="tab-dca" class="tab-panel">
         <div class="card">
             <div class="card-header">Recurring Buy Planner</div>
@@ -138,127 +141,26 @@
         <div id="dca-results"></div>
     </div>
 
-    <!-- ═══ Tab 4: Factor Scores ═══ -->
-    <div id="tab-factors" class="tab-panel">
+    <!-- ═══ Tab 4: Rebalancing & P&L ═══ -->
+    <div id="tab-rebalance-pnl" class="tab-panel">
         <div class="card">
-            <div class="card-header">5-Factor Model Scores</div>
-            <form class="controls"
-                  hx-post="/api/factor-scores"
-                  hx-target="#factor-results"
-                  hx-trigger="change"
-                  hx-include="#global-controls"
-                  hx-indicator="#factor-loading">
-                <input type="hidden" name="profile" value="{{ profile }}">
-                <input type="hidden" name="universe" value="{{ universe }}">
-                <span id="factor-loading" class="htmx-indicator"><span class="spinner"></span></span>
-            </form>
-        </div>
-        <div id="factor-results"></div>
-    </div>
-
-    <!-- ═══ Tab 5: Fundamentals ═══ -->
-    <div id="tab-fundamentals" class="tab-panel">
-        <div class="card">
-            <div class="card-header">10-Factor Fundamental Model</div>
-            <form class="controls"
-                  hx-post="/api/fundamentals"
-                  hx-target="#fundamental-results"
-                  hx-trigger="change"
-                  hx-include="#global-controls"
-                  hx-indicator="#fundamental-loading">
-                <input type="hidden" name="profile" value="{{ profile }}">
-                <input type="hidden" name="universe" value="{{ universe }}">
-                <span id="fundamental-loading" class="htmx-indicator"><span class="spinner"></span></span>
-            </form>
-        </div>
-        <div id="fundamental-results"></div>
-    </div>
-
-    <!-- ═══ Tab 6: Detailed Allocations ═══ -->
-    <div id="tab-allocations" class="tab-panel">
-        <div class="card">
-            <div class="card-header">Detailed Allocations</div>
-            <form class="controls"
-                  hx-post="/api/allocations-detail"
-                  hx-target="#allocations-results"
-                  hx-trigger="change"
-                  hx-include="#global-controls"
-                  hx-indicator="#allocations-loading">
-                <input type="hidden" name="profile" value="{{ profile }}">
-                <input type="hidden" name="universe" value="{{ universe }}">
-                <input type="hidden" name="mode" value="{{ mode }}">
-                <span id="allocations-loading" class="htmx-indicator"><span class="spinner"></span></span>
-            </form>
-        </div>
-        <div id="allocations-results"></div>
-    </div>
-
-    <!-- ═══ Tab 7: Rebalancing ═══ -->
-    <div id="tab-rebalancing" class="tab-panel">
-        <div class="card">
-            <div class="card-header">Rebalancing</div>
-            <form id="rebalance-form" class="controls"
-                  hx-post="/api/rebalancing"
-                  hx-target="#rebalancing-results"
+            <div class="card-header">Rebalancing &amp; P&L</div>
+            <form id="rebalance-pnl-form" class="controls"
+                  hx-post="/api/rebalance-pnl"
+                  hx-target="#rebalance-pnl-results"
                   hx-trigger="change from:[name=portfolio_value]"
                   hx-include="#global-controls"
-                  hx-indicator="#rebalancing-loading">
+                  hx-indicator="#rpnl-loading">
                 <div class="control-group">
                     <span class="control-label">Portfolio Value ($)</span>
-                    <input type="number" name="portfolio_value" value="100000" min="0" step="1000">
+                    <input type="number" name="portfolio_value" value="100000" min="0" step="1000"
+                           onchange="syncGlobal('portfolio_value', this.value)">
                 </div>
-                <input type="hidden" name="current_holdings" value="{}">
-                <span id="rebalancing-loading" class="htmx-indicator"><span class="spinner"></span></span>
+                <input type="hidden" name="positions_json" value="{}">
+                <span id="rpnl-loading" class="htmx-indicator"><span class="spinner"></span></span>
             </form>
         </div>
-        <div id="rebalancing-results"></div>
-    </div>
-
-    <!-- ═══ Tab 8: P&L Tracker ═══ -->
-    <div id="tab-pnl" class="tab-panel">
-        <div class="card">
-            <div class="card-header">P&L Tracker</div>
-            <p style="color:var(--text-muted);font-size:0.8rem;margin-bottom:1rem;">
-                Enter your positions below. Data is saved in your browser.
-            </p>
-            <form id="pnl-form"
-                  hx-post="/api/pnl"
-                  hx-target="#pnl-results"
-                  hx-indicator="#pnl-loading">
-                <input type="hidden" name="positions_json" value="[]">
-                <button type="button" onclick="submitPnl()" class="btn-accent">Calculate P&L</button>
-                <span id="pnl-loading" class="htmx-indicator"><span class="spinner"></span></span>
-            </form>
-        </div>
-
-        <div class="card">
-            <div class="table-wrap">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Ticker</th>
-                            <th>Name</th>
-                            <th class="right">Quantity</th>
-                            <th class="right">Entry Price ($)</th>
-                        </tr>
-                    </thead>
-                    <tbody id="pnl-inputs">
-                        {% for a in allocs %}
-                        {% if a.ticker not in ['USDC', 'EURC'] %}
-                        <tr class="pnl-row" data-ticker="{{ a.ticker }}">
-                            <td class="ticker"><div class="ticker-cell">{% set logo = get_logo(a.ticker) %}{% if logo %}<img src="{{ logo }}" class="token-logo" alt="{{ a.ticker }}">{% endif %}{{ a.ticker }}</div></td>
-                            <td>{{ a.name }}</td>
-                            <td class="right"><input type="number" class="inline-input pnl-qty" step="any" placeholder="0"></td>
-                            <td class="right"><input type="number" class="inline-input pnl-entry" step="any" placeholder="0.00"></td>
-                        </tr>
-                        {% endif %}
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <div id="pnl-results"></div>
+        <div id="rebalance-pnl-results"></div>
     </div>
 
 </main>
@@ -286,44 +188,91 @@ switchTab = function(tabId) {
     setTimeout(() => triggerTabLoad(tabId), 50);
 };
 
-// Sync global controls when allocator dropdowns change
-document.querySelectorAll('#tab-allocator select').forEach(sel => {
-    sel.addEventListener('change', () => {
-        const gc = document.getElementById('global-controls');
-        gc.querySelector(`[name="${sel.name}"]`).value = sel.value;
-        // Sync hidden inputs in other tabs
-        document.querySelectorAll(`form:not(#global-controls) input[name="${sel.name}"]`).forEach(inp => {
-            inp.value = sel.value;
-        });
-    });
-});
+// ── Sync global controls + portfolio value across tabs ──
+function syncGlobal(name, value) {
+    const gc = document.getElementById('global-controls');
+    const gcInput = gc.querySelector(`[name="${name}"]`);
+    if (gcInput) gcInput.value = value;
 
-// P&L submission
-function submitPnl() {
-    const positions = savePositions();
-    document.querySelector('#pnl-form [name=positions_json]').value = JSON.stringify(positions);
-    htmx.trigger(document.getElementById('pnl-form'), 'submit');
+    // Sync portfolio_value between Portfolio tab and Rebalancing tab
+    if (name === 'portfolio_value') {
+        document.querySelectorAll(`input[name="portfolio_value"]`).forEach(inp => {
+            inp.value = value;
+        });
+        localStorage.setItem('portfolioValue', value);
+    }
+
+    // Sync profile/universe/mode to other forms
+    if (['profile', 'universe', 'mode'].includes(name)) {
+        document.querySelectorAll(`form:not(#global-controls) input[name="${name}"]`).forEach(inp => {
+            inp.value = value;
+        });
+    }
 }
 
-// Load saved P&L positions on page load
-document.addEventListener('DOMContentLoaded', () => {
-    const positions = loadPositions();
-    positions.forEach(pos => {
-        const row = document.querySelector(`.pnl-row[data-ticker="${pos.ticker}"]`);
-        if (row) {
-            const qtyInput = row.querySelector('.pnl-qty');
-            const entryInput = row.querySelector('.pnl-entry');
-            if (qtyInput && pos.quantity) qtyInput.value = pos.quantity;
-            if (entryInput && pos.entry_price) entryInput.value = pos.entry_price;
+// ── Scoring model toggle ──
+function switchScoringModel(model) {
+    document.querySelectorAll('.scoring-toggle-btn').forEach(b => b.classList.remove('active'));
+    document.querySelector(`.scoring-toggle-btn[data-model="${model}"]`)?.classList.add('active');
+    document.querySelector('#scoring-form [name=model]').value = model;
+    htmx.trigger(document.getElementById('scoring-form'), 'change');
+}
+
+// ── Rebalance + P&L position persistence ──
+function saveRPnlPositions() {
+    const positions = {};
+    document.querySelectorAll('.rpnl-row').forEach(row => {
+        const ticker = row.dataset.ticker;
+        const current = parseFloat(row.querySelector('.rpnl-current')?.value) || 0;
+        const entry = parseFloat(row.querySelector('.rpnl-entry')?.value) || 0;
+        if (current > 0 || entry > 0) {
+            positions[ticker] = { current_usd: current, entry_price: entry };
         }
     });
-});
+    localStorage.setItem('rpnlPositions', JSON.stringify(positions));
+    return positions;
+}
 
-// Rebalancing: load saved holdings
+function triggerRebalancePnl() {
+    const positions = saveRPnlPositions();
+    const form = document.getElementById('rebalance-pnl-form');
+    if (form) {
+        form.querySelector('[name=positions_json]').value = JSON.stringify(positions);
+        htmx.trigger(form, 'change');
+    }
+}
+
+function useTargetAsCurrent() {
+    document.querySelectorAll('.rpnl-row').forEach(row => {
+        // Find the Target $ cell (3rd td, index 2)
+        const cells = row.querySelectorAll('td');
+        const targetText = cells[2]?.textContent?.trim().replace(/[$,]/g, '') || '0';
+        const targetVal = parseFloat(targetText) || 0;
+        const currentInput = row.querySelector('.rpnl-current');
+        if (currentInput && targetVal > 0) {
+            currentInput.value = targetVal.toFixed(2);
+        }
+    });
+    triggerRebalancePnl();
+}
+
+// ── Load saved state on page load ──
 document.addEventListener('DOMContentLoaded', () => {
-    const holdings = loadHoldings();
-    const input = document.querySelector('#rebalance-form [name=current_holdings]');
-    if (input) input.value = JSON.stringify(holdings);
+    // Restore portfolio value
+    const savedPV = localStorage.getItem('portfolioValue');
+    if (savedPV) {
+        document.querySelectorAll('input[name="portfolio_value"]').forEach(inp => {
+            inp.value = savedPV;
+        });
+        syncGlobal('portfolio_value', savedPV);
+    }
+
+    // Load saved rebalance-pnl positions into hidden form field
+    const savedPos = localStorage.getItem('rpnlPositions');
+    if (savedPos) {
+        const form = document.getElementById('rebalance-pnl-form');
+        if (form) form.querySelector('[name=positions_json]').value = savedPos;
+    }
 });
 </script>
 

@@ -10,8 +10,18 @@ function switchTab(tabId) {
 // Restore last tab on load
 document.addEventListener('DOMContentLoaded', () => {
     const saved = localStorage.getItem('activeTab');
-    if (saved && document.getElementById(saved)) {
-        switchTab(saved);
+    // Map old tab IDs to new ones for users with stale localStorage
+    const tabMap = {
+        'tab-allocator': 'tab-portfolio',
+        'tab-factors': 'tab-scoring',
+        'tab-fundamentals': 'tab-scoring',
+        'tab-allocations': 'tab-portfolio',
+        'tab-rebalancing': 'tab-rebalance-pnl',
+        'tab-pnl': 'tab-rebalance-pnl',
+    };
+    const mapped = tabMap[saved] || saved;
+    if (mapped && document.getElementById(mapped)) {
+        switchTab(mapped);
     }
 });
 
@@ -27,7 +37,6 @@ function getSharedParams() {
 }
 
 // ── Donut chart rendering ──
-// Teroxx brand chart palette order (from brand guidelines)
 const CHART_COLORS = ['#010626', '#0b688c', '#d06643', '#4A8FA4', '#bfb3a8', '#060d43'];
 
 let allocChart = null;
@@ -62,49 +71,16 @@ function renderAllocChart(labels, values) {
     });
 }
 
-// ── Rebalancing: save/load current holdings ──
-function saveHoldings() {
-    const inputs = document.querySelectorAll('.holding-input');
-    const holdings = {};
-    inputs.forEach(input => {
-        const val = parseFloat(input.value) || 0;
-        if (val > 0) holdings[input.dataset.ticker] = val;
-    });
-    localStorage.setItem('currentHoldings', JSON.stringify(holdings));
-    return holdings;
-}
-
-function loadHoldings() {
-    try {
-        return JSON.parse(localStorage.getItem('currentHoldings') || '{}');
-    } catch { return {}; }
-}
-
-// ── P&L: save/load positions ──
-function savePositions() {
-    const rows = document.querySelectorAll('.pnl-row');
-    const positions = [];
-    rows.forEach(row => {
-        const ticker = row.dataset.ticker;
-        const qty = parseFloat(row.querySelector('.pnl-qty')?.value) || 0;
-        const entry = parseFloat(row.querySelector('.pnl-entry')?.value) || 0;
-        if (qty > 0 && entry > 0) {
-            positions.push({ ticker, quantity: qty, entry_price: entry });
-        }
-    });
-    localStorage.setItem('pnlPositions', JSON.stringify(positions));
-    return positions;
-}
-
-function loadPositions() {
-    try {
-        return JSON.parse(localStorage.getItem('pnlPositions') || '[]');
-    } catch { return []; }
+// ── Collapsible sections ──
+function toggleCollapsible(btn) {
+    const content = btn.nextElementSibling;
+    const arrow = btn.querySelector('.collapsible-arrow');
+    const isOpen = content.classList.toggle('open');
+    if (arrow) arrow.style.transform = isOpen ? 'rotate(90deg)' : '';
 }
 
 // ── HTMX event: after swap, re-render charts ──
 document.addEventListener('htmx:afterSwap', (event) => {
-    // Check if we need to render allocation donut
     const chartData = document.getElementById('chart-data');
     if (chartData) {
         try {

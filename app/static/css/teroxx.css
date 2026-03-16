@@ -378,9 +378,19 @@ td {
 .token-logo {
     width: 20px;
     height: 20px;
+    max-width: 20px;
+    max-height: 20px;
     border-radius: 50%;
     flex-shrink: 0;
     background: var(--cream);
+    object-fit: contain;
+}
+
+.token-logo-sm {
+    width: 16px;
+    height: 16px;
+    max-width: 16px;
+    max-height: 16px;
 }
 
 .token-logo-placeholder {
@@ -628,4 +638,83 @@ sup.src {
 @media (max-width: 480px) {
     .summary-row { grid-template-columns: 1fr; }
     .header-title { font-size: 1rem; }
+}
+
+/* ── Collapsible Sections ── */
+.collapsible-section {
+    margin-bottom: 20px;
+}
+
+.collapsible-toggle {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 16px 24px;
+    font-family: 'SometimesTimes', Georgia, serif;
+    font-size: 1rem;
+    font-weight: 500;
+    color: var(--text-heading);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.collapsible-toggle:hover {
+    border-color: var(--deep-indigo);
+}
+
+.collapsible-arrow {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    transition: transform 0.2s ease;
+}
+
+.collapsible-content {
+    display: none;
+    padding-top: 12px;
+}
+
+.collapsible-content.open {
+    display: block;
+    animation: fadeIn 0.3s ease;
+}
+
+/* ── Scoring Model Toggle ── */
+.scoring-toggle {
+    display: flex;
+    gap: 0;
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    overflow: hidden;
+    width: fit-content;
+}
+
+.scoring-toggle-btn {
+    padding: 10px 20px;
+    background: var(--bg-card);
+    border: none;
+    border-radius: 0;
+    color: var(--text-secondary);
+    font-family: 'Sohne', Arial, sans-serif;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.scoring-toggle-btn:not(:last-child) {
+    border-right: 1px solid var(--border-strong);
+}
+
+.scoring-toggle-btn.active {
+    background: var(--deep-indigo);
+    color: var(--white);
+    font-weight: 600;
+}
+
+.scoring-toggle-btn:hover:not(.active) {
+    background: var(--cream);
 }

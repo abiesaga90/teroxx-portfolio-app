@@ -19,8 +19,8 @@ from app.data import (
 )
 from app.engine import (
     compute_allocations, compute_portfolio, compute_dca,
-    compute_rebalance, compute_pnl, get_universe_tickers,
-    five_factor_detail, ten_factor_detail,
+    compute_rebalance, compute_pnl, compute_rebalance_pnl,
+    get_universe_tickers, five_factor_detail, ten_factor_detail,
 )
 from app.market_data import fetch_prices, fetch_market_data, price_age_str, background_refresh, get_logo_url
 
@@ -94,7 +94,11 @@ async def index(request: Request):
     profile = "Balanced"
     universe = "Full (25)"
     mode = "Standard"
-    allocs = compute_allocations(profile, universe, mode)
+    portfolio_value = 100000
+    positions = compute_portfolio(profile, universe, mode, portfolio_value)
+    defensive_pct = sum(p["alloc_pct"] for p in positions if p["ticker"] in ("USDC", "EURC", "PAXG"))
+    crypto_pct = 1 - defensive_pct
+    dd_50 = DRAWDOWN_IMPACT["Crypto -50%"].get(profile, 0)
     return templates.TemplateResponse("base.html", {
         "request": request,
         "profiles": RISK_PROFILES,
@@ -103,34 +107,22 @@ async def index(request: Request):
         "profile": profile,
         "universe": universe,
         "mode": mode,
-        "allocs": allocs,
+        "positions": positions,
+        "portfolio_value": portfolio_value,
+        "defensive_pct": defensive_pct,
+        "crypto_pct": crypto_pct,
+        "dd_50": dd_50,
         "asset_class_allocs": ASSET_CLASS_ALLOCATIONS,
         "drawdown": DRAWDOWN_IMPACT,
         "chart_data": _chart_data(profile),
+        "risk_tilts": RISK_TILT_PARAMETERS,
+        "tier_allocs": TIER_ALLOCATIONS,
+        "fixed": FIXED_STRATEGIC,
         "price_age": price_age_str(),
     })
 
 
 # ── HTMX Partial Endpoints ──────────────────────────────────────────────
-
-@app.post("/api/allocator", response_class=HTMLResponse)
-async def allocator_partial(
-    request: Request,
-    profile: str = Form("Balanced"),
-    universe: str = Form("Full (25)"),
-    mode: str = Form("Standard"),
-):
-    allocs = compute_allocations(profile, universe, mode)
-    return templates.TemplateResponse("partials/allocator_results.html", {
-        "request": request,
-        "allocs": allocs,
-        "profile": profile,
-        "asset_class_allocs": ASSET_CLASS_ALLOCATIONS,
-        "drawdown": DRAWDOWN_IMPACT,
-        "chart_data": _chart_data(profile),
-        "price_age": price_age_str(),
-    })
-
 
 @app.post("/api/portfolio", response_class=HTMLResponse)
 async def portfolio_partial(
@@ -141,18 +133,52 @@ async def portfolio_partial(
     portfolio_value: float = Form(100000),
 ):
     positions = compute_portfolio(profile, universe, mode, portfolio_value)
-    crypto_allocs = [p for p in positions if p["ticker"] not in ("USDC", "EURC")]
     defensive_pct = sum(p["alloc_pct"] for p in positions if p["ticker"] in ("USDC", "EURC", "PAXG"))
     crypto_pct = 1 - defensive_pct
     dd_50 = DRAWDOWN_IMPACT["Crypto -50%"].get(profile, 0)
-    return templates.TemplateResponse("partials/portfolio_results.html", {
+    return templates.TemplateResponse("partials/portfolio_results_new.html", {
         "request": request,
         "positions": positions,
         "portfolio_value": portfolio_value,
         "profile": profile,
+        "profiles": RISK_PROFILES,
         "defensive_pct": defensive_pct,
         "crypto_pct": crypto_pct,
         "dd_50": dd_50,
+        "chart_data": _chart_data(profile),
+        "risk_tilts": RISK_TILT_PARAMETERS,
+        "tier_allocs": TIER_ALLOCATIONS,
+        "fixed": FIXED_STRATEGIC,
+        "price_age": price_age_str(),
+    })
+
+
+@app.post("/api/scoring", response_class=HTMLResponse)
+async def scoring_partial(
+    request: Request,
+    profile: str = Form("Balanced"),
+    universe: str = Form("Full (25)"),
+    model: str = Form("factor"),
+):
+    tickers = [t for t in get_universe_tickers(universe) if t not in ("USDC", "EURC", "PAXG")]
+    if model == "fundamental":
+        detail = ten_factor_detail(profile, tickers)
+        weights = TEN_FACTOR_WEIGHTS
+        model_label = "10-Factor Fundamental"
+        is_fundamental = True
+    else:
+        detail = five_factor_detail(profile, tickers)
+        weights = FIVE_FACTOR_WEIGHTS
+        model_label = "5-Factor Model"
+        is_fundamental = False
+    return templates.TemplateResponse("partials/scoring_results.html", {
+        "request": request,
+        "detail": detail,
+        "weights": weights,
+        "profile": profile,
+        "profiles": RISK_PROFILES,
+        "model_label": model_label,
+        "is_fundamental": is_fundamental,
         "price_age": price_age_str(),
     })
 
@@ -178,104 +204,23 @@ async def dca_partial(
     })
 
 
-@app.post("/api/factor-scores", response_class=HTMLResponse)
-async def factor_scores_partial(
-    request: Request,
-    profile: str = Form("Balanced"),
-    universe: str = Form("Full (25)"),
-):
-    tickers = [t for t in get_universe_tickers(universe) if t not in ("USDC", "EURC", "PAXG")]
-    detail = five_factor_detail(profile, tickers)
-    return templates.TemplateResponse("partials/factor_results.html", {
-        "request": request,
-        "detail": detail,
-        "weights": FIVE_FACTOR_WEIGHTS,
-        "profile": profile,
-        "profiles": RISK_PROFILES,
-        "price_age": price_age_str(),
-    })
-
-
-@app.post("/api/fundamentals", response_class=HTMLResponse)
-async def fundamentals_partial(
-    request: Request,
-    profile: str = Form("Balanced"),
-    universe: str = Form("Full (25)"),
-):
-    tickers = [t for t in get_universe_tickers(universe) if t not in ("USDC", "EURC", "PAXG")]
-    detail = ten_factor_detail(profile, tickers)
-    return templates.TemplateResponse("partials/fundamental_results.html", {
-        "request": request,
-        "detail": detail,
-        "weights": TEN_FACTOR_WEIGHTS,
-        "profile": profile,
-        "profiles": RISK_PROFILES,
-        "price_age": price_age_str(),
-    })
-
-
-@app.post("/api/allocations-detail", response_class=HTMLResponse)
-async def allocations_detail_partial(
-    request: Request,
-    profile: str = Form("Balanced"),
-    universe: str = Form("Full (25)"),
-    mode: str = Form("Standard"),
-):
-    allocs = compute_allocations(profile, universe, mode)
-    return templates.TemplateResponse("partials/allocations_results.html", {
-        "request": request,
-        "allocs": allocs,
-        "profile": profile,
-        "profiles": RISK_PROFILES,
-        "risk_tilts": RISK_TILT_PARAMETERS,
-        "tier_allocs": TIER_ALLOCATIONS,
-        "fixed": FIXED_STRATEGIC,
-        "price_age": price_age_str(),
-    })
-
-
-@app.post("/api/rebalancing", response_class=HTMLResponse)
-async def rebalancing_partial(
+@app.post("/api/rebalance-pnl", response_class=HTMLResponse)
+async def rebalance_pnl_partial(
     request: Request,
     profile: str = Form("Balanced"),
     universe: str = Form("Full (25)"),
     mode: str = Form("Standard"),
     portfolio_value: float = Form(100000),
-    current_holdings: str = Form("{}"),
-):
-    try:
-        holdings = json.loads(current_holdings)
-    except (json.JSONDecodeError, TypeError):
-        holdings = {}
-    results = compute_rebalance(profile, universe, mode, portfolio_value, holdings)
-    return templates.TemplateResponse("partials/rebalancing_results.html", {
-        "request": request,
-        "results": results,
-        "portfolio_value": portfolio_value,
-        "price_age": price_age_str(),
-    })
-
-
-@app.post("/api/pnl", response_class=HTMLResponse)
-async def pnl_partial(
-    request: Request,
-    positions_json: str = Form("[]"),
+    positions_json: str = Form("{}"),
 ):
     try:
         positions = json.loads(positions_json)
     except (json.JSONDecodeError, TypeError):
-        positions = []
-    results = compute_pnl(positions)
-    total_cost = sum(r["cost_basis"] for r in results)
-    total_value = sum(r["current_value"] for r in results)
-    total_pnl = total_value - total_cost
-    total_pnl_pct = (total_pnl / total_cost * 100) if total_cost else 0
-    return templates.TemplateResponse("partials/pnl_results.html", {
+        positions = {}
+    data = compute_rebalance_pnl(profile, universe, mode, portfolio_value, positions)
+    return templates.TemplateResponse("partials/rebalance_pnl_results.html", {
         "request": request,
-        "results": results,
-        "total_cost": total_cost,
-        "total_value": total_value,
-        "total_pnl": total_pnl,
-        "total_pnl_pct": total_pnl_pct,
+        "data": data,
+        "portfolio_value": portfolio_value,
         "price_age": price_age_str(),
     })
