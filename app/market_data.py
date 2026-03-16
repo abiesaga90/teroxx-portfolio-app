@@ -95,6 +95,7 @@ async def fetch_market_data() -> dict[str, dict]:
                         "price_change_30d": coin.get("price_change_percentage_30d_in_currency", 0),
                         "ath": coin.get("ath", 0),
                         "ath_change_pct": coin.get("ath_change_percentage", 0),
+                        "image": coin.get("image", ""),
                     }
             except Exception as e:
                 logger.warning(f"CoinGecko market data fetch failed: {e}")
@@ -223,6 +224,17 @@ def get_market_info(ticker: str) -> Optional[dict]:
     if not cg_id:
         return None
     return _market_cache.get(cg_id)
+
+
+def get_logo_url(ticker: str) -> str:
+    """Return CoinGecko logo URL for a ticker, or empty string."""
+    cg_id = TOKEN_MAP.get(ticker)
+    if not cg_id:
+        return ""
+    info = _market_cache.get(cg_id)
+    if info and info.get("image"):
+        return info["image"]
+    return ""
 
 
 def price_age_str() -> str:

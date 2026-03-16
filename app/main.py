@@ -22,7 +22,7 @@ from app.engine import (
     compute_rebalance, compute_pnl, get_universe_tickers,
     five_factor_detail, ten_factor_detail,
 )
-from app.market_data import fetch_prices, fetch_market_data, price_age_str, background_refresh
+from app.market_data import fetch_prices, fetch_market_data, price_age_str, background_refresh, get_logo_url
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -75,6 +75,7 @@ templates.env.filters["fmt_pct"] = fmt_pct
 templates.env.filters["fmt_usd"] = fmt_usd
 templates.env.filters["fmt_num"] = fmt_num
 templates.env.globals["json_dumps"] = json.dumps
+templates.env.globals["get_logo"] = get_logo_url
 
 
 @app.get("/health")

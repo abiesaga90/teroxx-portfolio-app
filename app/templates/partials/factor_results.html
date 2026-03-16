@@ -45,7 +45,7 @@
                 {% for d in detail %}
                 <tr>
                     <td style="color:var(--text-muted)">{{ loop.index }}</td>
-                    <td class="ticker">{{ d.ticker }}</td>
+                    <td class="ticker"><div class="ticker-cell">{% set logo = get_logo(d.ticker) %}{% if logo %}<img src="{{ logo }}" class="token-logo" alt="{{ d.ticker }}">{% endif %}{{ d.ticker }}</div></td>
                     <td>{{ d.name }}</td>
                     {% for factor in weights.keys() %}
                     <td class="center">{{ d[factor] }}</td>

@@ -41,7 +41,7 @@
                 {% set ns.total_horizon = ns.total_horizon + s.horizon_total %}
                 <tr>
                     <td style="color:var(--text-muted)">{{ loop.index }}</td>
-                    <td class="ticker">{{ s.ticker }}</td>
+                    <td class="ticker"><div class="ticker-cell">{% set logo = get_logo(s.ticker) %}{% if logo %}<img src="{{ logo }}" class="token-logo" alt="{{ s.ticker }}">{% endif %}{{ s.ticker }}</div></td>
                     <td>{{ s.name }}</td>
                     <td>{{ s.tier }}</td>
                     <td class="right">{{ s.portfolio_pct|fmt_pct }}</td>

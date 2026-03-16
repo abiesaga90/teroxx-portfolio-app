@@ -26,7 +26,7 @@
                 {% set ns.total_current = ns.total_current + r.current_usd %}
                 <tr>
                     <td style="color:var(--text-muted)">{{ loop.index }}</td>
-                    <td class="ticker">{{ r.ticker }}</td>
+                    <td class="ticker"><div class="ticker-cell">{% set logo = get_logo(r.ticker) %}{% if logo %}<img src="{{ logo }}" class="token-logo" alt="{{ r.ticker }}">{% endif %}{{ r.ticker }}</div></td>
                     <td>{{ r.name }}</td>
                     <td>{{ r.tier }}</td>
                     <td class="right">{{ r.target_pct|fmt_pct }}</td>

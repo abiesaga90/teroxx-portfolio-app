@@ -246,7 +246,7 @@
                         {% for a in allocs %}
                         {% if a.ticker not in ['USDC', 'EURC'] %}
                         <tr class="pnl-row" data-ticker="{{ a.ticker }}">
-                            <td class="ticker">{{ a.ticker }}</td>
+                            <td class="ticker"><div class="ticker-cell">{% set logo = get_logo(a.ticker) %}{% if logo %}<img src="{{ logo }}" class="token-logo" alt="{{ a.ticker }}">{% endif %}{{ a.ticker }}</div></td>
                             <td>{{ a.name }}</td>
                             <td class="right"><input type="number" class="inline-input pnl-qty" step="any" placeholder="0"></td>
                             <td class="right"><input type="number" class="inline-input pnl-entry" step="any" placeholder="0.00"></td>

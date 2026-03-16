@@ -40,7 +40,7 @@
                 {% if p.alloc_pct > 0 %}
                 <tr>
                     <td style="color:var(--text-muted)">{{ loop.index }}</td>
-                    <td class="ticker">{{ p.ticker }}</td>
+                    <td class="ticker"><div class="ticker-cell">{% set logo = get_logo(p.ticker) %}{% if logo %}<img src="{{ logo }}" class="token-logo" alt="{{ p.ticker }}">{% endif %}{{ p.ticker }}</div></td>
                     <td>{{ p.name }}</td>
                     <td>
                         <span class="tier-badge tier-{% if p.risk_tier == 'Defensive' %}fixed{% elif p.risk_tier == 'Core' %}core{% elif p.risk_tier == 'Growth' %}growth{% else %}speculative{% endif %}">

@@ -41,7 +41,7 @@
             <tbody>
                 {% for ticker, prof_vals in fixed.items() %}
                 <tr>
-                    <td class="ticker">{{ ticker }}</td>
+                    <td class="ticker"><div class="ticker-cell">{% set logo = get_logo(ticker) %}{% if logo %}<img src="{{ logo }}" class="token-logo" alt="{{ ticker }}">{% endif %}{{ ticker }}</div></td>
                     {% for p in profiles %}
                     <td class="center {% if p == profile %}active-col{% endif %}">{{ (prof_vals[p] * 100)|round(1) }}%</td>
                     {% endfor %}
@@ -100,7 +100,7 @@
                 {% if a.alloc_pct > 0 %}
                 <tr>
                     <td style="color:var(--text-muted)">{{ loop.index }}</td>
-                    <td class="ticker">{{ a.ticker }}</td>
+                    <td class="ticker"><div class="ticker-cell">{% set logo = get_logo(a.ticker) %}{% if logo %}<img src="{{ logo }}" class="token-logo" alt="{{ a.ticker }}">{% endif %}{{ a.ticker }}</div></td>
                     <td>{{ a.name }}</td>
                     <td>{{ a.tier }}</td>
                     <td>

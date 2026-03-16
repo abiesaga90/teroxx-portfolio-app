@@ -46,7 +46,7 @@
                 {% if r.quantity > 0 %}
                 <tr>
                     <td style="color:var(--text-muted)">{{ loop.index }}</td>
-                    <td class="ticker">{{ r.ticker }}</td>
+                    <td class="ticker"><div class="ticker-cell">{% set logo = get_logo(r.ticker) %}{% if logo %}<img src="{{ logo }}" class="token-logo" alt="{{ r.ticker }}">{% endif %}{{ r.ticker }}</div></td>
                     <td>{{ r.name }}</td>
                     <td class="right">{{ r.quantity|fmt_num(4) }}</td>
                     <td class="right">{{ r.entry_price|fmt_usd }}</td>
