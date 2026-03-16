@@ -63,7 +63,10 @@
             </tbody>
         </table>
     </div>
-    <div style="text-align:right;margin-top:0.5rem;color:var(--text-muted);font-size:0.7rem;">
-        Prices: {{ price_age }}
+    <div class="sources">
+        <div class="sources-title">Sources</div>
+        <sup class="src">1</sup> Target allocations from Teroxx Portfolio Allocation Model v3.6.<br>
+        <sup class="src">2</sup> Current holdings entered by user (saved in browser localStorage).<br>
+        <sup class="src">3</sup> BUY/SELL actions = Target $ &minus; Current $. Net actions sum to zero when fully allocated. Prices: {{ price_age }}.
     </div>
 </div>

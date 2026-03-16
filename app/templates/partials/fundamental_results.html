@@ -27,7 +27,7 @@
 
 <!-- Fundamental Scores Table -->
 <div class="card">
-    <div class="card-header">Fundamental Scores &amp; Composites ({{ profile }})</div>
+    <div class="card-header">Fundamental Scores<sup class="src">1</sup> &amp; Composites ({{ profile }})</div>
     <div class="table-wrap">
         <table>
             <thead>
@@ -55,5 +55,17 @@
                 {% endfor %}
             </tbody>
         </table>
+    </div>
+
+    <div class="sources">
+        <div class="sources-title">Sources</div>
+        <sup class="src">1</sup> Fundamental scores (0–100) via percentile ranking. Mirrors value-accrual signals from Teroxx L/S RV strategy.<br>
+        <sup class="src">2</sup> <strong>Value (P/S)</strong>: market cap / annualized fees — <a href="https://defillama.com" target="_blank">DefiLlama</a> fees + <a href="https://www.coingecko.com" target="_blank">CoinGecko</a> mcap.<br>
+        <sup class="src">3</sup> <strong>Fee Momentum</strong>: 7d vs 30d fee trend — <a href="https://defillama.com" target="_blank">DefiLlama</a> fee overview.<br>
+        <sup class="src">4</sup> <strong>TVL Health</strong>: 7-day TVL change % — <a href="https://defillama.com" target="_blank">DefiLlama</a> protocol data.<br>
+        <sup class="src">5</sup> <strong>Revenue Quality</strong>: holder revenue / total fees — <a href="https://defillama.com" target="_blank">DefiLlama</a> fees breakdown.<br>
+        <sup class="src">6</sup> <strong>Dilution Safety</strong>: inverse FDV/MCap ratio — <a href="https://defillama.com" target="_blank">DefiLlama</a> + <a href="https://www.coingecko.com" target="_blank">CoinGecko</a>.<br>
+        <sup class="src">7</sup> <strong>Risk, Usage, Float, Smart Money, Dev Momentum</strong>: derived from <a href="https://www.coingecko.com" target="_blank">CoinGecko</a> market data (price changes, volume, ATH drawdown).<br>
+        <sup class="src">8</sup> Composite = weighted sum using profile-specific weights. Updated: {{ price_age }}.
     </div>
 </div>

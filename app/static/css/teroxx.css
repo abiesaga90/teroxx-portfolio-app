@@ -535,6 +535,44 @@ td {
     padding-top: 12px;
 }
 
+/* ── Sources / Citations ── */
+.sources {
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    line-height: 1.6;
+}
+
+.sources-title {
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-size: 0.6875rem;
+}
+
+.sources a {
+    color: var(--electric-sky);
+    text-decoration: none;
+    transition: color 0.15s linear;
+}
+
+.sources a:hover {
+    color: var(--deep-indigo);
+    text-decoration: underline;
+}
+
+sup.src {
+    font-size: 0.6rem;
+    font-weight: 700;
+    color: var(--electric-sky);
+    margin-left: 1px;
+    cursor: help;
+}
+
 /* ── Two-column layout for allocator ── */
 .grid-2col {
     display: grid;

@@ -60,7 +60,10 @@
             </tbody>
         </table>
     </div>
-    <div style="text-align:right;margin-top:0.5rem;color:var(--text-muted);font-size:0.7rem;">
-        Prices: {{ price_age }}
+    <div class="sources">
+        <div class="sources-title">Sources</div>
+        <sup class="src">1</sup> DCA weights derived from Teroxx Portfolio Allocation Model v3.6 allocation percentages.<br>
+        <sup class="src">2</sup> Live spot prices from <a href="https://www.coingecko.com" target="_blank">CoinGecko API</a>. Updated: {{ price_age }}.<br>
+        <sup class="src">3</sup> Projection assumes fixed monthly investment at current allocation weights. Actual returns will vary.
     </div>
 </div>

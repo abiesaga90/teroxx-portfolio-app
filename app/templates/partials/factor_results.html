@@ -27,7 +27,7 @@
 
 <!-- Factor Scores Table -->
 <div class="card">
-    <div class="card-header">Individual Factor Scores &amp; Composites ({{ profile }})</div>
+    <div class="card-header">Individual Factor Scores<sup class="src">1</sup> &amp; Composites ({{ profile }})</div>
     <div class="table-wrap">
         <table>
             <thead>
@@ -55,5 +55,16 @@
                 {% endfor %}
             </tbody>
         </table>
+    </div>
+
+    <div class="sources">
+        <div class="sources-title">Sources</div>
+        <sup class="src">1</sup> Factor scores (0–100) computed via percentile ranking across the asset universe using live market data.<br>
+        <sup class="src">2</sup> <strong>Market Beta</strong>: inverse 30-day absolute price change — <a href="https://www.coingecko.com" target="_blank">CoinGecko</a>.<br>
+        <sup class="src">3</sup> <strong>Size (SMB)</strong>: inverse market cap rank — <a href="https://www.coingecko.com" target="_blank">CoinGecko</a>.<br>
+        <sup class="src">4</sup> <strong>Value (MC/Fees)</strong>: 24h volume / market cap ratio — <a href="https://www.coingecko.com" target="_blank">CoinGecko</a>.<br>
+        <sup class="src">5</sup> <strong>Momentum</strong>: 7d + 30d price change — <a href="https://www.coingecko.com" target="_blank">CoinGecko</a>.<br>
+        <sup class="src">6</sup> <strong>Growth</strong>: 7d acceleration vs 30d trend — <a href="https://www.coingecko.com" target="_blank">CoinGecko</a>.<br>
+        <sup class="src">7</sup> Composite = weighted sum using profile-specific weights. Updated: {{ price_age }}.
     </div>
 </div>

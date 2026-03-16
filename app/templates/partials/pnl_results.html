@@ -76,8 +76,11 @@
             </tbody>
         </table>
     </div>
-    <div style="text-align:right;margin-top:0.5rem;color:var(--text-muted);font-size:0.7rem;">
-        Prices: {{ price_age }}
+    <div class="sources">
+        <div class="sources-title">Sources</div>
+        <sup class="src">1</sup> Entry prices and quantities entered by user (saved in browser localStorage).<br>
+        <sup class="src">2</sup> Current spot prices from <a href="https://www.coingecko.com" target="_blank">CoinGecko API</a>. Updated: {{ price_age }}.<br>
+        <sup class="src">3</sup> Unrealized P&L = (Current Price &minus; Entry Price) &times; Quantity. Does not include fees or slippage.
     </div>
 </div>
 {% endif %}

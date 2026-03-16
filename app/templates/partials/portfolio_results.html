@@ -20,7 +20,7 @@
 
 <!-- Position Table -->
 <div class="card">
-    <div class="card-header">Position Breakdown &mdash; {{ portfolio_value|fmt_usd }}</div>
+    <div class="card-header">Position Breakdown<sup class="src">1</sup> &mdash; {{ portfolio_value|fmt_usd }}</div>
     <div class="table-wrap">
         <table>
             <thead>
@@ -31,7 +31,7 @@
                     <th>Tier</th>
                     <th class="right">Alloc %</th>
                     <th class="right">Amount</th>
-                    <th class="right">Price</th>
+                    <th class="right">Price<sup class="src">2</sup></th>
                     <th>Action</th>
                 </tr>
             </thead>
@@ -61,7 +61,10 @@
             </tbody>
         </table>
     </div>
-    <div style="text-align:right;margin-top:0.5rem;color:var(--text-muted);font-size:0.7rem;">
-        Prices: {{ price_age }}
+    <div class="sources">
+        <div class="sources-title">Sources</div>
+        <sup class="src">1</sup> Allocation percentages from Teroxx Portfolio Allocation Model v3.6.<br>
+        <sup class="src">2</sup> Live spot prices from <a href="https://www.coingecko.com" target="_blank">CoinGecko API</a>. Updated: {{ price_age }}.<br>
+        <sup class="src">3</sup> Dollar amounts calculated as Portfolio Value &times; Allocation %.
     </div>
 </div>

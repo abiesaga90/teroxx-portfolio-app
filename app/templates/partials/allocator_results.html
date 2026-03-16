@@ -10,7 +10,7 @@
 
 <!-- Drawdown Impact -->
 <div class="card">
-    <div class="card-header">Drawdown Impact Analysis</div>
+    <div class="card-header">Drawdown Impact Analysis<sup class="src">2</sup></div>
     <div class="summary-row">
         {% for scenario, profiles_data in drawdown.items() %}
         <div class="summary-card">
@@ -24,7 +24,7 @@
 <div class="grid-2col">
     <!-- Allocation Table -->
     <div class="card">
-        <div class="card-header">Asset Allocations ({{ allocs|length }} assets)</div>
+        <div class="card-header">Asset Allocations<sup class="src">1</sup> ({{ allocs|length }} assets)</div>
         <div class="table-wrap">
             <table>
                 <thead>
@@ -65,6 +65,13 @@
         </div>
         <div class="chart-legend" id="alloc-legend"></div>
     </div>
+</div>
+
+<div class="sources">
+    <div class="sources-title">Sources</div>
+    <sup class="src">1</sup> Asset class allocations and risk profiles from Teroxx Portfolio Allocation Model v3.6.<br>
+    <sup class="src">2</sup> Drawdown impact estimates based on historical crypto market drawdowns applied to portfolio weights.<br>
+    <sup class="src">3</sup> Live prices from <a href="https://www.coingecko.com" target="_blank">CoinGecko API</a>. Updated: {{ price_age }}.
 </div>
 
 <!-- Chart data for JS -->
