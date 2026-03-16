@@ -315,14 +315,16 @@ def get_market_info(ticker: str) -> Optional[dict]:
 
 
 def get_logo_url(ticker: str) -> str:
-    """Return CoinGecko logo URL for a ticker, or empty string."""
+    """Return logo URL for a ticker. Uses CoinGecko cache, falls back to CryptoLogos CDN."""
     cg_id = TOKEN_MAP.get(ticker)
     if not cg_id:
         return ""
+    # Try cached CoinGecko image first
     info = _market_cache.get(cg_id)
     if info and info.get("image"):
         return info["image"]
-    return ""
+    # Fallback: cryptofonts CDN (free, no API key, works by ticker symbol)
+    return f"https://cryptofonts.com/img/icons/{ticker.lower()}.svg"
 
 
 def price_age_str() -> str:
