@@ -97,8 +97,8 @@ function tryRenderChart() {
     }
 }
 
-// Initial page load
-document.addEventListener('DOMContentLoaded', tryRenderChart);
+// Initial page load — call immediately since script is at bottom of body
+tryRenderChart();
 
 // After HTMX swaps (tab changes, form updates)
 document.addEventListener('htmx:afterSwap', tryRenderChart);
