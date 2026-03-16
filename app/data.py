@@ -186,7 +186,7 @@ TOKEN_MAP = {
     "HYPE": "hyperliquid", "POL": "matic-network", "HT": "huobi-token",
     "IOTA": "iota", "ONDO": "ondo-finance", "WLFI": "world-liberty-financial",
     "CRO": "crypto-com-chain", "MNT": "mantle", "PEPE": "pepe",
-    "ASTER": "astar", "WLD": "worldcoin-wld", "ENA": "ethena",
+    "ASTER": "aster-2", "WLD": "worldcoin-wld", "ENA": "ethena",
     "QNT": "quant-network", "NEXO": "nexo", "MORPHO": "morpho",
     "BONK": "bonk", "CAKE": "pancakeswap-token", "PENGU": "pudgy-penguins",
     "CHZ": "chiliz", "VIRTUAL": "virtuals-protocol", "ZRO": "layerzero",
