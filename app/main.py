@@ -39,6 +39,13 @@ UNIVERSE_OPTIONS = [
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Fetch data before accepting requests so "Prices: No data" never shows
+    try:
+        await fetch_prices()
+        await fetch_market_data()
+        logger.info("Initial market data loaded")
+    except Exception as e:
+        logger.warning(f"Initial fetch failed (will retry in background): {e}")
     task = asyncio.create_task(background_refresh())
     yield
     task.cancel()
