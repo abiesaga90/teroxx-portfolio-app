@@ -52,13 +52,15 @@ function renderAllocChart(labels, values) {
     if (!ctx) return;
     if (allocChart) allocChart.destroy();
 
+    const colors = CHART_COLORS.slice(0, labels.length);
+
     allocChart = new Chart(ctx, {
         type: 'doughnut',
         data: {
             labels: labels,
             datasets: [{
                 data: values,
-                backgroundColor: CHART_COLORS.slice(0, labels.length),
+                backgroundColor: colors,
                 borderColor: '#ffffff',
                 borderWidth: 2,
             }],
@@ -73,9 +75,24 @@ function renderAllocChart(labels, values) {
                     }
                 }
             },
-            cutout: '65%',
+            cutout: '60%',
         },
     });
+
+    // Build custom legend with ticker + % for all positions
+    const legendEl = document.getElementById('alloc-legend');
+    if (legendEl) {
+        legendEl.innerHTML = labels.map((label, i) => {
+            const pct = (values[i] * 100).toFixed(1);
+            const color = colors[i % colors.length];
+            const isBig = values[i] >= 0.05; // highlight 5%+ allocations
+            const weight = isBig ? 'font-weight:700;' : '';
+            const size = isBig ? 'font-size:0.8125rem;' : 'font-size:0.6875rem;';
+            return `<span class="legend-item" style="${weight}${size}">` +
+                `<span class="legend-dot" style="background:${color};"></span>` +
+                `${label} ${pct}%</span>`;
+        }).join('');
+    }
 }
 
 // ── Collapsible sections ──
