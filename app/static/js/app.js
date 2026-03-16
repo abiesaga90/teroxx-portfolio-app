@@ -37,7 +37,14 @@ function getSharedParams() {
 }
 
 // ── Donut chart rendering ──
-const CHART_COLORS = ['#010626', '#0b688c', '#d06643', '#4A8FA4', '#bfb3a8', '#060d43'];
+// Extended palette for per-position pie chart (25+ tokens)
+const CHART_COLORS = [
+    '#010626', '#0b688c', '#d06643', '#4A8FA4', '#bfb3a8', '#060d43',
+    '#1a8a4a', '#8B5CF6', '#EC4899', '#F59E0B', '#06B6D4', '#84CC16',
+    '#6366F1', '#EF4444', '#14B8A6', '#F97316', '#A855F7', '#22D3EE',
+    '#E11D48', '#65A30D', '#7C3AED', '#DB2777', '#0EA5E9', '#D97706',
+    '#059669', '#9333EA', '#DC2626', '#2563EB', '#CA8A04', '#16A34A',
+];
 
 let allocChart = null;
 function renderAllocChart(labels, values) {

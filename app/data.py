@@ -131,12 +131,6 @@ TIER_ALLOCATIONS = {
     "Small Cap":      {"Conservative": 0.00, "Balanced": 0.05, "Growth": 0.10, "Aggressive": 0.15},
 }
 
-RISK_TILT_PARAMETERS = {
-    "Store of Value": {"Conservative": 1.5, "Balanced": 1.0, "Growth": 0.8, "Aggressive": 0.6},
-    "Large Cap":      {"Conservative": 1.1, "Balanced": 1.0, "Growth": 0.95, "Aggressive": 0.9},
-    "Mid Cap":        {"Conservative": 0.7, "Balanced": 1.0, "Growth": 1.2, "Aggressive": 1.4},
-    "Small Cap":      {"Conservative": 0.4, "Balanced": 0.8, "Growth": 1.3, "Aggressive": 1.6},
-}
 
 # 5-Factor model weights
 FIVE_FACTOR_WEIGHTS = {

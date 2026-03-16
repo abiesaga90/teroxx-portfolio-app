@@ -81,33 +81,6 @@
         <span class="collapsible-arrow">&#9654;</span>
     </button>
     <div class="collapsible-content">
-        <!-- Risk Tilt Parameters -->
-        <div class="card">
-            <div class="card-header">Risk Tilt Parameters</div>
-            <div class="weight-matrix">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Tier</th>
-                            {% for p in profiles %}
-                            <th class="center {% if p == profile %}active-col{% endif %}">{{ p }}</th>
-                            {% endfor %}
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for tier, prof_vals in risk_tilts.items() %}
-                        <tr>
-                            <td>{{ tier }}</td>
-                            {% for p in profiles %}
-                            <td class="center {% if p == profile %}active-col{% endif %}">{{ prof_vals[p] }}x</td>
-                            {% endfor %}
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
         <!-- Fixed Strategic Allocations -->
         <div class="card">
             <div class="card-header">Fixed Strategic Allocations</div>
@@ -171,8 +144,8 @@
     <sup class="src">3</sup> Dollar amounts calculated as Portfolio Value &times; Allocation %.
 </div>
 
-<!-- Chart data for JS -->
-<script id="chart-data" type="application/json">{{ chart_data }}</script>
+<!-- Chart data for JS — per-position breakdown -->
+<script id="chart-data" type="application/json">{{ position_chart_data }}</script>
 <script>
 (function() {
     const chartData = document.getElementById('chart-data');

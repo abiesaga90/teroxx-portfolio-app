@@ -12,9 +12,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from app.data import (
-    RISK_PROFILES, ALLOCATION_MODES, ASSET_CLASS_ALLOCATIONS,
+    RISK_PROFILES, ALLOCATION_MODES,
     DRAWDOWN_IMPACT, FIVE_FACTOR_WEIGHTS, TEN_FACTOR_WEIGHTS,
-    RISK_TILT_PARAMETERS, TIER_ALLOCATIONS, FIXED_STRATEGIC,
+    TIER_ALLOCATIONS, FIXED_STRATEGIC,
     ASSET_UNIVERSE, ASSET_BY_TICKER,
 )
 from app.engine import (
@@ -83,9 +83,10 @@ async def health():
     return {"status": "ok"}
 
 
-def _chart_data(profile: str) -> str:
-    labels = list(ASSET_CLASS_ALLOCATIONS.keys())
-    values = [ASSET_CLASS_ALLOCATIONS[cls][profile] for cls in labels]
+def _position_chart_data(positions: list[dict]) -> str:
+    """Per-position pie chart data (only assets with alloc > 0)."""
+    labels = [p["ticker"] for p in positions if p["alloc_pct"] > 0]
+    values = [p["alloc_pct"] for p in positions if p["alloc_pct"] > 0]
     return json.dumps({"labels": labels, "values": values})
 
 
@@ -112,10 +113,8 @@ async def index(request: Request):
         "defensive_pct": defensive_pct,
         "crypto_pct": crypto_pct,
         "dd_50": dd_50,
-        "asset_class_allocs": ASSET_CLASS_ALLOCATIONS,
-        "drawdown": DRAWDOWN_IMPACT,
-        "chart_data": _chart_data(profile),
-        "risk_tilts": RISK_TILT_PARAMETERS,
+        "position_chart_data": _position_chart_data(positions),
+
         "tier_allocs": TIER_ALLOCATIONS,
         "fixed": FIXED_STRATEGIC,
         "price_age": price_age_str(),
@@ -145,8 +144,8 @@ async def portfolio_partial(
         "defensive_pct": defensive_pct,
         "crypto_pct": crypto_pct,
         "dd_50": dd_50,
-        "chart_data": _chart_data(profile),
-        "risk_tilts": RISK_TILT_PARAMETERS,
+        "position_chart_data": _position_chart_data(positions),
+
         "tier_allocs": TIER_ALLOCATIONS,
         "fixed": FIXED_STRATEGIC,
         "price_age": price_age_str(),
