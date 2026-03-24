@@ -45,13 +45,36 @@
                 {% for d in detail %}
                 <tr>
                     <td style="color:var(--text-muted)">{{ loop.index }}</td>
-                    <td class="ticker"><div class="ticker-cell">{% set logo = get_logo(d.ticker) %}{% if logo %}<img src="{{ logo }}" class="token-logo token-logo-sm" alt="{{ d.ticker }}">{% endif %}{{ d.ticker }}</div></td>
+                    <td class="ticker">
+                        <div class="ticker-cell">
+                            {% set logo = get_logo(d.ticker) %}{% if logo %}<img src="{{ logo }}" class="token-logo token-logo-sm" alt="{{ d.ticker }}">{% endif %}{{ d.ticker }}
+                            {% if d.get('_data_missing') %}<span class="data-warning" title="Missing market data">&#9888;</span>{% endif %}
+                            {% if d.get('_raw') %}<button class="show-raw-btn" onclick="toggleRawData('{{ d.ticker }}')" title="Show raw data">data</button>{% endif %}
+                        </div>
+                    </td>
                     <td>{{ d.name }}</td>
                     {% for factor in weights.keys() %}
                     <td class="center">{{ d[factor] }}</td>
                     {% endfor %}
                     <td class="right" style="font-weight:700;color:var(--electric-sky);">{{ d.composite }}</td>
                 </tr>
+                {% if d.get('_raw') %}
+                <tr id="raw-{{ d.ticker }}" class="raw-data-row" style="display:none;">
+                    <td></td>
+                    <td colspan="{{ weights|length + 2 }}">
+                        <div class="raw-grid">
+                            {% set r = d['_raw'] %}
+                            <span class="raw-item"><span class="raw-label">MCap:</span> <span class="raw-val">${{ "{:,.0f}".format(r.get('market_cap', 0)) }}</span></span>
+                            <span class="raw-item"><span class="raw-label">Vol 24h:</span> <span class="raw-val">${{ "{:,.0f}".format(r.get('volume_24h', 0)) }}</span></span>
+                            <span class="raw-item"><span class="raw-label">Vol/MCap:</span> <span class="raw-val">{{ "{:.3f}".format(r.get('vol_mcap_ratio', 0)) }}</span></span>
+                            <span class="raw-item"><span class="raw-label">7d:</span> <span class="raw-val" style="color:{{ 'var(--success)' if r.get('change_7d', 0) >= 0 else 'var(--danger)' }}">{{ "{:+.1f}".format(r.get('change_7d', 0)) }}%</span></span>
+                            <span class="raw-item"><span class="raw-label">30d:</span> <span class="raw-val" style="color:{{ 'var(--success)' if r.get('change_30d', 0) >= 0 else 'var(--danger)' }}">{{ "{:+.1f}".format(r.get('change_30d', 0)) }}%</span></span>
+                            <span class="raw-item"><span class="raw-label">24h:</span> <span class="raw-val" style="color:{{ 'var(--success)' if r.get('change_24h', 0) >= 0 else 'var(--danger)' }}">{{ "{:+.1f}".format(r.get('change_24h', 0)) }}%</span></span>
+                            <span class="raw-item"><span class="raw-label">ATH DD:</span> <span class="raw-val">-{{ "{:.0f}".format(r.get('ath_drawdown', 0)) }}%</span></span>
+                        </div>
+                    </td>
+                </tr>
+                {% endif %}
                 {% endfor %}
             </tbody>
         </table>

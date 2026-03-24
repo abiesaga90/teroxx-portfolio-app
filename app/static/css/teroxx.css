@@ -718,3 +718,111 @@ sup.src {
 .scoring-toggle-btn:hover:not(.active) {
     background: var(--cream);
 }
+
+/* ── Raw data detail row ── */
+.raw-data-row td {
+    padding: 4px 8px !important;
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    border-top: none !important;
+    background: var(--bg-card-alt);
+}
+.raw-data-row .raw-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+}
+.raw-data-row .raw-item {
+    white-space: nowrap;
+}
+.raw-data-row .raw-label {
+    color: var(--text-muted);
+}
+.raw-data-row .raw-val {
+    font-weight: 600;
+    color: var(--text-body);
+}
+.data-warning {
+    color: var(--sunset-ember);
+    font-size: 0.65rem;
+    margin-left: 4px;
+}
+.show-raw-btn {
+    background: none;
+    border: none;
+    color: var(--electric-sky);
+    cursor: pointer;
+    font-size: 0.6rem;
+    padding: 0;
+    text-decoration: underline;
+}
+
+/* ── Dark mode toggle ── */
+.theme-toggle {
+    background: none;
+    border: 1px solid rgba(255,255,255,0.3);
+    color: var(--white);
+    cursor: pointer;
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 0.7rem;
+    transition: all 0.2s;
+}
+.theme-toggle:hover {
+    background: rgba(255,255,255,0.1);
+}
+
+/* ── Dark Mode ── */
+[data-theme="dark"] {
+    --bg-page: #0a0e1a;
+    --bg-section-alt: #111627;
+    --bg-card: #151a2e;
+    --bg-card-alt: #1a2038;
+    --border: rgba(255,255,255,0.08);
+    --border-strong: rgba(255,255,255,0.12);
+    --text-heading: #e8eaf0;
+    --text-body: #c8ccd8;
+    --text-secondary: #8890a8;
+    --text-muted: rgba(255,255,255,0.35);
+    --cream: #1a2038;
+    --cream-dark: #111627;
+    --header-bg: rgba(10, 14, 26, 0.95);
+}
+[data-theme="dark"] .card {
+    box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+}
+[data-theme="dark"] table th {
+    background: #111627;
+    color: #8890a8;
+}
+[data-theme="dark"] table td {
+    border-color: rgba(255,255,255,0.06);
+}
+[data-theme="dark"] .tab-btn {
+    color: #8890a8;
+}
+[data-theme="dark"] .tab-btn.active {
+    color: var(--electric-sky);
+    border-color: var(--electric-sky);
+}
+[data-theme="dark"] select, [data-theme="dark"] input {
+    background: #1a2038;
+    color: #c8ccd8;
+    border-color: rgba(255,255,255,0.12);
+}
+[data-theme="dark"] .scoring-toggle-btn {
+    background: #1a2038;
+    color: #8890a8;
+    border-color: rgba(255,255,255,0.12);
+}
+[data-theme="dark"] .scoring-toggle-btn.active {
+    background: var(--electric-sky);
+    color: #fff;
+}
+[data-theme="dark"] .raw-data-row td {
+    background: #111627;
+}
+[data-theme="dark"] .raw-data-row .raw-val {
+    color: #c8ccd8;
+}

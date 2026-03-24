@@ -99,8 +99,8 @@ def compute_live_five_factor_scores(tickers: list[str]) -> dict[str, dict[str, f
       Market Beta (Low B)  — lower 30d absolute change = lower beta = higher score
       Size - SMB           — smaller market cap = higher score
       Value (MC/Fees)      — higher volume/mcap ratio = better value
-      Momentum (Vol-Adj)   — higher 7d+30d momentum = higher score
-      Growth (Fee+DAU D)   — higher 7d change relative to 30d = faster growth
+      Momentum (Vol-Adj)   — vol-adjusted momentum (combined change / ATH drawdown)
+      Growth (Fee+DAU D)   — 7d acceleration relative to monthly pace
     """
     if not tickers:
         return {}
@@ -111,11 +111,27 @@ def compute_live_five_factor_scores(tickers: list[str]) -> dict[str, dict[str, f
     beta_raw = [abs(c) for c in raw["change_30d"]]  # absolute 30d move as beta proxy
     size_raw = raw["market_caps"]
     value_raw = raw["vol_mcap_ratios"]
-    momentum_raw = [c7 + c30 for c7, c30 in zip(raw["change_7d"], raw["change_30d"])]
+
+    # Momentum: vol-adjusted — total return scaled by how far from ATH
+    # Tokens near ATH with positive momentum score highest
+    momentum_raw = []
+    for c7, c30, ath_dd in zip(raw["change_7d"], raw["change_30d"], raw["ath_drawdowns"]):
+        total_return = c7 + c30
+        vol_adj = max(ath_dd, 1.0)  # ATH drawdown as volatility proxy
+        momentum_raw.append(total_return / vol_adj * 100)
+
+    # Growth: 7d acceleration vs monthly pace (ratio, not difference)
+    # High growth = weekly pace >> monthly pace (recent acceleration)
     growth_raw = []
     for c7, c30 in zip(raw["change_7d"], raw["change_30d"]):
-        # Growth = 7d acceleration vs 30d (if 7d is positive while 30d less so)
-        growth_raw.append(c7 - c30 * 0.25 if c30 != 0 else c7)
+        weekly_pace = c7
+        monthly_weekly_pace = c30 / 4.0 if c30 != 0 else 0.01
+        if abs(monthly_weekly_pace) > 0.1:
+            # Ratio: how much faster is this week vs average week in the month
+            growth_raw.append(weekly_pace / monthly_weekly_pace)
+        else:
+            # Monthly change is near zero — use raw 7d as acceleration
+            growth_raw.append(weekly_pace)
 
     # Score each factor 0-100 via percentile ranking
     beta_scores = _inverse_percentile_rank(beta_raw)        # Low beta = high score
@@ -127,12 +143,26 @@ def compute_live_five_factor_scores(tickers: list[str]) -> dict[str, dict[str, f
     factor_names = list(FIVE_FACTOR_WEIGHTS.keys())
     result = {}
     for i, t in enumerate(tickers):
+        mc = raw["market_caps"][i]
+        has_data = mc > 0 and raw["volumes"][i] > 0
         result[t] = {
             factor_names[0]: beta_scores[i],
             factor_names[1]: size_scores[i],
             factor_names[2]: value_scores[i],
             factor_names[3]: momentum_scores[i],
             factor_names[4]: growth_scores[i],
+            "_raw": {
+                "market_cap": raw["market_caps"][i],
+                "volume_24h": raw["volumes"][i],
+                "vol_mcap_ratio": raw["vol_mcap_ratios"][i],
+                "change_7d": raw["change_7d"][i],
+                "change_30d": raw["change_30d"][i],
+                "change_24h": raw["change_24h"][i],
+                "ath_drawdown": raw["ath_drawdowns"][i],
+                "momentum_raw": momentum_raw[i],
+                "growth_raw": growth_raw[i],
+            },
+            "_data_missing": not has_data,
         }
     return result
 
@@ -297,6 +327,8 @@ def five_factor_detail(profile: str, tickers: list[str]) -> list[dict]:
             row[factor] = round(s, 1)
             composite += weights.get(profile, 0) * s
         row["composite"] = round(composite, 1)
+        row["_raw"] = scores.get("_raw", {})
+        row["_data_missing"] = scores.get("_data_missing", False)
         results.append(row)
     results.sort(key=lambda x: -x["composite"])
     return results

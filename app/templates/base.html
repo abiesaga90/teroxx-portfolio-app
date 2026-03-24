@@ -16,7 +16,10 @@
         <img src="/static/img/logo-white.png" alt="Teroxx" class="header-logo">
         <span class="header-title">Portfolio Allocation Model v3.6</span>
     </div>
-    <span class="header-meta">Prices: {{ price_age }}</span>
+    <div style="display:flex;align-items:center;gap:1rem;">
+        <span class="header-meta">Prices: {{ price_age }}</span>
+        <button class="theme-toggle" onclick="toggleTheme()">Dark Mode</button>
+    </div>
 </header>
 
 <!-- Global Controls -->
