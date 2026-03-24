@@ -115,10 +115,10 @@ function tryRenderChart() {
 }
 
 // Initial page load — call immediately since script is at bottom of body
-tryRenderChart();
+tryRenderAllCharts();
 
 // After HTMX swaps (tab changes, form updates)
-document.addEventListener('htmx:afterSwap', tryRenderChart);
+document.addEventListener('htmx:afterSwap', tryRenderAllCharts);
 
 // ── Dark mode toggle ──
 function toggleTheme() {
@@ -145,4 +145,274 @@ function toggleTheme() {
 function toggleRawData(ticker) {
     const row = document.getElementById('raw-' + ticker);
     if (row) row.style.display = row.style.display === 'none' ? '' : 'none';
+}
+
+// ── Theme-aware chart colors ──
+function getChartColors() {
+    const style = getComputedStyle(document.documentElement);
+    return {
+        text: style.getPropertyValue('--text-body').trim() || '#060D43',
+        muted: style.getPropertyValue('--text-muted').trim() || 'rgba(6,13,67,0.45)',
+        grid: style.getPropertyValue('--border').trim() || 'rgba(6,13,67,0.10)',
+        card: style.getPropertyValue('--bg-card').trim() || '#ffffff',
+    };
+}
+
+// ── Chart registry (for cleanup on HTMX swap) ──
+const _charts = {};
+function _destroyChart(id) {
+    if (_charts[id]) { _charts[id].destroy(); delete _charts[id]; }
+}
+
+// ── Radar Chart (5-Factor Top Tokens) ──
+function tryRenderRadar() {
+    const el = document.getElementById('radar-data');
+    if (!el) return;
+    try {
+        const data = JSON.parse(el.textContent);
+        const ctx = document.getElementById('radar-chart');
+        if (!ctx) return;
+        _destroyChart('radar');
+        const tc = getChartColors();
+        const radarColors = ['#0b688c', '#d06643', '#010626', '#1a8a4a', '#8B5CF6'];
+        const datasets = data.tokens.map((t, i) => ({
+            label: t.ticker,
+            data: t.scores,
+            borderColor: radarColors[i % radarColors.length],
+            backgroundColor: radarColors[i % radarColors.length] + '20',
+            borderWidth: 2,
+            pointRadius: 3,
+            pointBackgroundColor: radarColors[i % radarColors.length],
+        }));
+        _charts['radar'] = new Chart(ctx, {
+            type: 'radar',
+            data: { labels: data.factors, datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: { position: 'bottom', labels: { color: tc.text, font: { size: 11 }, padding: 15 } },
+                },
+                scales: {
+                    r: {
+                        min: 0, max: 100,
+                        ticks: { display: false, stepSize: 25 },
+                        grid: { color: tc.grid },
+                        angleLines: { color: tc.grid },
+                        pointLabels: { color: tc.text, font: { size: 10 } },
+                    },
+                },
+            },
+        });
+    } catch (e) { console.warn('Radar chart error:', e); }
+}
+
+// ── Bubble Scatter (Risk/Return) ──
+function tryRenderBubble() {
+    const el = document.getElementById('bubble-data');
+    if (!el) return;
+    try {
+        const data = JSON.parse(el.textContent);
+        const ctx = document.getElementById('bubble-chart');
+        if (!ctx) return;
+        _destroyChart('bubble');
+        const tc = getChartColors();
+        const catColors = {
+            'Layer 1': '#0b688c', 'DeFi': '#d06643', 'AI / Compute': '#8B5CF6',
+            'Exchange': '#F59E0B', 'Infrastructure': '#06B6D4', 'Payment': '#84CC16',
+            'Layer 2': '#6366F1', 'Meme': '#EC4899', 'Gaming': '#14B8A6',
+            'Privacy': '#4A8FA4', 'Legacy': '#bfb3a8',
+        };
+        const points = data.tokens.map(t => ({
+            x: t.vol, y: t.mom, r: Math.max(4, Math.min(25, Math.sqrt(t.mcap / 1e8))),
+            label: t.ticker, category: t.cat,
+        }));
+        // Group by category
+        const cats = {};
+        points.forEach(p => {
+            if (!cats[p.category]) cats[p.category] = [];
+            cats[p.category].push(p);
+        });
+        const datasets = Object.entries(cats).map(([cat, pts]) => ({
+            label: cat,
+            data: pts,
+            backgroundColor: (catColors[cat] || '#bfb3a8') + 'AA',
+            borderColor: catColors[cat] || '#bfb3a8',
+            borderWidth: 1,
+        }));
+        _charts['bubble'] = new Chart(ctx, {
+            type: 'bubble',
+            data: { datasets },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'bottom', labels: { color: tc.text, font: { size: 10 }, padding: 10 } },
+                    tooltip: {
+                        callbacks: {
+                            label: (ctx) => {
+                                const p = ctx.raw;
+                                return `${p.label}: Vol ${p.x.toFixed(0)}%, Mom ${p.y.toFixed(0)}%`;
+                            },
+                        },
+                    },
+                },
+                scales: {
+                    x: { title: { display: true, text: 'Volatility (|30d change|%)', color: tc.muted, font: { size: 10 } }, grid: { color: tc.grid }, ticks: { color: tc.muted, font: { size: 9 } } },
+                    y: { title: { display: true, text: 'Momentum (7d+30d%)', color: tc.muted, font: { size: 10 } }, grid: { color: tc.grid }, ticks: { color: tc.muted, font: { size: 9 } } },
+                },
+            },
+        });
+    } catch (e) { console.warn('Bubble chart error:', e); }
+}
+
+// ── Dilution Bar Chart ──
+function tryRenderDilution() {
+    const el = document.getElementById('dilution-data');
+    if (!el) return;
+    try {
+        const data = JSON.parse(el.textContent);
+        const ctx = document.getElementById('dilution-chart');
+        if (!ctx) return;
+        _destroyChart('dilution');
+        const tc = getChartColors();
+        const colors = data.values.map(v => v < 2 ? '#1a8a4a' : v < 4 ? '#F59E0B' : '#c0432a');
+        _charts['dilution'] = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: data.labels,
+                datasets: [{ data: data.values, backgroundColor: colors, borderRadius: 2 }],
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { callbacks: { label: (ctx) => `FDV/MCap: ${ctx.raw.toFixed(2)}x` } },
+                },
+                scales: {
+                    x: { title: { display: true, text: 'FDV / Market Cap Ratio', color: tc.muted, font: { size: 10 } }, grid: { color: tc.grid }, ticks: { color: tc.muted, font: { size: 9 } } },
+                    y: { ticks: { color: tc.text, font: { size: 9 } }, grid: { display: false } },
+                },
+            },
+        });
+    } catch (e) { console.warn('Dilution chart error:', e); }
+}
+
+// ── DCA Accumulation Area Chart ──
+function tryRenderDCA() {
+    const el = document.getElementById('dca-chart-data');
+    if (!el) return;
+    try {
+        const data = JSON.parse(el.textContent);
+        const ctx = document.getElementById('dca-chart');
+        if (!ctx) return;
+        _destroyChart('dca');
+        const tc = getChartColors();
+        const areaColors = ['#0b688c', '#d06643', '#010626', '#1a8a4a', '#8B5CF6', '#F59E0B'];
+        const datasets = data.series.map((s, i) => ({
+            label: s.label,
+            data: s.values,
+            borderColor: areaColors[i % areaColors.length],
+            backgroundColor: areaColors[i % areaColors.length] + '30',
+            fill: true,
+            tension: 0.3,
+            pointRadius: 2,
+            borderWidth: 2,
+        }));
+        _charts['dca'] = new Chart(ctx, {
+            type: 'line',
+            data: { labels: data.months, datasets },
+            options: {
+                responsive: true,
+                plugins: { legend: { position: 'bottom', labels: { color: tc.text, font: { size: 10 }, padding: 10 } } },
+                scales: {
+                    x: { title: { display: true, text: 'Month', color: tc.muted, font: { size: 10 } }, grid: { color: tc.grid }, ticks: { color: tc.muted } },
+                    y: { title: { display: true, text: 'Cumulative ($)', color: tc.muted, font: { size: 10 } }, grid: { color: tc.grid }, ticks: { color: tc.muted, callback: v => '$' + v.toLocaleString() } },
+                },
+            },
+        });
+    } catch (e) { console.warn('DCA chart error:', e); }
+}
+
+// ── P&L Waterfall Chart ──
+function tryRenderWaterfall() {
+    const el = document.getElementById('pnl-chart-data');
+    if (!el) return;
+    try {
+        const data = JSON.parse(el.textContent);
+        const ctx = document.getElementById('pnl-chart');
+        if (!ctx) return;
+        _destroyChart('waterfall');
+        const tc = getChartColors();
+        const colors = data.values.map(v => v >= 0 ? '#1a8a4a' : '#c0432a');
+        _charts['waterfall'] = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: data.labels,
+                datasets: [{ data: data.values, backgroundColor: colors, borderRadius: 2 }],
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { callbacks: { label: (ctx) => `P&L: $${ctx.raw.toFixed(2)}` } },
+                },
+                scales: {
+                    x: { ticks: { color: tc.text, font: { size: 9 }, maxRotation: 45 }, grid: { display: false } },
+                    y: { title: { display: true, text: 'P&L ($)', color: tc.muted, font: { size: 10 } }, grid: { color: tc.grid }, ticks: { color: tc.muted, callback: v => '$' + v.toLocaleString() } },
+                },
+            },
+        });
+    } catch (e) { console.warn('Waterfall chart error:', e); }
+}
+
+// ── Sector Stacked Bar ──
+function tryRenderSector() {
+    const el = document.getElementById('sector-data');
+    if (!el) return;
+    try {
+        const data = JSON.parse(el.textContent);
+        const ctx = document.getElementById('sector-chart');
+        if (!ctx) return;
+        _destroyChart('sector');
+        const tc = getChartColors();
+        const sectorColors = {
+            'Store of Value': '#010626', 'Layer 1': '#0b688c', 'DeFi': '#d06643',
+            'Exchange': '#F59E0B', 'Infrastructure': '#06B6D4', 'AI / Compute': '#8B5CF6',
+            'Payment': '#84CC16', 'Layer 2': '#6366F1', 'Meme': '#EC4899',
+            'Gaming': '#14B8A6', 'Privacy': '#4A8FA4', 'Gold Hedge': '#bfb3a8',
+            'Stablecoin': '#9CA3AF', 'Legacy': '#78716C', 'Other': '#A3A3A3',
+        };
+        const datasets = data.categories.map(cat => ({
+            label: cat,
+            data: data.profiles.map(p => data.matrix[p]?.[cat] || 0),
+            backgroundColor: sectorColors[cat] || '#bfb3a8',
+        }));
+        _charts['sector'] = new Chart(ctx, {
+            type: 'bar',
+            data: { labels: data.profiles, datasets },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'bottom', labels: { color: tc.text, font: { size: 9 }, padding: 8 } },
+                    tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${(ctx.raw * 100).toFixed(1)}%` } },
+                },
+                scales: {
+                    x: { stacked: true, ticks: { color: tc.text, font: { size: 11 } }, grid: { display: false } },
+                    y: { stacked: true, max: 1, ticks: { color: tc.muted, callback: v => (v * 100) + '%' }, grid: { color: tc.grid } },
+                },
+            },
+        });
+    } catch (e) { console.warn('Sector chart error:', e); }
+}
+
+// ── Master render: try all charts ──
+function tryRenderAllCharts() {
+    tryRenderChart();  // existing donut
+    tryRenderRadar();
+    tryRenderBubble();
+    tryRenderDilution();
+    tryRenderDCA();
+    tryRenderWaterfall();
+    tryRenderSector();
 }

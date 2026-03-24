@@ -139,6 +139,21 @@ async def portfolio_partial(
     defensive_pct = sum(p["alloc_pct"] for p in positions if p["ticker"] in ("USDC", "EURC", "PAXG"))
     crypto_pct = 1 - defensive_pct
     dd_50 = DRAWDOWN_IMPACT["Crypto -50%"].get(profile, 0)
+    # Sector allocation data for stacked bar chart
+    sector_matrix = {}
+    for p_name in RISK_PROFILES:
+        sector_matrix[p_name] = {}
+        p_positions = compute_portfolio(p_name, universe, mode, portfolio_value)
+        for pos in p_positions:
+            cat = ASSET_BY_TICKER.get(pos["ticker"], {}).get("category", "Other")
+            sector_matrix[p_name][cat] = sector_matrix[p_name].get(cat, 0) + pos["alloc_pct"]
+    all_cats = sorted(set(c for pm in sector_matrix.values() for c in pm))
+    sector_data = json.dumps({
+        "profiles": RISK_PROFILES,
+        "categories": all_cats,
+        "matrix": sector_matrix,
+    })
+
     return templates.TemplateResponse("partials/portfolio_results_new.html", {
         "request": request,
         "positions": positions,
@@ -149,6 +164,7 @@ async def portfolio_partial(
         "crypto_pct": crypto_pct,
         "dd_50": dd_50,
         "position_chart_data": _position_chart_data(positions),
+        "sector_data": sector_data,
 
         "tier_allocs": TIER_ALLOCATIONS,
         "fixed": FIXED_STRATEGIC,
@@ -174,6 +190,44 @@ async def scoring_partial(
         weights = FIVE_FACTOR_WEIGHTS
         model_label = "5-Factor Model"
         is_fundamental = False
+    # Build chart data from scoring detail
+    factor_names = list(weights.keys())
+    top5 = detail[:5]
+
+    # Radar chart: top 5 tokens × factors
+    radar_data = json.dumps({
+        "factors": factor_names,
+        "tokens": [{"ticker": d["ticker"], "scores": [d.get(f, 50) for f in factor_names]} for d in top5],
+    })
+
+    # Bubble chart: risk/return scatter (all tokens with raw data)
+    bubble_tokens = []
+    for d in detail:
+        raw = d.get("_raw", {})
+        if raw.get("market_cap", 0) > 0:
+            asset = ASSET_BY_TICKER.get(d["ticker"], {})
+            bubble_tokens.append({
+                "ticker": d["ticker"],
+                "vol": abs(raw.get("change_30d", 0)),
+                "mom": (raw.get("change_7d", 0) or 0) + (raw.get("change_30d", 0) or 0),
+                "mcap": raw.get("market_cap", 0),
+                "cat": asset.get("category", "Other"),
+            })
+    bubble_data = json.dumps({"tokens": bubble_tokens})
+
+    # Dilution bar chart: sorted by FDV/MCap
+    dilution_items = []
+    for d in detail:
+        raw = d.get("_raw", {})
+        fdv_ratio = raw.get("fdv_mcap_ratio") if raw else None
+        if fdv_ratio and fdv_ratio > 0:
+            dilution_items.append((d["ticker"], fdv_ratio))
+    dilution_items.sort(key=lambda x: -x[1])
+    dilution_data = json.dumps({
+        "labels": [x[0] for x in dilution_items[:15]],
+        "values": [round(x[1], 2) for x in dilution_items[:15]],
+    })
+
     return templates.TemplateResponse("partials/scoring_results.html", {
         "request": request,
         "detail": detail,
@@ -183,6 +237,9 @@ async def scoring_partial(
         "model_label": model_label,
         "is_fundamental": is_fundamental,
         "price_age": price_age_str(),
+        "radar_data": radar_data,
+        "bubble_data": bubble_data,
+        "dilution_data": dilution_data,
     })
 
 
@@ -198,12 +255,26 @@ async def dca_partial(
     min_order: float = Form(10),
 ):
     schedule = compute_dca(profile, universe, mode, monthly_amount, dca_scope, horizon_months, min_order)
+
+    # DCA accumulation chart: cumulative per top tokens across months
+    top_dca = [s for s in schedule if s.get("monthly_buy", 0) > 0][:6]
+    months = list(range(1, horizon_months + 1))
+    dca_series = []
+    for s in top_dca:
+        monthly = s.get("monthly_buy", 0)
+        dca_series.append({
+            "label": s["ticker"],
+            "values": [round(monthly * m, 2) for m in months],
+        })
+    dca_chart_data = json.dumps({"months": [f"M{m}" for m in months], "series": dca_series})
+
     return templates.TemplateResponse("partials/dca_results.html", {
         "request": request,
         "schedule": schedule,
         "monthly_amount": monthly_amount,
         "horizon_months": horizon_months,
         "price_age": price_age_str(),
+        "dca_chart_data": dca_chart_data,
     })
 
 
@@ -221,9 +292,23 @@ async def rebalance_pnl_partial(
     except (json.JSONDecodeError, TypeError):
         positions = {}
     data = compute_rebalance_pnl(profile, universe, mode, portfolio_value, positions)
+
+    # P&L waterfall chart
+    pnl_items = []
+    for row in data.get("rows", []):
+        pnl = row.get("pnl_usd", 0)
+        if pnl != 0:
+            pnl_items.append((row.get("ticker", "?"), round(pnl, 2)))
+    pnl_items.sort(key=lambda x: -abs(x[1]))
+    pnl_chart_data = json.dumps({
+        "labels": [x[0] for x in pnl_items[:15]],
+        "values": [x[1] for x in pnl_items[:15]],
+    })
+
     return templates.TemplateResponse("partials/rebalance_pnl_results.html", {
         "request": request,
         "data": data,
         "portfolio_value": portfolio_value,
         "price_age": price_age_str(),
+        "pnl_chart_data": pnl_chart_data,
     })

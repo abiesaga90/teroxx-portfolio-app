@@ -25,6 +25,37 @@
     </div>
 </div>
 
+<!-- Charts -->
+<div class="card">
+    <div class="card-header">Visual Analysis</div>
+    <div class="chart-section">
+        <div class="chart-box">
+            <canvas id="radar-chart"></canvas>
+            <div class="chart-label">Top 5 — Factor Profile</div>
+        </div>
+        <div class="chart-box">
+            <canvas id="bubble-chart"></canvas>
+            <div class="chart-label">Risk vs Return (bubble = market cap)</div>
+        </div>
+    </div>
+</div>
+
+<!-- Dilution Analysis -->
+<div class="card">
+    <div class="card-header">Dilution Risk (FDV / Market Cap)</div>
+    <div class="chart-section">
+        <div class="chart-box-wide">
+            <canvas id="dilution-chart"></canvas>
+            <div class="chart-label">Green &lt;2x &bull; Yellow 2-4x &bull; Red &gt;4x</div>
+        </div>
+    </div>
+</div>
+
+<!-- Chart Data -->
+<script id="radar-data" type="application/json">{{ radar_data|safe }}</script>
+<script id="bubble-data" type="application/json">{{ bubble_data|safe }}</script>
+<script id="dilution-data" type="application/json">{{ dilution_data|safe }}</script>
+
 <!-- Scores Table -->
 <div class="card">
     <div class="card-header">{{ model_label }} Scores<sup class="src">1</sup> &amp; Composites ({{ profile }})</div>
