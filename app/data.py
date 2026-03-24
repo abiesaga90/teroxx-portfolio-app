@@ -150,7 +150,7 @@ TEN_FACTOR_WEIGHTS = {
     "Usage Growth":         {"Conservative": 0.05, "Balanced": 0.10, "Growth": 0.15, "Aggressive": 0.15},
     "Risk (Low Vol)":       {"Conservative": 0.15, "Balanced": 0.05, "Growth": 0.00, "Aggressive": 0.00},
     "Dilution Safety":      {"Conservative": 0.10, "Balanced": 0.10, "Growth": 0.10, "Aggressive": 0.10},
-    "Float Quality":        {"Conservative": 0.05, "Balanced": 0.05, "Growth": 0.05, "Aggressive": 0.05},
+    "Supply Health":        {"Conservative": 0.05, "Balanced": 0.05, "Growth": 0.05, "Aggressive": 0.05},
     "Smart Money":          {"Conservative": 0.00, "Balanced": 0.10, "Growth": 0.15, "Aggressive": 0.20},
     "Developer Momentum":   {"Conservative": 0.05, "Balanced": 0.05, "Growth": 0.05, "Aggressive": 0.10},
 }

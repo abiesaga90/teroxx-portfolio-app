@@ -204,6 +204,13 @@
                             <td>On-demand fallback</td>
                             <td>All tokens</td>
                         </tr>
+                        <tr>
+                            <td><strong><a href="https://binance-docs.github.io/apidocs/futures/en/" target="_blank" style="color:var(--electric-sky);">Binance Futures</a></strong></td>
+                            <td>Perp Funding Rates, Open Interest, Mark/Index Price</td>
+                            <td>Free (public)</td>
+                            <td>5min</td>
+                            <td>All USDT perps</td>
+                        </tr>
                     </tbody>
                 </table>
             </div>
@@ -276,9 +283,9 @@
                         <tr><td>Revenue Quality</td><td>Holder revenue / Fees ratio</td><td>DeFiLlama</td><td>Percentile</td></tr>
                         <tr><td>Usage Growth</td><td>7d price change</td><td>CoinGecko</td><td>Percentile</td></tr>
                         <tr><td>Risk (Low Vol)</td><td>Absolute 30d change</td><td>CoinGecko</td><td>Inverse percentile</td></tr>
-                        <tr><td>Dilution Safety</td><td>FDV / MCap ratio</td><td>DeFiLlama + CoinGecko</td><td>Inverse percentile</td></tr>
-                        <tr><td>Float Quality</td><td>Volume / MCap ratio</td><td>CoinGecko</td><td>Percentile</td></tr>
-                        <tr><td>Smart Money</td><td>30d momentum (proxy)</td><td>CoinGecko</td><td>Percentile</td></tr>
+                        <tr><td>Dilution Safety</td><td>FDV / MCap ratio</td><td>CoinGecko</td><td>Inverse percentile</td></tr>
+                        <tr><td>Supply Health</td><td>Circulating supply delta %</td><td>CoinGecko (tracked in-memory)</td><td>Percentile (contracting = high)</td></tr>
+                        <tr><td>Smart Money</td><td>Perp funding rate (bullish conviction)</td><td>Binance Futures</td><td>Percentile (positive = high)</td></tr>
                         <tr><td>Developer Momentum</td><td>7d acceleration vs 30d</td><td>CoinGecko</td><td>Percentile</td></tr>
                     </tbody>
                 </table>

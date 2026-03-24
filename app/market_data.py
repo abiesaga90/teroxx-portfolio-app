@@ -19,9 +19,11 @@ CMC_BASE = "https://pro-api.coinmarketcap.com/v1"
 CMC_API_KEY = os.getenv("CMC_API_KEY", "")
 DEFILLAMA_BASE = "https://api.llama.fi"
 DEFILLAMA_FEES_BASE = "https://fees.llama.fi"
+BINANCE_FAPI = "https://fapi.binance.com/fapi/v1"
 PRICE_TTL = 300        # 5 minutes
 MARKET_DATA_TTL = 3600 # 1 hour
 DEFILLAMA_TTL = 7200   # 2 hours
+BINANCE_TTL = 300      # 5 minutes
 
 _price_cache: dict[str, float] = {}
 _price_ts: float = 0
@@ -29,6 +31,9 @@ _market_cache: dict[str, dict] = {}
 _market_ts: float = 0
 _defillama_cache: dict[str, dict] = {}
 _defillama_ts: float = 0
+_binance_cache: dict[str, dict] = {}
+_binance_ts: float = 0
+_supply_history: dict[str, list[tuple[float, float]]] = {}  # {cg_id: [(ts, supply), ...]}
 
 
 def _coingecko_ids() -> list[str]:
@@ -181,8 +186,12 @@ async def fetch_market_data() -> dict[str, dict]:
                 )
                 if resp:
                     for coin in resp.json():
-                        result[coin["id"]] = {
-                            "market_cap": coin.get("market_cap", 0),
+                        cg_id = coin["id"]
+                        mc = coin.get("market_cap") or 0
+                        fdv = coin.get("fully_diluted_valuation") or 0
+                        circ_supply = coin.get("circulating_supply") or 0
+                        result[cg_id] = {
+                            "market_cap": mc,
                             "total_volume": coin.get("total_volume", 0),
                             "price_change_24h": coin.get("price_change_percentage_24h", 0),
                             "price_change_7d": coin.get("price_change_percentage_7d_in_currency", 0),
@@ -190,7 +199,17 @@ async def fetch_market_data() -> dict[str, dict]:
                             "ath": coin.get("ath", 0),
                             "ath_change_pct": coin.get("ath_change_percentage", 0),
                             "image": coin.get("image", ""),
+                            "fdv": fdv,
+                            "fdv_mcap_ratio": fdv / mc if mc > 0 else 0,
+                            "circulating_supply": circ_supply,
                         }
+                        # Track supply history for delta computation
+                        if circ_supply > 0:
+                            if cg_id not in _supply_history:
+                                _supply_history[cg_id] = []
+                            _supply_history[cg_id].append((now, circ_supply))
+                            # Keep last 48 entries (~48h at 1hr intervals)
+                            _supply_history[cg_id] = _supply_history[cg_id][-48:]
             except Exception as e:
                 logger.warning(f"CoinGecko market data fetch failed: {e}")
                 break
@@ -296,6 +315,75 @@ async def fetch_defillama_data() -> dict[str, dict]:
     return _defillama_cache
 
 
+async def fetch_binance_perp_data() -> dict[str, dict]:
+    """Fetch funding rates + OI from Binance Futures public API (free, no auth)."""
+    global _binance_cache, _binance_ts
+    now = time.time()
+    if _binance_cache and (now - _binance_ts) < BINANCE_TTL:
+        return _binance_cache
+
+    result: dict[str, dict] = {}
+    async with httpx.AsyncClient(timeout=15) as client:
+        # Funding rates for ALL perps in one call
+        try:
+            resp = await client.get(f"{BINANCE_FAPI}/premiumIndex")
+            resp.raise_for_status()
+            for item in resp.json():
+                symbol = item.get("symbol", "")
+                if not symbol.endswith("USDT"):
+                    continue
+                # Map BTCUSDT → BTC
+                ticker = symbol.replace("USDT", "")
+                result[ticker] = {
+                    "funding_rate": float(item.get("lastFundingRate", 0)),
+                    "mark_price": float(item.get("markPrice", 0)),
+                    "index_price": float(item.get("indexPrice", 0)),
+                }
+            logger.info(f"Binance perp data: {len(result)} symbols (funding rates)")
+        except Exception as e:
+            logger.warning(f"Binance premiumIndex fetch failed: {e}")
+
+        # Open Interest for tokens in our universe
+        tickers_with_perps = [t for t in TOKEN_MAP.keys() if t in result]
+        for ticker in tickers_with_perps[:30]:  # limit to avoid rate issues
+            try:
+                resp = await client.get(
+                    f"{BINANCE_FAPI}/openInterest",
+                    params={"symbol": f"{ticker}USDT"},
+                )
+                if resp.status_code == 200:
+                    oi_data = resp.json()
+                    result[ticker]["open_interest"] = float(oi_data.get("openInterest", 0))
+                    price = result[ticker].get("mark_price", 0)
+                    result[ticker]["open_interest_usd"] = result[ticker]["open_interest"] * price
+            except Exception:
+                pass  # non-critical, skip silently
+
+    if result:
+        _binance_cache = result
+        _binance_ts = now
+    return _binance_cache
+
+
+def get_binance_info(ticker: str) -> Optional[dict]:
+    return _binance_cache.get(ticker)
+
+
+def get_supply_delta_pct(ticker: str) -> Optional[float]:
+    """Compute supply delta % from in-memory history. Returns None if insufficient data."""
+    cg_id = TOKEN_MAP.get(ticker)
+    if not cg_id or cg_id not in _supply_history:
+        return None
+    history = _supply_history[cg_id]
+    if len(history) < 2:
+        return None
+    oldest_ts, oldest_supply = history[0]
+    latest_ts, latest_supply = history[-1]
+    if oldest_supply <= 0 or (latest_ts - oldest_ts) < 1800:  # need at least 30min of history
+        return None
+    return (latest_supply - oldest_supply) / oldest_supply * 100
+
+
 def get_defillama_info(ticker: str) -> Optional[dict]:
     return _defillama_cache.get(ticker)
 
@@ -348,4 +436,8 @@ async def background_refresh():
             await fetch_defillama_data()
         except Exception as e:
             logger.error(f"DefiLlama refresh error: {e}")
+        try:
+            await fetch_binance_perp_data()
+        except Exception as e:
+            logger.error(f"Binance perp refresh error: {e}")
         await asyncio.sleep(PRICE_TTL)

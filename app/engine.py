@@ -12,7 +12,7 @@ from app.data import (
     FIVE_FACTOR_WEIGHTS, TEN_FACTOR_WEIGHTS,
     DCA_SCOPES, get_alloc_tier,
 )
-from app.market_data import get_price, get_market_info, get_defillama_info
+from app.market_data import get_price, get_market_info, get_defillama_info, get_binance_info, get_supply_delta_pct
 
 
 def get_universe_tickers(universe_name: str) -> list[str]:
@@ -60,6 +60,10 @@ def _get_raw_market_vectors(tickers: list[str]) -> dict:
     change_24h = []
     ath_drawdowns = []
     vol_mcap_ratios = []
+    funding_rates = []
+    open_interests_usd = []
+    fdv_mcap_ratios = []
+    supply_deltas = []
 
     for t in tickers:
         info = get_market_info(t)
@@ -70,9 +74,11 @@ def _get_raw_market_vectors(tickers: list[str]) -> dict:
             c30d = info.get("price_change_30d") or 0
             c24h = info.get("price_change_24h") or 0
             ath_dd = abs(info.get("ath_change_pct") or -50)
+            fdv_ratio = info.get("fdv_mcap_ratio") or 0
         else:
             mc = vol = c7d = c30d = c24h = 0
             ath_dd = 50
+            fdv_ratio = 0
 
         market_caps.append(mc)
         volumes.append(vol)
@@ -81,6 +87,16 @@ def _get_raw_market_vectors(tickers: list[str]) -> dict:
         change_24h.append(c24h)
         ath_drawdowns.append(ath_dd)
         vol_mcap_ratios.append(vol / mc if mc > 0 else 0)
+        fdv_mcap_ratios.append(fdv_ratio if fdv_ratio > 0 else 2.0)  # 2.0 = neutral fallback
+
+        # Binance perp data
+        bn = get_binance_info(t)
+        funding_rates.append(bn.get("funding_rate", 0) if bn else 0)
+        open_interests_usd.append(bn.get("open_interest_usd", 0) if bn else 0)
+
+        # Supply delta
+        sd = get_supply_delta_pct(t)
+        supply_deltas.append(sd if sd is not None else 0)
 
     return {
         "market_caps": market_caps,
@@ -90,6 +106,10 @@ def _get_raw_market_vectors(tickers: list[str]) -> dict:
         "change_24h": change_24h,
         "ath_drawdowns": ath_drawdowns,
         "vol_mcap_ratios": vol_mcap_ratios,
+        "funding_rates": funding_rates,
+        "open_interests_usd": open_interests_usd,
+        "fdv_mcap_ratios": fdv_mcap_ratios,
+        "supply_deltas": supply_deltas,
     }
 
 
@@ -198,8 +218,8 @@ def compute_live_ten_factor_scores(tickers: list[str]) -> dict[str, dict[str, fl
     usage_raw = []       # 7d change: higher is better
     risk_raw = []        # abs 30d change: lower is better
     dilution_raw = []    # FDV/MCap: lower is better (safer)
-    float_raw = []       # higher is better quality
-    smart_raw = []       # 30d momentum: higher is better
+    supply_raw = []      # supply delta: contracting = higher score
+    smart_raw = []       # funding rate + OI: higher is better
     dev_raw = []         # 7d acceleration: higher is better
 
     for i, t in enumerate(tickers):
@@ -240,21 +260,19 @@ def compute_live_ten_factor_scores(tickers: list[str]) -> dict[str, dict[str, fl
         # Risk (Low Vol) — absolute 30d change (lower = safer)
         risk_raw.append(abs(raw["change_30d"][i]))
 
-        # Dilution Safety — FDV/MCap ratio (lower = safer)
-        if dl and dl.get("fdv_mcap_ratio", 0) > 0:
-            dilution_raw.append(dl["fdv_mcap_ratio"])
-        elif cg and (cg.get("market_cap") or 0) > 0:
-            # Use ATH drawdown as dilution proxy (closer to ATH = less diluted)
-            dilution_raw.append(raw["ath_drawdowns"][i] / 10)  # normalize
+        # Dilution Safety — FDV/MCap from CoinGecko (universal coverage)
+        dilution_raw.append(raw["fdv_mcap_ratios"][i])
+
+        # Supply Health — contracting supply = bullish (burns, staking lockup)
+        supply_raw.append(-raw["supply_deltas"][i])  # negative delta = good → invert
+
+        # Smart Money — perp funding rate (positive = longs paying = bullish conviction)
+        # Falls back to 30d momentum if Binance data unavailable
+        fr = raw["funding_rates"][i]
+        if fr != 0:
+            smart_raw.append(fr * 10000)  # scale: 0.0001 → 1.0
         else:
-            dilution_raw.append(2.0)  # neutral
-
-        # Float Quality — inverse of supply growth / dilution
-        # Higher vol/mcap = more liquid float
-        float_raw.append(raw["vol_mcap_ratios"][i])
-
-        # Smart Money — 30d momentum (proxy: SM follows strong trends)
-        smart_raw.append(raw["change_30d"][i])
+            smart_raw.append(raw["change_30d"][i] / 10)  # weak fallback
 
         # Developer Momentum — 7d acceleration vs 30d
         c7 = raw["change_7d"][i]
@@ -270,8 +288,8 @@ def compute_live_ten_factor_scores(tickers: list[str]) -> dict[str, dict[str, fl
         _percentile_rank(usage_raw),              # High usage growth = high score
         _inverse_percentile_rank(risk_raw),       # Low vol = high score
         _inverse_percentile_rank(dilution_raw),   # Low dilution = high score
-        _percentile_rank(float_raw),              # High float quality = high score
-        _percentile_rank(smart_raw),              # Positive SM trend = high score
+        _percentile_rank(supply_raw),             # Contracting supply = high score
+        _percentile_rank(smart_raw),              # Positive funding = high score
         _percentile_rank(dev_raw),                # High dev momentum = high score
     ]
 
