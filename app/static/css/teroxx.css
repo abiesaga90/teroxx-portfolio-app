@@ -754,6 +754,90 @@ sup.src {
     letter-spacing: 0.05em;
 }
 
+/* ── Token Modal ── */
+.modal-backdrop {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.4); z-index: 200;
+}
+.modal-panel {
+    position: fixed; top: 0; right: 0; bottom: 0;
+    width: 440px; max-width: 100vw;
+    background: var(--bg-card);
+    z-index: 201;
+    overflow-y: auto;
+    box-shadow: -4px 0 24px rgba(0,0,0,0.15);
+    animation: slideIn 0.2s ease-out;
+}
+@keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+.modal-header {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    padding: 20px 20px 12px; border-bottom: 1px solid var(--border);
+}
+.modal-title-row { display: flex; align-items: center; gap: 12px; }
+.modal-title { font-weight: 700; font-size: 1.1rem; color: var(--text-heading); }
+.modal-subtitle { font-size: 0.7rem; color: var(--text-muted); margin-top: 2px; display: flex; gap: 6px; }
+.modal-close {
+    background: none; border: none; font-size: 1.5rem; cursor: pointer;
+    color: var(--text-muted); line-height: 1; padding: 0 4px;
+}
+.modal-close:hover { color: var(--text-body); }
+.modal-section { padding: 16px 20px; border-bottom: 1px solid var(--border); }
+.modal-section-title {
+    font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--text-muted); font-weight: 600; margin-bottom: 10px;
+}
+.modal-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+}
+.modal-stat { display: flex; flex-direction: column; }
+.modal-stat-label { font-size: 0.6rem; color: var(--text-muted); }
+.modal-stat-value { font-size: 0.85rem; font-weight: 600; color: var(--text-heading); }
+.tag {
+    display: inline-block; padding: 1px 6px; border-radius: 3px;
+    font-size: 0.6rem; font-weight: 600; background: var(--bg-card-alt); color: var(--text-secondary);
+}
+.tag-defensive { background: #e8f5e9; color: #1a8a4a; }
+.tag-core { background: #e3f2fd; color: #0b688c; }
+.tag-growth { background: #fff3e0; color: #d06643; }
+.tag-speculative { background: #fce4ec; color: #c0432a; }
+[data-theme="dark"] .tag { background: rgba(255,255,255,0.08); color: var(--text-secondary); }
+[data-theme="dark"] .tag-defensive { background: rgba(26,138,74,0.2); color: #4ade80; }
+[data-theme="dark"] .tag-core { background: rgba(11,104,140,0.2); color: #67c8e8; }
+[data-theme="dark"] .tag-growth { background: rgba(208,102,67,0.2); color: #f0a080; }
+[data-theme="dark"] .tag-speculative { background: rgba(192,67,42,0.2); color: #f08070; }
+
+/* Factor bars */
+.factor-bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.factor-bar-label { width: 120px; font-size: 0.65rem; color: var(--text-secondary); text-align: right; flex-shrink: 0; }
+.factor-bar-track {
+    flex: 1; height: 14px; background: var(--bg-card-alt); border-radius: 3px;
+    position: relative; overflow: visible;
+}
+.factor-bar-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
+.factor-bar-median {
+    position: absolute; top: -2px; bottom: -2px; width: 2px;
+    background: var(--text-muted); border-radius: 1px;
+}
+.factor-bar-score { width: 30px; font-size: 0.7rem; font-weight: 600; color: var(--text-heading); }
+.factor-composite {
+    text-align: right; margin-top: 10px; padding-top: 8px;
+    border-top: 1px solid var(--border); font-size: 0.8rem; color: var(--text-secondary);
+}
+
+/* ── Risk Heatmap ── */
+.heatmap-table { width: 100%; border-collapse: collapse; font-size: 0.7rem; }
+.heatmap-table th {
+    font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--text-muted); font-weight: 600; padding: 6px 8px; text-align: center;
+}
+.heatmap-table td {
+    text-align: center; padding: 6px 8px; border: 1px solid var(--border);
+    font-weight: 600; min-width: 60px;
+}
+.heatmap-cell {
+    border-radius: 3px; transition: background 0.2s;
+}
+
 /* ── Raw data detail row ── */
 .raw-data-row td {
     padding: 4px 8px !important;

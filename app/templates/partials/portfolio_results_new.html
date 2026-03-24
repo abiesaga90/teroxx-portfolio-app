@@ -41,7 +41,7 @@
                     {% if p.alloc_pct > 0 %}
                     <tr>
                         <td style="color:var(--text-muted)">{{ loop.index }}</td>
-                        <td class="ticker"><div class="ticker-cell">{% set logo = get_logo(p.ticker) %}{% if logo %}<img src="{{ logo }}" class="token-logo" alt="{{ p.ticker }}">{% endif %}{{ p.ticker }}</div></td>
+                        <td class="ticker" style="cursor:pointer;" onclick="openTokenModal('{{ p.ticker }}')"><div class="ticker-cell">{% set logo = get_logo(p.ticker) %}{% if logo %}<img src="{{ logo }}" class="token-logo" alt="{{ p.ticker }}">{% endif %}{{ p.ticker }}</div></td>
                         <td>{{ p.name }}</td>
                         <td>
                             <span class="tier-badge tier-{% if p.risk_tier == 'Defensive' %}fixed{% elif p.risk_tier == 'Core' %}core{% elif p.risk_tier == 'Growth' %}growth{% else %}speculative{% endif %}">
@@ -85,6 +85,40 @@
     </div>
 </div>
 <script id="sector-data" type="application/json">{{ sector_data|safe }}</script>
+
+<!-- Risk Concentration Heatmap -->
+<div class="card">
+    <div class="card-header">Risk Concentration</div>
+    <div class="table-wrap">
+        <table class="heatmap-table">
+            <thead>
+                <tr>
+                    <th style="text-align:left;">Category</th>
+                    {% for rt in risk_tiers %}
+                    <th>{{ rt }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for cat in heatmap_cats %}
+                <tr>
+                    <td style="text-align:left;font-weight:600;font-size:0.7rem;">{{ cat }}</td>
+                    {% for rt in risk_tiers %}
+                    {% set val = heatmap_data[cat][rt] %}
+                    {% if val > 0 %}
+                    <td class="heatmap-cell" style="background:rgba(11,104,140,{{ (val * 2.5)|round(2) }});color:{{ '#fff' if val > 0.15 else 'var(--text-body)' }};">
+                        {{ (val * 100)|round(1) }}%
+                    </td>
+                    {% else %}
+                    <td class="heatmap-cell" style="background:var(--bg-card-alt);color:var(--text-muted);">—</td>
+                    {% endif %}
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
 
 <!-- Collapsible Allocation Details -->
 <div class="collapsible-section">

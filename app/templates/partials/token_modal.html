@@ -1,0 +1,84 @@
+<!-- Token Scorecard Modal Content -->
+<div class="modal-header">
+    <div class="modal-title-row">
+        {% set logo = get_logo(d.ticker) %}
+        {% if logo %}<img src="{{ logo }}" class="token-logo" alt="{{ d.ticker }}" style="width:32px;height:32px;">{% endif %}
+        <div>
+            <div class="modal-title">{{ d.ticker }} — {{ d.name }}</div>
+            <div class="modal-subtitle">
+                <span class="tag">{{ d.category }}</span>
+                <span class="tag tag-{{ d.risk_tier|lower }}">{{ d.risk_tier }}</span>
+            </div>
+        </div>
+    </div>
+    <button class="modal-close" onclick="closeTokenModal()">&times;</button>
+</div>
+
+<div class="modal-section">
+    <div class="modal-section-title">Market Data</div>
+    <div class="modal-grid">
+        <div class="modal-stat">
+            <span class="modal-stat-label">Price</span>
+            <span class="modal-stat-value">{{ "${:,.2f}".format(d.market.price) if d.market.price else "—" }}</span>
+        </div>
+        <div class="modal-stat">
+            <span class="modal-stat-label">Market Cap</span>
+            <span class="modal-stat-value">{{ "${:,.0f}".format(d.market.market_cap) if d.market.market_cap else "—" }}</span>
+        </div>
+        <div class="modal-stat">
+            <span class="modal-stat-label">24h</span>
+            <span class="modal-stat-value" style="color:{{ 'var(--success)' if d.market.change_24h >= 0 else 'var(--danger)' }}">{{ "{:+.1f}%".format(d.market.change_24h) }}</span>
+        </div>
+        <div class="modal-stat">
+            <span class="modal-stat-label">7d</span>
+            <span class="modal-stat-value" style="color:{{ 'var(--success)' if d.market.change_7d >= 0 else 'var(--danger)' }}">{{ "{:+.1f}%".format(d.market.change_7d) }}</span>
+        </div>
+        <div class="modal-stat">
+            <span class="modal-stat-label">30d</span>
+            <span class="modal-stat-value" style="color:{{ 'var(--success)' if d.market.change_30d >= 0 else 'var(--danger)' }}">{{ "{:+.1f}%".format(d.market.change_30d) }}</span>
+        </div>
+        <div class="modal-stat">
+            <span class="modal-stat-label">% of ATH</span>
+            <span class="modal-stat-value">{{ d.market.ath_pct }}%</span>
+        </div>
+        <div class="modal-stat">
+            <span class="modal-stat-label">Vol/MCap</span>
+            <span class="modal-stat-value">{{ d.market.vol_mcap }}</span>
+        </div>
+        <div class="modal-stat">
+            <span class="modal-stat-label">FDV/MCap</span>
+            <span class="modal-stat-value" style="color:{{ 'var(--success)' if d.market.fdv_mcap < 2 else 'var(--danger)' if d.market.fdv_mcap > 4 else 'var(--text-body)' }}">{{ d.market.fdv_mcap }}x</span>
+        </div>
+        {% if d.market.funding_rate is not none %}
+        <div class="modal-stat">
+            <span class="modal-stat-label">Funding Rate</span>
+            <span class="modal-stat-value" style="color:{{ 'var(--success)' if d.market.funding_rate > 0 else 'var(--danger)' }}">{{ "{:+.4f}%".format(d.market.funding_rate * 100) }}</span>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="modal-section">
+    <div class="modal-section-title">Factor Profile (5-Factor, vs Universe Median)</div>
+    <div style="max-width:280px;margin:0 auto 16px;">
+        <canvas id="token-radar-chart"></canvas>
+    </div>
+    <script id="token-radar-data" type="application/json">{{ radar_data|safe }}</script>
+</div>
+
+<div class="modal-section">
+    <div class="modal-section-title">Factor Scores</div>
+    {% for f in d.factor_names_5 %}
+    <div class="factor-bar-row">
+        <span class="factor-bar-label">{{ f }}</span>
+        <div class="factor-bar-track">
+            <div class="factor-bar-fill" style="width:{{ d.five_factor[f] }}%;background:{{ 'var(--electric-sky)' if d.five_factor[f] >= 50 else 'var(--sunset-ember)' }};"></div>
+            <div class="factor-bar-median" style="left:{{ d.five_medians[f] }}%;"></div>
+        </div>
+        <span class="factor-bar-score">{{ d.five_factor[f] }}</span>
+    </div>
+    {% endfor %}
+    <div class="factor-composite">
+        Composite: <strong style="color:var(--electric-sky);">{{ d.composite_5 }}</strong>
+    </div>
+</div>

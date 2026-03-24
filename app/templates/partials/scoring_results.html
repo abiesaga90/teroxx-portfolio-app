@@ -76,11 +76,11 @@
                 {% for d in detail %}
                 <tr>
                     <td style="color:var(--text-muted)">{{ loop.index }}</td>
-                    <td class="ticker">
+                    <td class="ticker" style="cursor:pointer;" onclick="openTokenModal('{{ d.ticker }}')">
                         <div class="ticker-cell">
                             {% set logo = get_logo(d.ticker) %}{% if logo %}<img src="{{ logo }}" class="token-logo token-logo-sm" alt="{{ d.ticker }}">{% endif %}{{ d.ticker }}
                             {% if d.get('_data_missing') %}<span class="data-warning" title="Missing market data">&#9888;</span>{% endif %}
-                            {% if d.get('_raw') %}<button class="show-raw-btn" onclick="toggleRawData('{{ d.ticker }}')" title="Show raw data">data</button>{% endif %}
+                            {% if d.get('_raw') %}<button class="show-raw-btn" onclick="event.stopPropagation();toggleRawData('{{ d.ticker }}')" title="Show raw data">data</button>{% endif %}
                         </div>
                     </td>
                     <td>{{ d.name }}</td>

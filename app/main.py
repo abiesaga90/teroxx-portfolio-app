@@ -21,7 +21,7 @@ from app.data import (
 from app.engine import (
     compute_allocations, compute_portfolio, compute_dca,
     compute_rebalance, compute_pnl, compute_rebalance_pnl,
-    get_universe_tickers, five_factor_detail, ten_factor_detail,
+    get_universe_tickers, five_factor_detail, ten_factor_detail, token_scorecard,
 )
 from app.market_data import fetch_prices, fetch_market_data, price_age_str, background_refresh, get_logo_url
 
@@ -139,6 +139,20 @@ async def portfolio_partial(
     defensive_pct = sum(p["alloc_pct"] for p in positions if p["ticker"] in ("USDC", "EURC", "PAXG"))
     crypto_pct = 1 - defensive_pct
     dd_50 = DRAWDOWN_IMPACT["Crypto -50%"].get(profile, 0)
+    # Risk heatmap: category × risk_tier allocation matrix
+    risk_tiers = ["Defensive", "Core", "Growth", "Speculative"]
+    heatmap = {}
+    for pos in positions:
+        cat = ASSET_BY_TICKER.get(pos["ticker"], {}).get("category", "Other")
+        rt = ASSET_BY_TICKER.get(pos["ticker"], {}).get("risk_tier", "Speculative")
+        if cat not in heatmap:
+            heatmap[cat] = {r: 0 for r in risk_tiers}
+        heatmap[cat][rt] = heatmap[cat].get(rt, 0) + pos["alloc_pct"]
+    # Sort categories by total allocation
+    heatmap_sorted = sorted(heatmap.items(), key=lambda x: -sum(x[1].values()))
+    heatmap_cats = [x[0] for x in heatmap_sorted]
+    heatmap_data = {cat: vals for cat, vals in heatmap_sorted}
+
     # Sector allocation data for stacked bar chart
     sector_matrix = {}
     for p_name in RISK_PROFILES:
@@ -165,6 +179,9 @@ async def portfolio_partial(
         "dd_50": dd_50,
         "position_chart_data": _position_chart_data(positions),
         "sector_data": sector_data,
+        "heatmap_cats": heatmap_cats,
+        "heatmap_data": heatmap_data,
+        "risk_tiers": risk_tiers,
 
         "tier_allocs": TIER_ALLOCATIONS,
         "fixed": FIXED_STRATEGIC,
@@ -311,4 +328,20 @@ async def rebalance_pnl_partial(
         "portfolio_value": portfolio_value,
         "price_age": price_age_str(),
         "pnl_chart_data": pnl_chart_data,
+    })
+
+
+@app.get("/api/token/{ticker}", response_class=HTMLResponse)
+async def token_detail(request: Request, ticker: str, profile: str = "Balanced"):
+    data = token_scorecard(ticker, profile)
+    radar_data = json.dumps({
+        "factors": data["factor_names_5"],
+        "token_scores": [data["five_factor"][f] for f in data["factor_names_5"]],
+        "median_scores": [data["five_medians"][f] for f in data["factor_names_5"]],
+        "token_label": data["ticker"],
+    })
+    return templates.TemplateResponse("partials/token_modal.html", {
+        "request": request,
+        "d": data,
+        "radar_data": radar_data,
     })

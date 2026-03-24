@@ -406,6 +406,96 @@ function tryRenderSector() {
     } catch (e) { console.warn('Sector chart error:', e); }
 }
 
+// ── Token Scorecard Modal ──
+function openTokenModal(ticker) {
+    const modal = document.getElementById('token-modal');
+    const backdrop = document.getElementById('token-modal-backdrop');
+    const content = document.getElementById('token-modal-content');
+    if (!modal || !content) return;
+
+    content.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-muted)">Loading...</div>';
+    modal.style.display = 'block';
+    backdrop.style.display = 'block';
+    document.body.style.overflow = 'hidden';
+
+    fetch(`/api/token/${ticker}?profile=Balanced`)
+        .then(r => r.text())
+        .then(html => {
+            content.innerHTML = html;
+            // Render mini radar in modal
+            tryRenderTokenRadar();
+        })
+        .catch(e => {
+            content.innerHTML = `<div style="padding:40px;color:var(--danger)">Error loading ${ticker}</div>`;
+        });
+}
+
+function closeTokenModal() {
+    const modal = document.getElementById('token-modal');
+    const backdrop = document.getElementById('token-modal-backdrop');
+    if (modal) modal.style.display = 'none';
+    if (backdrop) backdrop.style.display = 'none';
+    document.body.style.overflow = '';
+    _destroyChart('tokenRadar');
+}
+
+// Escape key closes modal
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeTokenModal();
+});
+
+function tryRenderTokenRadar() {
+    const el = document.getElementById('token-radar-data');
+    if (!el) return;
+    try {
+        const data = JSON.parse(el.textContent);
+        const ctx = document.getElementById('token-radar-chart');
+        if (!ctx) return;
+        _destroyChart('tokenRadar');
+        const tc = getChartColors();
+        _charts['tokenRadar'] = new Chart(ctx, {
+            type: 'radar',
+            data: {
+                labels: data.factors.map(f => f.replace(/\(.*\)/, '').trim()),
+                datasets: [
+                    {
+                        label: data.token_label,
+                        data: data.token_scores,
+                        borderColor: '#0b688c',
+                        backgroundColor: 'rgba(11,104,140,0.15)',
+                        borderWidth: 2,
+                        pointRadius: 4,
+                        pointBackgroundColor: '#0b688c',
+                    },
+                    {
+                        label: 'Median',
+                        data: data.median_scores,
+                        borderColor: '#bfb3a8',
+                        backgroundColor: 'rgba(191,179,168,0.08)',
+                        borderWidth: 1.5,
+                        borderDash: [4, 4],
+                        pointRadius: 2,
+                        pointBackgroundColor: '#bfb3a8',
+                    },
+                ],
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { position: 'bottom', labels: { color: tc.text, font: { size: 10 } } } },
+                scales: {
+                    r: {
+                        min: 0, max: 100,
+                        ticks: { display: false, stepSize: 25 },
+                        grid: { color: tc.grid },
+                        angleLines: { color: tc.grid },
+                        pointLabels: { color: tc.text, font: { size: 9 } },
+                    },
+                },
+            },
+        });
+    } catch (e) { console.warn('Token radar error:', e); }
+}
+
 // ── Master render: try all charts ──
 function tryRenderAllCharts() {
     tryRenderChart();  // existing donut

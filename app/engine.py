@@ -369,6 +369,69 @@ def ten_factor_detail(profile: str, tickers: list[str]) -> list[dict]:
     return results
 
 
+# ── Token scorecard ────────────────────────────────────────────────────
+
+def token_scorecard(ticker: str, profile: str, universe_tickers: list[str] = None) -> dict:
+    """Build a complete scorecard for a single token."""
+    asset = ASSET_BY_TICKER.get(ticker, {})
+    info = get_market_info(ticker) or {}
+    bn = get_binance_info(ticker) or {}
+    dl = get_defillama_info(ticker) or {}
+
+    # Market data
+    mc = info.get("market_cap") or 0
+    market = {
+        "price": get_price(ticker),
+        "market_cap": mc,
+        "volume_24h": info.get("total_volume") or 0,
+        "change_24h": info.get("price_change_24h") or 0,
+        "change_7d": info.get("price_change_7d") or 0,
+        "change_30d": info.get("price_change_30d") or 0,
+        "ath": info.get("ath") or 0,
+        "ath_pct": round(100 + (info.get("ath_change_pct") or -100), 1),
+        "vol_mcap": round(info.get("total_volume", 0) / mc, 4) if mc > 0 else 0,
+        "fdv_mcap": round(info.get("fdv_mcap_ratio") or 0, 2),
+        "funding_rate": bn.get("funding_rate"),
+        "open_interest_usd": bn.get("open_interest_usd"),
+    }
+
+    # Factor scores (5-factor)
+    if not universe_tickers:
+        universe_tickers = [a["ticker"] for a in ASSET_UNIVERSE if a["tier"] not in ("Fixed",)]
+    # Filter to exclude stablecoins
+    score_tickers = [t for t in universe_tickers if t not in ("USDC", "EURC", "PAXG")]
+    if ticker not in score_tickers:
+        score_tickers.append(ticker)
+
+    five_scores = compute_live_five_factor_scores(score_tickers)
+    ten_scores = compute_live_ten_factor_scores(score_tickers)
+    token_five = five_scores.get(ticker, {})
+    token_ten = ten_scores.get(ticker, {})
+
+    # Compute medians for radar comparison
+    factor_names_5 = list(FIVE_FACTOR_WEIGHTS.keys())
+    medians_5 = {}
+    for f in factor_names_5:
+        vals = [five_scores[t].get(f, 50) for t in score_tickers if t in five_scores]
+        medians_5[f] = sorted(vals)[len(vals) // 2] if vals else 50
+
+    # Composite
+    composite_5 = sum(token_five.get(f, 50) * FIVE_FACTOR_WEIGHTS[f].get(profile, 0) for f in factor_names_5)
+
+    return {
+        "ticker": ticker,
+        "name": asset.get("name", ticker),
+        "category": asset.get("category", ""),
+        "tier": asset.get("tier", ""),
+        "risk_tier": asset.get("risk_tier", ""),
+        "market": market,
+        "five_factor": {f: round(token_five.get(f, 50), 1) for f in factor_names_5},
+        "five_medians": {f: round(medians_5[f], 1) for f in factor_names_5},
+        "composite_5": round(composite_5, 1),
+        "factor_names_5": factor_names_5,
+    }
+
+
 # ── Allocation engine (unchanged) ──────────────────────────────────────
 
 def compute_allocations(profile: str, universe: str, mode: str = "Standard") -> list[dict]:
