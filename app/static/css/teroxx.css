@@ -774,7 +774,7 @@ sup.src {
 }
 
 /* ── Dark Mode ── */
-[data-theme="dark"] {
+:root[data-theme="dark"] {
     --bg-page: #0a0e1a;
     --bg-section-alt: #111627;
     --bg-card: #151a2e;

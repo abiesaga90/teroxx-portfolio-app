@@ -7,6 +7,12 @@
     <link rel="stylesheet" href="/static/css/teroxx.css">
     <script src="/static/js/htmx.min.js"></script>
     <script src="/static/js/chart.min.js"></script>
+    <script>
+    // Apply dark mode before render to prevent flash
+    if (localStorage.getItem('theme') === 'dark') {
+        document.documentElement.setAttribute('data-theme', 'dark');
+    }
+    </script>
 </head>
 <body>
 
