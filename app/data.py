@@ -189,10 +189,10 @@ TOKEN_MAP = {
     "ASTER": "aster-2", "WLD": "worldcoin-wld", "ENA": "ethena",
     "QNT": "quant-network", "NEXO": "nexo", "MORPHO": "morpho",
     "BONK": "bonk", "CAKE": "pancakeswap-token", "PENGU": "pudgy-penguins",
-    "CHZ": "chiliz", "VIRTUAL": "virtuals-protocol", "ZRO": "layerzero",
+    "CHZ": "chiliz", "VIRTUAL": "virtual-protocol", "ZRO": "layerzero",
     "ETHFI": "ether-fi", "FLOKI": "floki", "TWT": "trust-wallet-token",
     "AXS": "axie-infinity", "PENDLE": "pendle", "COMP": "compound-governance-token",
-    "1INCH": "1inch", "DEXE": "dexe", "EDU": "open-campus",
+    "1INCH": "1inch", "DEXE": "dexe", "EDU": "edu-coin",
     "MYX": "myx-finance",
     "USDC": "usd-coin", "EURC": "euro-coin",
 }

@@ -36,6 +36,7 @@
     <button class="tab-btn" data-tab="tab-scoring" onclick="switchTab('tab-scoring')">Scoring</button>
     <button class="tab-btn" data-tab="tab-dca" onclick="switchTab('tab-dca')">DCA Planner</button>
     <button class="tab-btn" data-tab="tab-rebalance-pnl" onclick="switchTab('tab-rebalance-pnl')">Rebalancing &amp; P&L</button>
+    <button class="tab-btn" data-tab="tab-apis" onclick="switchTab('tab-apis')">APIs</button>
 </nav>
 
 <main class="main">
@@ -164,6 +165,133 @@
             </form>
         </div>
         <div id="rebalance-pnl-results"></div>
+    </div>
+
+    <!-- ═══ Tab 5: APIs ═══ -->
+    <div id="tab-apis" class="tab-panel">
+        <div class="card">
+            <div class="card-header">Data Sources &amp; APIs</div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Source</th>
+                            <th>Data</th>
+                            <th>Tier</th>
+                            <th>Refresh</th>
+                            <th>Coverage</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong><a href="https://www.coingecko.com/en/api" target="_blank" style="color:var(--electric-sky);">CoinGecko</a></strong></td>
+                            <td>Price, MCap, FDV, Volume, 7d/30d Change, ATH, Supply, Logos</td>
+                            <td>Free</td>
+                            <td>5min (prices), 1hr (market data)</td>
+                            <td>All {{ n_tokens }} tokens</td>
+                        </tr>
+                        <tr>
+                            <td><strong><a href="https://defillama.com/docs/api" target="_blank" style="color:var(--electric-sky);">DeFiLlama</a></strong></td>
+                            <td>TVL, Fees (30d), Fee Momentum, Revenue Capture, FDV/MCap</td>
+                            <td>Free</td>
+                            <td>2hr</td>
+                            <td>{{ n_defillama }} protocols mapped</td>
+                        </tr>
+                        <tr>
+                            <td><strong><a href="https://coinmarketcap.com/api/" target="_blank" style="color:var(--electric-sky);">CoinMarketCap</a></strong></td>
+                            <td>Price fallback (when CoinGecko rate-limited)</td>
+                            <td>Free (demo key)</td>
+                            <td>On-demand fallback</td>
+                            <td>All tokens</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">5-Factor Model — Data Mapping</div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Factor</th>
+                            <th>Raw Metric</th>
+                            <th>Source</th>
+                            <th>Scoring</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Market Beta (Low B)</td>
+                            <td>Absolute 30d price change</td>
+                            <td>CoinGecko</td>
+                            <td>Inverse percentile (low change = high score)</td>
+                        </tr>
+                        <tr>
+                            <td>Size - SMB</td>
+                            <td>Market capitalization</td>
+                            <td>CoinGecko</td>
+                            <td>Inverse percentile (small cap = high score)</td>
+                        </tr>
+                        <tr>
+                            <td>Value (MC/Fees)</td>
+                            <td>24h Volume / Market Cap ratio</td>
+                            <td>CoinGecko</td>
+                            <td>Percentile (high turnover = high score)</td>
+                        </tr>
+                        <tr>
+                            <td>Momentum (Vol-Adj)</td>
+                            <td>(7d + 30d change) / ATH drawdown</td>
+                            <td>CoinGecko</td>
+                            <td>Percentile (high vol-adjusted return = high score)</td>
+                        </tr>
+                        <tr>
+                            <td>Growth (Fee+DAU D)</td>
+                            <td>7d pace / monthly average pace (acceleration ratio)</td>
+                            <td>CoinGecko</td>
+                            <td>Percentile (recent acceleration = high score)</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">10-Factor Fundamental Model — Data Mapping</div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Factor</th>
+                            <th>Raw Metric</th>
+                            <th>Source</th>
+                            <th>Scoring</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>Value (P/S)</td><td>MCap / Annualized Fees</td><td>DeFiLlama + CoinGecko</td><td>Inverse percentile</td></tr>
+                        <tr><td>Fee Momentum</td><td>Fee trend (% change)</td><td>DeFiLlama</td><td>Percentile</td></tr>
+                        <tr><td>TVL Health</td><td>TVL 7d change %</td><td>DeFiLlama</td><td>Percentile</td></tr>
+                        <tr><td>Revenue Quality</td><td>Holder revenue / Fees ratio</td><td>DeFiLlama</td><td>Percentile</td></tr>
+                        <tr><td>Usage Growth</td><td>7d price change</td><td>CoinGecko</td><td>Percentile</td></tr>
+                        <tr><td>Risk (Low Vol)</td><td>Absolute 30d change</td><td>CoinGecko</td><td>Inverse percentile</td></tr>
+                        <tr><td>Dilution Safety</td><td>FDV / MCap ratio</td><td>DeFiLlama + CoinGecko</td><td>Inverse percentile</td></tr>
+                        <tr><td>Float Quality</td><td>Volume / MCap ratio</td><td>CoinGecko</td><td>Percentile</td></tr>
+                        <tr><td>Smart Money</td><td>30d momentum (proxy)</td><td>CoinGecko</td><td>Percentile</td></tr>
+                        <tr><td>Developer Momentum</td><td>7d acceleration vs 30d</td><td>CoinGecko</td><td>Percentile</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">Token ID Mappings</div>
+            <p style="padding:12px 16px;color:var(--text-secondary);font-size:0.75rem;">
+                {{ n_tokens }} tokens mapped to CoinGecko IDs. {{ n_defillama }} tokens mapped to DeFiLlama protocol slugs.
+                {{ n_defillama_fees }} tokens mapped to DeFiLlama fees slugs. Tokens without DeFiLlama data use CoinGecko fallback proxies.
+            </p>
+        </div>
     </div>
 
 </main>

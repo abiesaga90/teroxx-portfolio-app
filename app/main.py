@@ -16,6 +16,7 @@ from app.data import (
     DRAWDOWN_IMPACT, FIVE_FACTOR_WEIGHTS, TEN_FACTOR_WEIGHTS,
     TIER_ALLOCATIONS, FIXED_STRATEGIC,
     ASSET_UNIVERSE, ASSET_BY_TICKER,
+    TOKEN_MAP, DEFILLAMA_MAP, DEFILLAMA_FEES_MAP,
 )
 from app.engine import (
     compute_allocations, compute_portfolio, compute_dca,
@@ -118,6 +119,9 @@ async def index(request: Request):
         "tier_allocs": TIER_ALLOCATIONS,
         "fixed": FIXED_STRATEGIC,
         "price_age": price_age_str(),
+        "n_tokens": len(TOKEN_MAP),
+        "n_defillama": len(DEFILLAMA_MAP),
+        "n_defillama_fees": len(DEFILLAMA_FEES_MAP),
     })
 
 
