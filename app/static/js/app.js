@@ -117,29 +117,15 @@ function tryRenderChart() {
 // Initial page load — call immediately since script is at bottom of body
 tryRenderAllCharts();
 
-// After HTMX swaps (tab changes, form updates)
-document.addEventListener('htmx:afterSwap', tryRenderAllCharts);
+// After HTMX swaps — use afterSettle + rAF to ensure DOM is painted
+document.addEventListener('htmx:afterSettle', function() {
+    requestAnimationFrame(function() {
+        setTimeout(tryRenderAllCharts, 20);
+    });
+});
 
-// ── Dark mode toggle ──
-function toggleTheme() {
-    const html = document.documentElement;
-    const current = html.getAttribute('data-theme');
-    const next = current === 'dark' ? 'light' : 'dark';
-    html.setAttribute('data-theme', next);
-    localStorage.setItem('theme', next);
-    const btn = document.querySelector('.theme-toggle');
-    if (btn) btn.textContent = next === 'dark' ? 'Light Mode' : 'Dark Mode';
-}
-
-// Restore theme on load
-(function() {
-    const saved = localStorage.getItem('theme');
-    if (saved === 'dark') {
-        document.documentElement.setAttribute('data-theme', 'dark');
-        const btn = document.querySelector('.theme-toggle');
-        if (btn) btn.textContent = 'Light Mode';
-    }
-})();
+// toggleTheme() and dark mode restore are defined inline in <head> of base.html
+// so they work even if this script fails to load.
 
 // ── Raw data toggle ──
 function toggleRawData(ticker) {
@@ -245,6 +231,7 @@ function tryRenderBubble() {
             data: { datasets },
             options: {
                 responsive: true,
+                maintainAspectRatio: false,
                 plugins: {
                     legend: { position: 'bottom', labels: { color: tc.text, font: { size: 10 }, padding: 10 } },
                     tooltip: {

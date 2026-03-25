@@ -1,0 +1,271 @@
+<!-- Data View Toggle -->
+<div class="card" style="padding:16px 32px;">
+    <div class="scoring-toggle">
+        <button class="scoring-toggle-btn active" data-dview="market" onclick="switchDataView('market')">Market Data</button>
+        <button class="scoring-toggle-btn" data-dview="defi" onclick="switchDataView('defi')">DeFiLlama</button>
+        <button class="scoring-toggle-btn" data-dview="perps" onclick="switchDataView('perps')">Perp Futures</button>
+        <button class="scoring-toggle-btn" data-dview="f5" onclick="switchDataView('f5')">5-Factor Calc</button>
+        <button class="scoring-toggle-btn" data-dview="f10" onclick="switchDataView('f10')">VA Calc</button>
+    </div>
+</div>
+
+<!-- ═══ MARKET DATA (CMC) ═══ -->
+<div id="dview-market" class="data-view-panel">
+<div class="card">
+    <div class="card-header">Market Data <span style="font-size:0.7rem;color:var(--text-muted);font-family:'Sohne',sans-serif;font-weight:400;">&mdash; CoinMarketCap</span></div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Ticker</th>
+                    <th class="right">Price</th>
+                    <th class="right">Market Cap</th>
+                    <th class="right">Volume 24h</th>
+                    <th class="right">Vol/MCap</th>
+                    <th class="right">24h %</th>
+                    <th class="right">7d %</th>
+                    <th class="right">30d %</th>
+                    <th class="right">FDV/MCap</th>
+                    <th class="right">Supply &Delta;</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in rows %}
+                <tr{% if r.market_cap == 0 %} style="opacity:0.4"{% endif %}>
+                    <td style="color:var(--text-muted)">{{ loop.index }}</td>
+                    <td class="ticker"><div class="ticker-cell">{% set logo = get_logo(r.ticker) %}{% if logo %}<img src="{{ logo }}" class="token-logo token-logo-sm" alt="{{ r.ticker }}">{% endif %}{{ r.ticker }}</div></td>
+                    <td class="right">${{ "{:,.4f}".format(r.price) if r.price < 1 else "{:,.2f}".format(r.price) }}</td>
+                    <td class="right">${{ "{:,.0f}".format(r.market_cap) }}</td>
+                    <td class="right">${{ "{:,.0f}".format(r.volume_24h) }}</td>
+                    <td class="right">{{ "{:.4f}".format(r.vol_mcap_ratio) }}</td>
+                    <td class="right" style="color:{{ 'var(--success)' if r.change_24h >= 0 else 'var(--danger)' }}">{{ "{:+.1f}".format(r.change_24h) }}%</td>
+                    <td class="right" style="color:{{ 'var(--success)' if r.change_7d >= 0 else 'var(--danger)' }}">{{ "{:+.1f}".format(r.change_7d) }}%</td>
+                    <td class="right" style="color:{{ 'var(--success)' if r.change_30d >= 0 else 'var(--danger)' }}">{{ "{:+.1f}".format(r.change_30d) }}%</td>
+                    <td class="right"><span style="color:{{ '#1a8a4a' if r.fdv_mcap_ratio < 2 else '#F59E0B' if r.fdv_mcap_ratio < 4 else '#c0432a' }}">{{ "{:.2f}".format(r.fdv_mcap_ratio) }}x</span></td>
+                    <td class="right">{% if r.supply_delta != 0 %}<span style="color:{{ 'var(--danger)' if r.supply_delta > 0 else 'var(--success)' }}">{{ "{:+.2f}".format(r.supply_delta) }}%</span>{% else %}&mdash;{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="sources"><div class="sources-title">Notes</div>Prices and market data from CoinMarketCap. Vol/MCap = 24h volume / market cap (turnover ratio). Supply &Delta; = circulating supply change tracked in-memory. Updated: {{ price_age }}.</div>
+</div>
+</div>
+
+<!-- ═══ DEFILLAMA ═══ -->
+<div id="dview-defi" class="data-view-panel" style="display:none;">
+<div class="card">
+    <div class="card-header">Protocol Fundamentals <span style="font-size:0.7rem;color:var(--text-muted);font-family:'Sohne',sans-serif;font-weight:400;">&mdash; DeFiLlama</span></div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Ticker</th>
+                    <th class="right">TVL</th>
+                    <th class="right">TVL 7d %</th>
+                    <th class="right">Fees 30d</th>
+                    <th class="right">Fees 7d</th>
+                    <th class="right">Revenue 30d</th>
+                    <th class="right">Rev Capture</th>
+                    <th class="right">Fee Momentum</th>
+                    <th class="center">Accrual</th>
+                    <th class="center">Source</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in rows %}
+                <tr{% if not r.has_defi %} style="opacity:0.35"{% endif %}>
+                    <td style="color:var(--text-muted)">{{ loop.index }}</td>
+                    <td class="ticker"><div class="ticker-cell">{% set logo = get_logo(r.ticker) %}{% if logo %}<img src="{{ logo }}" class="token-logo token-logo-sm" alt="{{ r.ticker }}">{% endif %}{{ r.ticker }}</div></td>
+                    {% if r.has_defi %}
+                    <td class="right">${{ "{:,.0f}".format(r.tvl) }}</td>
+                    <td class="right" style="color:{{ 'var(--success)' if r.tvl_change_7d >= 0 else 'var(--danger)' }}">{{ "{:+.1f}".format(r.tvl_change_7d) }}%</td>
+                    <td class="right">{% if r.fees_30d > 0 %}${{ "{:,.0f}".format(r.fees_30d) }}{% else %}&mdash;{% endif %}</td>
+                    <td class="right">{% if r.fees_7d > 0 %}${{ "{:,.0f}".format(r.fees_7d) }}{% else %}&mdash;{% endif %}</td>
+                    <td class="right">{% if r.revenue_30d > 0 %}${{ "{:,.0f}".format(r.revenue_30d) }}{% else %}&mdash;{% endif %}</td>
+                    <td class="right">{% if r.revenue_capture > 0 %}{{ "{:.0f}".format(r.revenue_capture * 100) }}%{% else %}&mdash;{% endif %}</td>
+                    <td class="right" style="color:{{ 'var(--success)' if r.fee_momentum >= 0 else 'var(--danger)' }}">{% if r.fees_30d > 0 %}{{ "{:+.1f}".format(r.fee_momentum) }}%{% else %}&mdash;{% endif %}</td>
+                    {% else %}
+                    <td class="right" colspan="7" style="color:var(--text-muted);font-size:0.7rem;">No DeFiLlama data &mdash; scoring uses CMC market data as fallback proxy</td>
+                    {% endif %}
+                    <td class="center" style="font-size:0.55rem;font-weight:600;">
+                        {% set mech = r.va_mechanism %}
+                        {% if mech in ('buyback_burn', 'buyback_treasury') %}
+                        <span style="color:var(--success);">Buyback</span>
+                        {% elif mech in ('fee_distribution', 'fee_switch_partial') %}
+                        <span style="color:var(--electric-sky);">Fee Dist</span>
+                        {% elif mech == 'staking_rewards' %}
+                        <span style="color:var(--electric-sky);">Staking</span>
+                        {% elif mech == 'none' %}
+                        <span style="color:var(--text-muted);">None</span>
+                        {% else %}
+                        <span style="color:#F59E0B;">Unknown</span>
+                        {% endif %}
+                    </td>
+                    <td class="center" style="font-size:0.6rem;color:{{ 'var(--electric-sky)' if r.has_defi else 'var(--text-muted)' }};">{{ 'DeFiLlama' if r.has_defi else 'Fallback' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="sources"><div class="sources-title">Notes</div>
+        <strong>Accrual</strong>: From VA Registry (nickel-ls-rv aligned). Tokens with "None" get buyback/rev_capture signals floored to &minus;0.40 if MCap &ge; $1B. Tokens with fees but no accrual mechanism get all VA signals capped at 0.<br>
+        Fee Momentum = (7d fees annualized &minus; 30d fees annualized) / 30d annualized &times; 100. Rev Capture = Revenue 30d / Fees 30d. Updated every 2h.
+    </div>
+</div>
+</div>
+
+<!-- ═══ PERP FUTURES ═══ -->
+<div id="dview-perps" class="data-view-panel" style="display:none;">
+<div class="card">
+    <div class="card-header">Perpetual Futures <span style="font-size:0.7rem;color:var(--text-muted);font-family:'Sohne',sans-serif;font-weight:400;">&mdash; Binance</span></div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Ticker</th>
+                    <th class="right">Funding Rate (8h)</th>
+                    <th class="right">Annualized</th>
+                    <th class="right">Open Interest</th>
+                    <th class="right">OI / MCap</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in rows %}
+                {% if r.has_perp %}
+                <tr>
+                    <td style="color:var(--text-muted)">{{ loop.index }}</td>
+                    <td class="ticker"><div class="ticker-cell">{% set logo = get_logo(r.ticker) %}{% if logo %}<img src="{{ logo }}" class="token-logo token-logo-sm" alt="{{ r.ticker }}">{% endif %}{{ r.ticker }}</div></td>
+                    <td class="right" style="color:{{ 'var(--success)' if r.funding_rate >= 0 else 'var(--danger)' }}">{{ "{:+.4f}".format(r.funding_rate * 100) }}%</td>
+                    <td class="right" style="color:{{ 'var(--success)' if r.funding_rate >= 0 else 'var(--danger)' }}">{{ "{:+.1f}".format(r.funding_rate * 100 * 3 * 365) }}%</td>
+                    <td class="right">${{ "{:,.0f}".format(r.open_interest_usd) }}</td>
+                    <td class="right">{% if r.market_cap > 0 %}{{ "{:.2f}".format(r.open_interest_usd / r.market_cap * 100) }}%{% else %}&mdash;{% endif %}</td>
+                </tr>
+                {% endif %}
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="sources"><div class="sources-title">Notes</div>Funding rate is per-8h fractional. Positive = longs pay shorts (bullish conviction). OI/MCap = open interest as % of market cap (leverage intensity). Updated every 5min.</div>
+</div>
+</div>
+
+<!-- ═══ 5-FACTOR CALCULATION ═══ -->
+<div id="dview-f5" class="data-view-panel" style="display:none;">
+<div class="card">
+    <div class="card-header">5-Factor Model &mdash; Raw Input &rarr; Percentile Score ({{ profile }})</div>
+    <p style="padding:0 0 12px;font-size:0.7rem;color:var(--text-muted);">Each factor: raw metric is percentile-ranked (0-100) across the universe. Tied values share the same rank. Composite = weighted sum using {{ profile }} profile weights.</p>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Ticker</th>
+                    <th class="right" style="white-space:normal;max-width:65px;font-size:0.55rem;">Beta Raw<br><span style="font-weight:400;">|30d chg|</span></th>
+                    <th class="right" style="font-size:0.55rem;">Score</th>
+                    <th class="right" style="white-space:normal;max-width:65px;font-size:0.55rem;">Size Raw<br><span style="font-weight:400;">MCap</span></th>
+                    <th class="right" style="font-size:0.55rem;">Score</th>
+                    <th class="right" style="white-space:normal;max-width:65px;font-size:0.55rem;">Value Raw<br><span style="font-weight:400;">Vol/MCap</span></th>
+                    <th class="right" style="font-size:0.55rem;">Score</th>
+                    <th class="right" style="white-space:normal;max-width:65px;font-size:0.55rem;">Mom Raw<br><span style="font-weight:400;">(7d+30d)/vol</span></th>
+                    <th class="right" style="font-size:0.55rem;">Score</th>
+                    <th class="right" style="white-space:normal;max-width:65px;font-size:0.55rem;">Growth Raw<br><span style="font-weight:400;">7d/30d pace</span></th>
+                    <th class="right" style="font-size:0.55rem;">Score</th>
+                    <th class="right" style="font-size:0.6rem;color:var(--electric-sky);">Comp.</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in rows|sort(attribute='f5_composite', reverse=true) %}
+                <tr>
+                    <td style="color:var(--text-muted)">{{ loop.index }}</td>
+                    <td class="ticker"><div class="ticker-cell">{% set logo = get_logo(r.ticker) %}{% if logo %}<img src="{{ logo }}" class="token-logo token-logo-sm" alt="{{ r.ticker }}">{% endif %}{{ r.ticker }}</div></td>
+                    <td class="right" style="font-size:0.7rem;">{{ "{:.1f}".format(r.f5_beta_raw) }}%</td>
+                    <td class="right" style="font-size:0.7rem;font-weight:600;">{{ r.f5_beta_score }}</td>
+                    <td class="right" style="font-size:0.7rem;">{{ "${:,.0f}".format(r.f5_size_raw) if r.f5_size_raw > 1e6 else "${:,.0f}".format(r.f5_size_raw) }}</td>
+                    <td class="right" style="font-size:0.7rem;font-weight:600;">{{ r.f5_size_score }}</td>
+                    <td class="right" style="font-size:0.7rem;">{{ "{:.4f}".format(r.f5_value_raw) }}</td>
+                    <td class="right" style="font-size:0.7rem;font-weight:600;">{{ r.f5_value_score }}</td>
+                    <td class="right" style="font-size:0.7rem;">{{ "{:.1f}".format(r.f5_momentum_raw) }}</td>
+                    <td class="right" style="font-size:0.7rem;font-weight:600;">{{ r.f5_momentum_score }}</td>
+                    <td class="right" style="font-size:0.7rem;">{{ "{:.2f}".format(r.f5_growth_raw) }}</td>
+                    <td class="right" style="font-size:0.7rem;font-weight:600;">{{ r.f5_growth_score }}</td>
+                    <td class="right" style="font-weight:700;color:var(--electric-sky);">{{ r.f5_composite }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="sources">
+        <div class="sources-title">Factor Formulas</div>
+        <strong>Market Beta</strong>: |30d price change|%. Inverse rank (low change = stable = high score).<br>
+        <strong>Size (SMB)</strong>: Market cap. Inverse rank (small cap = high score).<br>
+        <strong>Value</strong>: 24h Volume / Market Cap ratio. Rank (high turnover = high score).<br>
+        <strong>Momentum</strong>: (7d% + 30d%) / max(ATH drawdown, 1) &times; 100. Rank (high = good).<br>
+        <strong>Growth</strong>: 7d% / (30d% / 4). Rank (weekly acceleration vs monthly average).<br>
+    </div>
+</div>
+</div>
+
+<!-- ═══ VA MODEL CALCULATION ═══ -->
+<div id="dview-f10" class="data-view-panel" style="display:none;">
+<div class="card">
+    <div class="card-header">Value Accrual (VA) Model &mdash; Signal [-1,+1] &rarr; Score [0,100] ({{ profile }})</div>
+    <p style="padding:0 0 12px;font-size:0.7rem;color:var(--text-muted);">Aligned with nickel-ls-rv three-pillar framework. Each signal clamped to [-1, +1] using the same normalization constants as the live strategy, then scaled: &minus;1&rarr;0, 0&rarr;50, +1&rarr;100. Composite = weighted sum using {{ profile }} weights.</p>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Ticker</th>
+                    <th class="right" style="white-space:normal;max-width:60px;font-size:0.5rem;">Dilution<br><span style="font-weight:400;">FDV/MCap</span></th>
+                    <th class="right" style="white-space:normal;max-width:60px;font-size:0.5rem;">Supply &Delta;<br><span style="font-weight:400;">&minus;&delta;/3%</span></th>
+                    <th class="right" style="white-space:normal;max-width:60px;font-size:0.5rem;">Buyback<br><span style="font-weight:400;">yield %</span></th>
+                    <th class="right" style="white-space:normal;max-width:60px;font-size:0.5rem;">Rev Cap<br><span style="font-weight:400;">rev/fees</span></th>
+                    <th class="right" style="white-space:normal;max-width:60px;font-size:0.5rem;">Fee Mom<br><span style="font-weight:400;">vs median</span></th>
+                    <th class="right" style="white-space:normal;max-width:60px;font-size:0.5rem;">FDV/Fees<br><span style="font-weight:400;">log P/E</span></th>
+                    <th class="right" style="white-space:normal;max-width:60px;font-size:0.5rem;">FDV/TVL<br><span style="font-weight:400;">log eff.</span></th>
+                    <th class="right" style="font-size:0.6rem;color:var(--electric-sky);">Comp.</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in rows|sort(attribute='va_composite', reverse=true) %}
+                <tr>
+                    <td style="color:var(--text-muted)">{{ loop.index }}</td>
+                    <td class="ticker" style="font-size:0.7rem;"><div class="ticker-cell">{% set logo = get_logo(r.ticker) %}{% if logo %}<img src="{{ logo }}" class="token-logo token-logo-sm" alt="{{ r.ticker }}">{% endif %}{{ r.ticker }}</div></td>
+                    <td class="right" style="font-size:0.6rem;">{{ "{:+.2f}".format(r.va_dilution_sig) }}<br><strong>{{ r.va_dilution_score }}</strong></td>
+                    <td class="right" style="font-size:0.6rem;">{{ "{:+.2f}".format(r.va_supply_sig) }}<br><strong>{{ r.va_supply_score }}</strong></td>
+                    <td class="right" style="font-size:0.6rem;">{{ "{:+.2f}".format(r.va_buyback_sig) }}<br><strong>{{ r.va_buyback_score }}</strong></td>
+                    <td class="right" style="font-size:0.6rem;">{{ "{:+.2f}".format(r.va_revcap_sig) }}<br><strong>{{ r.va_revcap_score }}</strong></td>
+                    <td class="right" style="font-size:0.6rem;">{{ "{:+.2f}".format(r.va_feemom_sig) }}<br><strong>{{ r.va_feemom_score }}</strong></td>
+                    <td class="right" style="font-size:0.6rem;">{{ "{:+.2f}".format(r.va_fdvfees_sig) }}<br><strong>{{ r.va_fdvfees_score }}</strong></td>
+                    <td class="right" style="font-size:0.6rem;">{{ "{:+.2f}".format(r.va_fdvtvl_sig) }}<br><strong>{{ r.va_fdvtvl_score }}</strong></td>
+                    <td class="right" style="font-weight:700;color:var(--electric-sky);">{{ r.va_composite }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="sources">
+        <div class="sources-title">Signal Formulas (nickel-ls-rv aligned)</div>
+        <strong>Dilution</strong>: (2.0 &minus; FDV/MCap) / 1.0. FDV/MCap=1&rarr;+1, =2&rarr;0, =3&rarr;&minus;1.<br>
+        <strong>Supply Delta</strong>: &minus;blended_supply_growth / 3%. Deflation=+1, 3%+ inflation=&minus;1.<br>
+        <strong>Buyback</strong>: (annualized_holder_yield% &minus; 5%) / 15%. Yield=5%&rarr;0, =20%&rarr;+1, =0&rarr;&minus;0.33.<br>
+        <strong>Rev Capture</strong>: holders_revenue / fees_30d, clamped. 100% capture=+1.<br>
+        <strong>Fee Momentum</strong>: (token_fee_growth &minus; universe_median) / 50%. Market-relative.<br>
+        <strong>FDV/Fees</strong>: log-scaled P/E ratio. P/E=100&rarr;0, P/E=10&rarr;+1, P/E=1000&rarr;&minus;1. No fees=&minus;1.<br>
+        <strong>FDV/TVL</strong>: log-scaled capital efficiency. FDV/TVL=10&rarr;0, =1&rarr;+1, =100&rarr;&minus;1.<br>
+    </div>
+</div>
+</div>
+
+<script>
+function switchDataView(view) {
+    document.querySelectorAll('#data-results .scoring-toggle-btn[data-dview]').forEach(b => b.classList.remove('active'));
+    document.querySelector(`#data-results .scoring-toggle-btn[data-dview="${view}"]`)?.classList.add('active');
+    document.querySelectorAll('.data-view-panel').forEach(p => p.style.display = 'none');
+    document.getElementById('dview-' + view).style.display = 'block';
+}
+</script>

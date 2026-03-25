@@ -1,5 +1,5 @@
 """
-Market data client with CoinGecko primary + CoinMarketCap fallback.
+Market data client — CoinMarketCap primary, CoinGecko fallback.
 In-memory TTL cache, retry with exponential backoff.
 """
 import asyncio
@@ -14,12 +14,13 @@ from app.data import TOKEN_MAP, ASSET_UNIVERSE, DEFILLAMA_MAP, DEFILLAMA_FEES_MA
 
 logger = logging.getLogger(__name__)
 
+# ── API Configuration ──────────────────────────────────────────────────
+CMC_BASE = "https://pro-api.coinmarketcap.com"
+CMC_API_KEY = os.getenv("CMC_API_KEY", "92086fab50534fe78d552e3a86dfb0d7")
 COINGECKO_BASE = "https://api.coingecko.com/api/v3"
-CMC_BASE = "https://pro-api.coinmarketcap.com/v1"
-CMC_API_KEY = os.getenv("CMC_API_KEY", "")
 DEFILLAMA_BASE = "https://api.llama.fi"
-DEFILLAMA_FEES_BASE = "https://fees.llama.fi"
 BINANCE_FAPI = "https://fapi.binance.com/fapi/v1"
+
 PRICE_TTL = 300        # 5 minutes
 MARKET_DATA_TTL = 3600 # 1 hour
 DEFILLAMA_TTL = 7200   # 2 hours
@@ -35,6 +36,15 @@ _binance_cache: dict[str, dict] = {}
 _binance_ts: float = 0
 _supply_history: dict[str, list[tuple[float, float]]] = {}  # {cg_id: [(ts, supply), ...]}
 
+# Reverse map: CoinGecko ID → ticker (for cache lookups)
+_CGID_TO_TICKER = {v: k for k, v in TOKEN_MAP.items() if v}
+
+# CMC symbol overrides where our ticker differs from CMC
+CMC_SYMBOL_OVERRIDES = {
+    "ASTER": "ASTR",   # Aster on CMC is ASTR
+    "RNDR": "RENDER",  # Render rebranded ticker on CMC
+}
+
 
 def _coingecko_ids() -> list[str]:
     return [cg_id for cg_id in TOKEN_MAP.values() if cg_id]
@@ -48,7 +58,7 @@ async def _fetch_with_retry(client, method, url, max_retries=3, **kwargs):
         try:
             resp = await client.request(method, url, **kwargs)
             if resp.status_code == 429:
-                wait = 2 ** attempt * 5  # 5s, 10s, 20s
+                wait = 2 ** attempt * 5
                 logger.warning(f"Rate limited (429), retry in {wait}s: {url[:80]}")
                 await asyncio.sleep(wait)
                 continue
@@ -71,7 +81,95 @@ async def _fetch_with_retry(client, method, url, max_retries=3, **kwargs):
     return None
 
 
-# ── CoinGecko price fetch ────────────────────────────────────────────────
+# ── CoinMarketCap — Primary Source ─────────────────────────────────────
+
+async def _fetch_cmc_quotes() -> tuple[dict[str, float], dict[str, dict]]:
+    """
+    Fetch prices + full market data from CMC in a single call.
+    Returns (prices_by_cgid, market_data_by_cgid).
+    """
+    if not CMC_API_KEY:
+        return {}, {}
+
+    # Build symbol list, applying overrides
+    symbols = []
+    ticker_to_cmc_symbol = {}
+    for ticker in TOKEN_MAP.keys():
+        cmc_sym = CMC_SYMBOL_OVERRIDES.get(ticker, ticker)
+        symbols.append(cmc_sym)
+        ticker_to_cmc_symbol[cmc_sym.upper()] = ticker
+
+    prices: dict[str, float] = {}
+    market: dict[str, dict] = {}
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        # Batch into chunks of 40 symbols (CMC free tier drops symbols on large calls)
+        chunk_size = 40
+        for i in range(0, len(symbols), chunk_size):
+            chunk = symbols[i:i + chunk_size]
+            try:
+                resp = await _fetch_with_retry(
+                    client, "GET",
+                    f"{CMC_BASE}/v2/cryptocurrency/quotes/latest",
+                    params={
+                        "symbol": ",".join(chunk),
+                        "convert": "USD",
+                        "aux": "cmc_rank,circulating_supply,total_supply,max_supply",
+                    },
+                    headers={"X-CMC_PRO_API_KEY": CMC_API_KEY},
+                )
+                if not resp:
+                    continue
+
+                data = resp.json().get("data", {})
+
+                for cmc_symbol, entries in data.items():
+                    # v2 returns list per symbol (multiple coins can share a symbol)
+                    coin_list = entries if isinstance(entries, list) else [entries]
+                    if not coin_list:
+                        continue
+                    # Pick the highest-mcap entry
+                    coin = max(coin_list, key=lambda c: (c.get("quote", {}).get("USD", {}).get("market_cap") or 0))
+
+                    # Map back to our ticker
+                    ticker = ticker_to_cmc_symbol.get(cmc_symbol.upper())
+                    if not ticker:
+                        continue
+                    cg_id = TOKEN_MAP.get(ticker)
+                    if not cg_id:
+                        continue
+
+                    quote = coin.get("quote", {}).get("USD", {})
+                    usd_price = quote.get("price")
+                    if usd_price is not None:
+                        prices[cg_id] = usd_price
+
+                    mc = quote.get("market_cap") or 0
+                    fdv = quote.get("fully_diluted_market_cap") or 0
+                    circ_supply = coin.get("circulating_supply") or 0
+                    vol = quote.get("volume_24h") or 0
+
+                    market[cg_id] = {
+                        "market_cap": mc,
+                        "total_volume": vol,
+                        "price_change_24h": quote.get("percent_change_24h") or 0,
+                        "price_change_7d": quote.get("percent_change_7d") or 0,
+                        "price_change_30d": quote.get("percent_change_30d") or 0,
+                        "ath": 0,  # CMC doesn't provide ATH on free tier
+                        "ath_change_pct": -50,  # neutral fallback
+                        "image": "",  # will use CDN fallback
+                        "fdv": fdv,
+                        "fdv_mcap_ratio": fdv / mc if mc > 0 else 0,
+                        "circulating_supply": circ_supply,
+                    }
+            except Exception as e:
+                logger.warning(f"CMC batch fetch failed: {e}")
+
+    logger.info(f"CMC: {len(prices)} prices, {len(market)} market data entries")
+    return prices, market
+
+
+# ── CoinGecko — Fallback ──────────────────────────────────────────────
 
 async def _fetch_prices_coingecko() -> dict[str, float]:
     ids = _coingecko_ids()
@@ -95,77 +193,7 @@ async def _fetch_prices_coingecko() -> dict[str, float]:
     return prices
 
 
-# ── CoinMarketCap fallback ───────────────────────────────────────────────
-
-# CMC uses symbols; map our tickers to CMC-compatible symbols
-def _get_cmc_symbols() -> list[str]:
-    """Return list of ticker symbols for CMC API."""
-    return [t for t in TOKEN_MAP.keys() if t]
-
-
-async def _fetch_prices_cmc() -> dict[str, float]:
-    """Fetch prices from CoinMarketCap as fallback. Returns {coingecko_id: price}."""
-    if not CMC_API_KEY:
-        return {}
-
-    symbols = _get_cmc_symbols()
-    prices: dict[str, float] = {}
-    # CMC maps: symbol -> ticker -> coingecko_id
-    ticker_to_cgid = TOKEN_MAP
-
-    async with httpx.AsyncClient(timeout=30) as client:
-        try:
-            # CMC allows up to 5000 symbols per call
-            resp = await client.get(
-                f"{CMC_BASE}/cryptocurrency/quotes/latest",
-                params={"symbol": ",".join(symbols), "convert": "USD"},
-                headers={"X-CMC_PRO_API_KEY": CMC_API_KEY},
-            )
-            resp.raise_for_status()
-            data = resp.json().get("data", {})
-            for symbol, entries in data.items():
-                # CMC can return a list for ambiguous symbols
-                coin = entries[0] if isinstance(entries, list) else entries
-                usd_price = coin.get("quote", {}).get("USD", {}).get("price")
-                if usd_price is not None:
-                    cg_id = ticker_to_cgid.get(symbol)
-                    if cg_id:
-                        prices[cg_id] = usd_price
-            logger.info(f"CMC fallback: {len(prices)} prices fetched")
-        except Exception as e:
-            logger.warning(f"CMC price fetch failed: {e}")
-
-    return prices
-
-
-# ── Public fetch functions ───────────────────────────────────────────────
-
-async def fetch_prices() -> dict[str, float]:
-    global _price_cache, _price_ts
-    now = time.time()
-    if _price_cache and (now - _price_ts) < PRICE_TTL:
-        return _price_cache
-
-    # Try CoinGecko first
-    prices = await _fetch_prices_coingecko()
-
-    # Fallback to CMC if CoinGecko returned nothing
-    if not prices and CMC_API_KEY:
-        logger.info("CoinGecko returned no prices, trying CMC fallback")
-        prices = await _fetch_prices_cmc()
-
-    if prices:
-        _price_cache = prices
-        _price_ts = now
-    return _price_cache
-
-
-async def fetch_market_data() -> dict[str, dict]:
-    global _market_cache, _market_ts
-    now = time.time()
-    if _market_cache and (now - _market_ts) < MARKET_DATA_TTL:
-        return _market_cache
-
+async def _fetch_market_data_coingecko() -> dict[str, dict]:
     ids = _coingecko_ids()
     result: dict[str, dict] = {}
     async with httpx.AsyncClient(timeout=30) as client:
@@ -203,22 +231,83 @@ async def fetch_market_data() -> dict[str, dict]:
                             "fdv_mcap_ratio": fdv / mc if mc > 0 else 0,
                             "circulating_supply": circ_supply,
                         }
-                        # Track supply history for delta computation
-                        if circ_supply > 0:
-                            if cg_id not in _supply_history:
-                                _supply_history[cg_id] = []
-                            _supply_history[cg_id].append((now, circ_supply))
-                            # Keep last 48 entries (~48h at 1hr intervals)
-                            _supply_history[cg_id] = _supply_history[cg_id][-48:]
             except Exception as e:
                 logger.warning(f"CoinGecko market data fetch failed: {e}")
                 break
+    return result
+
+
+# ── Public fetch functions ───────────────────────────────────────────────
+
+async def fetch_prices() -> dict[str, float]:
+    global _price_cache, _price_ts
+    now = time.time()
+    if _price_cache and (now - _price_ts) < PRICE_TTL:
+        return _price_cache
+
+    # Try CMC first (single call for all tokens)
+    prices, _ = await _fetch_cmc_quotes()
+
+    # Fallback to CoinGecko if CMC failed
+    if not prices:
+        logger.info("CMC returned no prices, trying CoinGecko fallback")
+        prices = await _fetch_prices_coingecko()
+
+    if prices:
+        _price_cache = prices
+        _price_ts = now
+    return _price_cache
+
+
+async def fetch_market_data() -> dict[str, dict]:
+    global _market_cache, _market_ts, _price_cache, _price_ts
+    now = time.time()
+    if _market_cache and (now - _market_ts) < MARKET_DATA_TTL:
+        return _market_cache
+
+    # Try CMC first (single call returns prices + market data)
+    prices, market = await _fetch_cmc_quotes()
+
+    if market:
+        _market_cache = market
+        _market_ts = now
+        # Also update price cache since CMC returns prices in the same call
+        if prices:
+            _price_cache = prices
+            _price_ts = now
+
+        # Track supply history
+        for cg_id, info in market.items():
+            circ_supply = info.get("circulating_supply", 0)
+            if circ_supply > 0:
+                if cg_id not in _supply_history:
+                    _supply_history[cg_id] = []
+                _supply_history[cg_id].append((now, circ_supply))
+                _supply_history[cg_id] = _supply_history[cg_id][-48:]
+
+        logger.info(f"Market data refreshed from CMC: {len(market)} tokens")
+        return _market_cache
+
+    # Fallback to CoinGecko
+    logger.info("CMC market data failed, trying CoinGecko fallback")
+    result = await _fetch_market_data_coingecko()
 
     if result:
         _market_cache = result
         _market_ts = now
+        # Track supply history from CoinGecko
+        for cg_id, info in result.items():
+            circ_supply = info.get("circulating_supply", 0)
+            if circ_supply > 0:
+                if cg_id not in _supply_history:
+                    _supply_history[cg_id] = []
+                _supply_history[cg_id].append((now, circ_supply))
+                _supply_history[cg_id] = _supply_history[cg_id][-48:]
+
     return _market_cache
 
+
+# ── DefiLlama ──────────────────────────────────────────────────────────
 
 async def fetch_defillama_data() -> dict[str, dict]:
     """Fetch TVL and fee data from DefiLlama (free, no API key)."""
@@ -315,6 +404,8 @@ async def fetch_defillama_data() -> dict[str, dict]:
     return _defillama_cache
 
 
+# ── Binance Futures ────────────────────────────────────────────────────
+
 async def fetch_binance_perp_data() -> dict[str, dict]:
     """Fetch funding rates + OI from Binance Futures public API (free, no auth)."""
     global _binance_cache, _binance_ts
@@ -332,7 +423,6 @@ async def fetch_binance_perp_data() -> dict[str, dict]:
                 symbol = item.get("symbol", "")
                 if not symbol.endswith("USDT"):
                     continue
-                # Map BTCUSDT → BTC
                 ticker = symbol.replace("USDT", "")
                 result[ticker] = {
                     "funding_rate": float(item.get("lastFundingRate", 0)),
@@ -345,7 +435,7 @@ async def fetch_binance_perp_data() -> dict[str, dict]:
 
         # Open Interest for tokens in our universe
         tickers_with_perps = [t for t in TOKEN_MAP.keys() if t in result]
-        for ticker in tickers_with_perps[:30]:  # limit to avoid rate issues
+        for ticker in tickers_with_perps[:30]:
             try:
                 resp = await client.get(
                     f"{BINANCE_FAPI}/openInterest",
@@ -357,13 +447,15 @@ async def fetch_binance_perp_data() -> dict[str, dict]:
                     price = result[ticker].get("mark_price", 0)
                     result[ticker]["open_interest_usd"] = result[ticker]["open_interest"] * price
             except Exception:
-                pass  # non-critical, skip silently
+                pass
 
     if result:
         _binance_cache = result
         _binance_ts = now
     return _binance_cache
 
+
+# ── Public getters ─────────────────────────────────────────────────────
 
 def get_binance_info(ticker: str) -> Optional[dict]:
     return _binance_cache.get(ticker)
@@ -379,7 +471,7 @@ def get_supply_delta_pct(ticker: str) -> Optional[float]:
         return None
     oldest_ts, oldest_supply = history[0]
     latest_ts, latest_supply = history[-1]
-    if oldest_supply <= 0 or (latest_ts - oldest_ts) < 1800:  # need at least 30min of history
+    if oldest_supply <= 0 or (latest_ts - oldest_ts) < 1800:
         return None
     return (latest_supply - oldest_supply) / oldest_supply * 100
 
@@ -403,15 +495,15 @@ def get_market_info(ticker: str) -> Optional[dict]:
 
 
 def get_logo_url(ticker: str) -> str:
-    """Return logo URL for a ticker. Uses CoinGecko cache, falls back to CryptoLogos CDN."""
+    """Return logo URL for a ticker. Uses cached image or CDN fallback."""
     cg_id = TOKEN_MAP.get(ticker)
     if not cg_id:
         return ""
-    # Try cached CoinGecko image first
+    # Try cached image (CoinGecko fallback may have populated this)
     info = _market_cache.get(cg_id)
     if info and info.get("image"):
         return info["image"]
-    # Fallback: cryptofonts CDN (free, no API key, works by ticker symbol)
+    # CDN fallback (free, no API key)
     return f"https://cryptofonts.com/img/icons/{ticker.lower()}.svg"
 
 
@@ -429,7 +521,7 @@ async def background_refresh():
         try:
             await fetch_prices()
             await fetch_market_data()
-            logger.info(f"Market data refreshed: {len(_price_cache)} prices")
+            logger.info(f"Market data refreshed: {len(_price_cache)} prices, {len(_market_cache)} market")
         except Exception as e:
             logger.error(f"Background refresh error: {e}")
         try:

@@ -1,15 +1,18 @@
 """
 Allocation engine — factor scoring, DCA planner, rebalancer, P&L calculator.
 
-Factor scores are computed from live CoinGecko market data rather than
-static defaults. Each factor is scored 0-100 using percentile ranking
-across the universe.
+5-Factor model: percentile-ranked market factors (beta, size, value, momentum, growth).
+VA model: nickel-ls-rv aligned value accrual signals, clamped [-1,+1] then scaled to [0,100].
 """
 import math
 from app.data import (
     ASSET_UNIVERSE, ASSET_BY_TICKER, ASSET_UNIVERSES,
     FIXED_STRATEGIC, TIER_ALLOCATIONS,
-    FIVE_FACTOR_WEIGHTS, TEN_FACTOR_WEIGHTS,
+    FIVE_FACTOR_WEIGHTS, TEN_FACTOR_WEIGHTS, VA_FACTOR_WEIGHTS,
+    VA_FDV_MCAP_NEUTRAL, VA_SUPPLY_DELTA_NORMALIZE,
+    VA_BUYBACK_NEUTRAL, VA_BUYBACK_MAX,
+    VA_FEE_MOMENTUM_NORMALIZE, VA_FDV_FEES_NEUTRAL, VA_FDV_TVL_NEUTRAL,
+    VA_REGISTRY, VA_GATE_MIN_FEES_30D, VA_NO_ACCRUAL_FLOOR, VA_NO_ACCRUAL_MCAP_FLOOR,
     DCA_SCOPES, get_alloc_tier,
 )
 from app.market_data import get_price, get_market_info, get_defillama_info, get_binance_info, get_supply_delta_pct
@@ -20,9 +23,9 @@ def get_universe_tickers(universe_name: str) -> list[str]:
     explicit = ASSET_UNIVERSES.get(universe_name)
     if isinstance(explicit, list):
         return explicit
-    if universe_name == "Extended (79)":
+    if "Extended" in universe_name:
         return [a["ticker"] for a in ASSET_UNIVERSE]
-    if universe_name == "Long (53)":
+    if "Long" in universe_name:
         return [a["ticker"] for a in ASSET_UNIVERSE if a["tier"] != "Short"]
     return [a["ticker"] for a in ASSET_UNIVERSE]
 
@@ -30,7 +33,8 @@ def get_universe_tickers(universe_name: str) -> list[str]:
 # ── Percentile scoring helper ──────────────────────────────────────────
 
 def _percentile_rank(values: list[float]) -> list[float]:
-    """Convert raw values to 0-100 percentile scores. Higher value = higher score."""
+    """Convert raw values to 0-100 percentile scores. Higher value = higher score.
+    Tied values receive the average rank (fractional ranking)."""
     if not values:
         return []
     n = len(values)
@@ -38,8 +42,17 @@ def _percentile_rank(values: list[float]) -> list[float]:
         return [50.0]
     indexed = sorted(enumerate(values), key=lambda x: x[1])
     ranks = [0.0] * n
-    for rank_pos, (orig_idx, _) in enumerate(indexed):
-        ranks[orig_idx] = round(rank_pos / (n - 1) * 100, 1)
+    # Group ties and assign average rank
+    i = 0
+    while i < n:
+        j = i
+        while j < n and indexed[j][1] == indexed[i][1]:
+            j += 1
+        avg_rank = sum(range(i, j)) / (j - i)
+        for k in range(i, j):
+            orig_idx = indexed[k][0]
+            ranks[orig_idx] = round(avg_rank / (n - 1) * 100, 1)
+        i = j
     return ranks
 
 
@@ -187,115 +200,176 @@ def compute_live_five_factor_scores(tickers: list[str]) -> dict[str, dict[str, f
     return result
 
 
+def _clamp(v: float, lo: float = -1.0, hi: float = 1.0) -> float:
+    return max(lo, min(hi, v))
+
+
+def _signal_to_score(signal: float) -> float:
+    """Convert a [-1, +1] VA signal to [0, 100] display score. 0→50, +1→100, -1→0."""
+    return round(_clamp(signal) * 50 + 50, 1)
+
+
 def compute_live_ten_factor_scores(tickers: list[str]) -> dict[str, dict[str, float]]:
     """
-    Compute 10-factor fundamental scores using DefiLlama (fees, TVL, revenue)
-    + CoinGecko (market cap, FDV, price momentum) data.
+    Compute Value Accrual (VA) scores aligned with nickel-ls-rv three-pillar framework.
+    Each signal is computed using the same formula and normalization constants as the
+    live trading bot, clamped to [-1, +1], then scaled to [0, 100] for display.
 
-    Mirrors nickel-ls-rv VA signals (long orientation = high score is good):
-      Value (P/S)          — lower P/S = better value (DefiLlama fees / CG mcap)
-      Fee Momentum         — positive fee trend = good (DefiLlama fee change)
-      TVL Health           — growing TVL = healthy (DefiLlama TVL change)
-      Revenue Quality      — high holder rev / fees = good capture (DefiLlama)
-      Usage Growth         — positive volume/price momentum (CoinGecko 7d)
-      Risk (Low Vol)       — lower volatility = safer (CoinGecko 30d abs change)
-      Dilution Safety      — low FDV/MCap = less dilution risk (DefiLlama/CG)
-      Float Quality        — mature float, low supply growth (CoinGecko)
-      Smart Money          — positive 30d momentum = SM accumulating (CG proxy)
-      Developer Momentum   — 7d acceleration vs 30d trend (CG proxy)
+    7 signals (unlock excluded — no Messari data):
+      Dilution          — (neutral - FDV/MCap) / (neutral - 1), neutral=2.0
+      Supply Delta      — -blended_delta / 3%, contracting = positive
+      Buyback Intensity — (BI% - 5%) / 15%, annualized holder yield
+      Rev Capture       — holders_revenue / fees_30d, clamped
+      Fee Momentum      — (fee_mom - median) / 50%, market-relative
+      FDV / Fees        — log-scaled P/E, neutral=100
+      FDV / TVL         — log-scaled capital efficiency, neutral=10
     """
     if not tickers:
         return {}
 
     raw = _get_raw_market_vectors(tickers)
-    factor_names = list(TEN_FACTOR_WEIGHTS.keys())
+    factor_names = list(VA_FACTOR_WEIGHTS.keys())
 
-    # ── Collect raw values per factor ──
-    value_raw = []       # P/S: lower is better value
-    fee_mom_raw = []     # fee momentum %: higher is better
-    tvl_raw = []         # TVL change %: higher is better
-    rev_qual_raw = []    # revenue capture ratio: higher is better
-    usage_raw = []       # 7d change: higher is better
-    risk_raw = []        # abs 30d change: lower is better
-    dilution_raw = []    # FDV/MCap: lower is better (safer)
-    supply_raw = []      # supply delta: contracting = higher score
-    smart_raw = []       # funding rate + OI: higher is better
-    dev_raw = []         # 7d acceleration: higher is better
-
-    for i, t in enumerate(tickers):
+    # Collect fee momentum values across universe to compute median (market-relative)
+    all_fee_moms = []
+    for t in tickers:
         dl = get_defillama_info(t)
-        cg = get_market_info(t)
-        mc = raw["market_caps"][i]
-
-        # Value (P/S) — use DefiLlama fees if available, else vol/mcap proxy
-        if dl and dl.get("fees_30d", 0) > 0:
-            annual_fees = dl["fees_30d"] * 12
-            ps = mc / annual_fees if annual_fees > 0 else 999
-            value_raw.append(ps)
-        else:
-            # Fallback: vol/mcap as value proxy (higher turnover = cheaper)
-            value_raw.append(1 / raw["vol_mcap_ratios"][i] if raw["vol_mcap_ratios"][i] > 0 else 999)
-
-        # Fee Momentum — DefiLlama fee trend, fallback to 7d price change
         if dl and "fee_momentum" in dl:
-            fee_mom_raw.append(dl["fee_momentum"])
-        else:
-            fee_mom_raw.append(raw["change_7d"][i])
-
-        # TVL Health — DefiLlama TVL 7d change, fallback to inverse ATH drawdown
-        if dl and "tvl_change_7d" in dl:
-            tvl_raw.append(dl["tvl_change_7d"])
-        else:
-            tvl_raw.append(100 - raw["ath_drawdowns"][i])
-
-        # Revenue Quality — DefiLlama rev capture ratio, fallback to vol/mcap
-        if dl and "revenue_capture" in dl and dl["revenue_capture"] > 0:
-            rev_qual_raw.append(dl["revenue_capture"] * 100)  # 0-100 scale
-        else:
-            rev_qual_raw.append(raw["vol_mcap_ratios"][i] * 100)
-
-        # Usage Growth — 7d price change as usage proxy
-        usage_raw.append(raw["change_7d"][i])
-
-        # Risk (Low Vol) — absolute 30d change (lower = safer)
-        risk_raw.append(abs(raw["change_30d"][i]))
-
-        # Dilution Safety — FDV/MCap from CoinGecko (universal coverage)
-        dilution_raw.append(raw["fdv_mcap_ratios"][i])
-
-        # Supply Health — contracting supply = bullish (burns, staking lockup)
-        supply_raw.append(-raw["supply_deltas"][i])  # negative delta = good → invert
-
-        # Smart Money — perp funding rate (positive = longs paying = bullish conviction)
-        # Falls back to 30d momentum if Binance data unavailable
-        fr = raw["funding_rates"][i]
-        if fr != 0:
-            smart_raw.append(fr * 10000)  # scale: 0.0001 → 1.0
-        else:
-            smart_raw.append(raw["change_30d"][i] / 10)  # weak fallback
-
-        # Developer Momentum — 7d acceleration vs 30d
-        c7 = raw["change_7d"][i]
-        c30 = raw["change_30d"][i]
-        dev_raw.append(c7 - c30 * 0.25)
-
-    # ── Percentile rank each factor ──
-    scores_list = [
-        _inverse_percentile_rank(value_raw),     # Low P/S = high score
-        _percentile_rank(fee_mom_raw),            # High fee growth = high score
-        _percentile_rank(tvl_raw),                # Growing TVL = high score
-        _percentile_rank(rev_qual_raw),           # High rev capture = high score
-        _percentile_rank(usage_raw),              # High usage growth = high score
-        _inverse_percentile_rank(risk_raw),       # Low vol = high score
-        _inverse_percentile_rank(dilution_raw),   # Low dilution = high score
-        _percentile_rank(supply_raw),             # Contracting supply = high score
-        _percentile_rank(smart_raw),              # Positive funding = high score
-        _percentile_rank(dev_raw),                # High dev momentum = high score
-    ]
+            all_fee_moms.append(dl["fee_momentum"])
+    median_fee_mom = sorted(all_fee_moms)[len(all_fee_moms) // 2] if all_fee_moms else 0
 
     result = {}
     for i, t in enumerate(tickers):
-        result[t] = {factor_names[j]: scores_list[j][i] for j in range(10)}
+        dl = get_defillama_info(t) or {}
+        mc = raw["market_caps"][i]
+        fdv = mc * raw["fdv_mcap_ratios"][i] if raw["fdv_mcap_ratios"][i] > 0 else mc
+
+        # ── 1. Dilution: (neutral - FDV/MCap) / (neutral - 1) ──
+        fdv_mcap = raw["fdv_mcap_ratios"][i] if raw["fdv_mcap_ratios"][i] > 0 else VA_FDV_MCAP_NEUTRAL
+        dilution_sig = _clamp((VA_FDV_MCAP_NEUTRAL - fdv_mcap) / (VA_FDV_MCAP_NEUTRAL - 1.0))
+
+        # ── 2. Supply Delta: -delta / normalize ──
+        sd = raw["supply_deltas"][i]
+        supply_sig = _clamp(-sd / VA_SUPPLY_DELTA_NORMALIZE) if sd != 0 else 0.0
+
+        # ── 3. Buyback Intensity: annualized holder yield vs neutral/max ──
+        holders_rev = dl.get("revenue_30d", 0)
+        free_float_mc = mc  # approximate (no float data without Messari)
+        if holders_rev > 0 and free_float_mc > 0:
+            bi_pct = (holders_rev * 12) / free_float_mc * 100
+            if bi_pct >= VA_BUYBACK_NEUTRAL:
+                buyback_sig = _clamp((bi_pct - VA_BUYBACK_NEUTRAL) / (VA_BUYBACK_MAX - VA_BUYBACK_NEUTRAL))
+            else:
+                buyback_sig = _clamp((bi_pct - VA_BUYBACK_NEUTRAL) / VA_BUYBACK_NEUTRAL)
+        else:
+            buyback_sig = 0.0  # no data = neutral
+
+        # ── 4. Rev Capture: holders_revenue / fees ──
+        fees_30d = dl.get("fees_30d", 0)
+        if fees_30d > 0 and holders_rev > 0:
+            rev_capture_sig = _clamp(holders_rev / fees_30d)
+        else:
+            rev_capture_sig = 0.0
+
+        # ── 5. Fee Momentum: market-relative, normalized ──
+        if dl and "fee_momentum" in dl:
+            relative_mom = dl["fee_momentum"] - median_fee_mom
+            fee_mom_sig = _clamp(relative_mom / VA_FEE_MOMENTUM_NORMALIZE)
+        else:
+            fee_mom_sig = 0.0  # no data = neutral
+
+        # ── 6. FDV / Fees (P/E): log-scaled, neutral=100 ──
+        if fees_30d > 0 and fdv > 0:
+            annual_fees = fees_30d * 12
+            pe = fdv / annual_fees if annual_fees > 0 else 9999
+            if pe > 0:
+                log_pe = math.log(pe)
+                log_neutral = math.log(VA_FDV_FEES_NEUTRAL)
+                fdv_fees_sig = _clamp((log_neutral - log_pe) / log_neutral)
+            else:
+                fdv_fees_sig = 1.0
+        else:
+            fdv_fees_sig = -1.0  # no fees = worst
+
+        # ── 7. FDV / TVL: log-scaled, neutral=10 ──
+        tvl = dl.get("tvl", 0)
+        if tvl > 0 and fdv > 0:
+            ratio = fdv / tvl
+            if ratio > 0:
+                log_ratio = math.log(ratio)
+                log_neutral = math.log(VA_FDV_TVL_NEUTRAL)
+                fdv_tvl_sig = _clamp((log_neutral - log_ratio) / log_neutral)
+            else:
+                fdv_tvl_sig = 1.0
+        else:
+            fdv_tvl_sig = 0.0  # no TVL = neutral
+
+        # ── VA Registry gating (nickel-ls-rv aligned) ──
+        registry = VA_REGISTRY.get(t, {})
+        mechanism = registry.get("mechanism", "unknown")
+        has_accrual_mechanism = mechanism not in ("none", "unknown")
+
+        # Gate: If mechanism is "none" → zero out buyback and rev_capture
+        if mechanism == "none":
+            buyback_sig = 0.0
+            rev_capture_sig = 0.0
+
+        # Gate 1: Extractive protocol — has fees but no holder revenue and no known mechanism
+        has_meaningful_fees = fees_30d >= VA_GATE_MIN_FEES_30D
+        has_holder_revenue = holders_rev > 0
+        if has_meaningful_fees and not has_holder_revenue and not has_accrual_mechanism:
+            dilution_sig = min(dilution_sig, 0.0)
+            supply_sig = min(supply_sig, 0.0)
+            buyback_sig = min(buyback_sig, 0.0)
+            rev_capture_sig = min(rev_capture_sig, 0.0)
+            fee_mom_sig = min(fee_mom_sig, 0.0)
+            fdv_fees_sig = min(fdv_fees_sig, 0.0)
+            fdv_tvl_sig = min(fdv_tvl_sig, 0.0)
+
+        # Gate 2: No-accrual floor for large caps ($1B+)
+        if mechanism == "none" and mc >= VA_NO_ACCRUAL_MCAP_FLOOR:
+            buyback_sig = VA_NO_ACCRUAL_FLOOR
+            rev_capture_sig = VA_NO_ACCRUAL_FLOOR
+            if abs(fee_mom_sig) < 0.05:
+                fee_mom_sig = VA_NO_ACCRUAL_FLOOR
+
+        # Gate 3: Fee momentum haircut if no revenue mechanism
+        if fee_mom_sig > 0 and not has_accrual_mechanism:
+            fee_mom_sig *= 0.2
+
+        # Store as 0-100 scores + raw signals for the data tab
+        result[t] = {
+            factor_names[0]: _signal_to_score(dilution_sig),
+            factor_names[1]: _signal_to_score(supply_sig),
+            factor_names[2]: _signal_to_score(buyback_sig),
+            factor_names[3]: _signal_to_score(rev_capture_sig),
+            factor_names[4]: _signal_to_score(fee_mom_sig),
+            factor_names[5]: _signal_to_score(fdv_fees_sig),
+            factor_names[6]: _signal_to_score(fdv_tvl_sig),
+            "_va_signals": {
+                "dilution": round(dilution_sig, 3),
+                "supply_delta": round(supply_sig, 3),
+                "buyback": round(buyback_sig, 3),
+                "rev_capture": round(rev_capture_sig, 3),
+                "fee_momentum": round(fee_mom_sig, 3),
+                "fdv_fees": round(fdv_fees_sig, 3),
+                "fdv_tvl": round(fdv_tvl_sig, 3),
+            },
+            "_va_raw": {
+                "fdv_mcap": round(fdv_mcap, 2),
+                "supply_delta_pct": round(sd, 3),
+                "buyback_yield_pct": round((holders_rev * 12) / free_float_mc * 100, 2) if holders_rev > 0 and free_float_mc > 0 else 0,
+                "rev_capture_ratio": round(holders_rev / fees_30d, 3) if fees_30d > 0 and holders_rev > 0 else 0,
+                "fee_momentum_pct": round(dl.get("fee_momentum", 0), 1),
+                "pe_ratio": round(fdv / (fees_30d * 12), 1) if fees_30d > 0 else None,
+                "fdv_tvl_ratio": round(fdv / tvl, 2) if tvl > 0 else None,
+                "fees_30d": fees_30d,
+                "holders_revenue_30d": holders_rev,
+                "tvl": tvl,
+                "mechanism": mechanism,
+                "has_accrual": has_accrual_mechanism,
+            },
+        }
     return result
 
 
@@ -323,7 +397,7 @@ def compute_ten_factor_scores(profile: str, tickers: list[str]) -> dict[str, flo
     for t in tickers:
         scores = individual.get(t, {})
         composite = 0
-        for factor, weights in TEN_FACTOR_WEIGHTS.items():
+        for factor, weights in VA_FACTOR_WEIGHTS.items():
             w = weights.get(profile, 0)
             s = scores.get(factor, 50)
             composite += w * s
@@ -354,16 +428,22 @@ def five_factor_detail(profile: str, tickers: list[str]) -> list[dict]:
 
 def ten_factor_detail(profile: str, tickers: list[str]) -> list[dict]:
     individual = compute_live_ten_factor_scores(tickers)
+    # Also get raw market data for charts/underlying data view
+    five_individual = compute_live_five_factor_scores(tickers)
     results = []
     for t in tickers:
         scores = individual.get(t, {})
         row = {"ticker": t, "name": ASSET_BY_TICKER.get(t, {}).get("name", t)}
         composite = 0
-        for factor, weights in TEN_FACTOR_WEIGHTS.items():
+        for factor, weights in VA_FACTOR_WEIGHTS.items():
             s = scores.get(factor, 50)
             row[factor] = round(s, 1)
             composite += weights.get(profile, 0) * s
         row["composite"] = round(composite, 1)
+        row["_raw"] = five_individual.get(t, {}).get("_raw", {})
+        row["_data_missing"] = five_individual.get(t, {}).get("_data_missing", False)
+        row["_va_signals"] = scores.get("_va_signals", {})
+        row["_va_raw"] = scores.get("_va_raw", {})
         results.append(row)
     results.sort(key=lambda x: -x["composite"])
     return results
@@ -432,6 +512,142 @@ def token_scorecard(ticker: str, profile: str, universe_tickers: list[str] = Non
     }
 
 
+# ── Full data breakdown for Data tab ──────────────────────────────────
+
+def full_data_breakdown(tickers: list[str], profile: str) -> list[dict]:
+    """
+    Return per-token rows with ALL raw inputs, intermediate computations,
+    and final scores — so users can trace every number.
+    """
+    if not tickers:
+        return []
+
+    raw = _get_raw_market_vectors(tickers)
+
+    # ── 5-Factor intermediates ──
+    beta_raw = [abs(c) for c in raw["change_30d"]]
+    size_raw = raw["market_caps"]
+    value_raw = raw["vol_mcap_ratios"]
+    momentum_raw = []
+    growth_raw = []
+    for i in range(len(tickers)):
+        c7, c30, ath_dd = raw["change_7d"][i], raw["change_30d"][i], raw["ath_drawdowns"][i]
+        total_return = c7 + c30
+        vol_adj = max(ath_dd, 1.0)
+        momentum_raw.append(total_return / vol_adj * 100)
+        weekly_pace = c7
+        monthly_weekly_pace = c30 / 4.0 if c30 != 0 else 0.01
+        if abs(monthly_weekly_pace) > 0.1:
+            growth_raw.append(weekly_pace / monthly_weekly_pace)
+        else:
+            growth_raw.append(weekly_pace)
+
+    beta_scores = _inverse_percentile_rank(beta_raw)
+    size_scores = _inverse_percentile_rank(size_raw)
+    value_scores = _percentile_rank(value_raw)
+    momentum_scores = _percentile_rank(momentum_raw)
+    growth_scores = _percentile_rank(growth_raw)
+
+    # ── VA model scores (uses nickel-ls-rv aligned signals) ──
+    va_scores = compute_live_ten_factor_scores(tickers)
+
+    five_factor_names = list(FIVE_FACTOR_WEIGHTS.keys())
+    va_factor_names = list(VA_FACTOR_WEIGHTS.keys())
+
+    rows = []
+    for i, t in enumerate(tickers):
+        dl = get_defillama_info(t) or {}
+        bn = get_binance_info(t) or {}
+        asset = ASSET_BY_TICKER.get(t, {})
+        va = va_scores.get(t, {})
+        va_sigs = va.get("_va_signals", {})
+        va_raw = va.get("_va_raw", {})
+
+        # 5-factor composite
+        five_composite = sum([
+            beta_scores[i] * FIVE_FACTOR_WEIGHTS[five_factor_names[0]].get(profile, 0),
+            size_scores[i] * FIVE_FACTOR_WEIGHTS[five_factor_names[1]].get(profile, 0),
+            value_scores[i] * FIVE_FACTOR_WEIGHTS[five_factor_names[2]].get(profile, 0),
+            momentum_scores[i] * FIVE_FACTOR_WEIGHTS[five_factor_names[3]].get(profile, 0),
+            growth_scores[i] * FIVE_FACTOR_WEIGHTS[five_factor_names[4]].get(profile, 0),
+        ])
+
+        # VA composite
+        va_composite = sum(
+            va.get(f, 50) * VA_FACTOR_WEIGHTS[f].get(profile, 0)
+            for f in va_factor_names
+        )
+
+        rows.append({
+            "ticker": t,
+            "name": asset.get("name", t),
+            "category": asset.get("category", ""),
+            # ── Raw Market Data (CMC) ──
+            "price": get_price(t) or 0,
+            "market_cap": raw["market_caps"][i],
+            "volume_24h": raw["volumes"][i],
+            "vol_mcap_ratio": raw["vol_mcap_ratios"][i],
+            "change_24h": raw["change_24h"][i],
+            "change_7d": raw["change_7d"][i],
+            "change_30d": raw["change_30d"][i],
+            "ath_drawdown": raw["ath_drawdowns"][i],
+            "fdv_mcap_ratio": raw["fdv_mcap_ratios"][i],
+            # ── DeFiLlama ──
+            "tvl": dl.get("tvl", 0),
+            "tvl_change_7d": dl.get("tvl_change_7d", 0),
+            "fees_30d": dl.get("fees_30d", 0),
+            "fees_7d": dl.get("fees_7d", 0),
+            "revenue_30d": dl.get("revenue_30d", 0),
+            "fee_momentum": dl.get("fee_momentum", 0),
+            "revenue_capture": dl.get("revenue_capture", 0),
+            "has_defi": bool(dl),
+            # ── Binance ──
+            "funding_rate": bn.get("funding_rate", 0),
+            "open_interest_usd": bn.get("open_interest_usd", 0),
+            "has_perp": bool(bn),
+            # ── Supply ──
+            "supply_delta": raw["supply_deltas"][i],
+            # ── 5-Factor: raw input → score ──
+            "f5_beta_raw": beta_raw[i],
+            "f5_beta_score": beta_scores[i],
+            "f5_size_raw": size_raw[i],
+            "f5_size_score": size_scores[i],
+            "f5_value_raw": value_raw[i],
+            "f5_value_score": value_scores[i],
+            "f5_momentum_raw": momentum_raw[i],
+            "f5_momentum_score": momentum_scores[i],
+            "f5_growth_raw": growth_raw[i],
+            "f5_growth_score": growth_scores[i],
+            "f5_composite": round(five_composite, 1),
+            # ── VA Model: signal [-1,+1] → score [0,100] ──
+            "va_dilution_sig": va_sigs.get("dilution", 0),
+            "va_dilution_score": va.get("Dilution", 50),
+            "va_supply_sig": va_sigs.get("supply_delta", 0),
+            "va_supply_score": va.get("Supply Delta", 50),
+            "va_buyback_sig": va_sigs.get("buyback", 0),
+            "va_buyback_score": va.get("Buyback Intensity", 50),
+            "va_revcap_sig": va_sigs.get("rev_capture", 0),
+            "va_revcap_score": va.get("Rev Capture", 50),
+            "va_feemom_sig": va_sigs.get("fee_momentum", 0),
+            "va_feemom_score": va.get("Fee Momentum", 50),
+            "va_fdvfees_sig": va_sigs.get("fdv_fees", 0),
+            "va_fdvfees_score": va.get("FDV / Fees", 50),
+            "va_fdvtvl_sig": va_sigs.get("fdv_tvl", 0),
+            "va_fdvtvl_score": va.get("FDV / TVL", 50),
+            "va_composite": round(va_composite, 1),
+            # ── VA raw inputs ──
+            "va_pe_ratio": va_raw.get("pe_ratio"),
+            "va_fdv_tvl_ratio": va_raw.get("fdv_tvl_ratio"),
+            "va_buyback_yield": va_raw.get("buyback_yield_pct", 0),
+            "va_rev_capture_ratio": va_raw.get("rev_capture_ratio", 0),
+            "va_mechanism": va_raw.get("mechanism", "unknown"),
+            "va_has_accrual": va_raw.get("has_accrual", False),
+        })
+
+    rows.sort(key=lambda x: -x["market_cap"])
+    return rows
+
+
 # ── Allocation engine (unchanged) ──────────────────────────────────────
 
 def compute_allocations(profile: str, universe: str, mode: str = "Standard") -> list[dict]:
@@ -462,7 +678,7 @@ def compute_allocations(profile: str, universe: str, mode: str = "Standard") -> 
     scores = {}
     if mode == "Factor Model":
         scores = compute_five_factor_scores(profile, crypto_tickers)
-    elif mode == "Fundamental Model":
+    elif mode == "VA Model":
         scores = compute_ten_factor_scores(profile, crypto_tickers)
 
     for tier_name, tier_tickers in tier_groups.items():

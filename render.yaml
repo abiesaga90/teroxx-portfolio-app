@@ -8,3 +8,5 @@ services:
     envVars:
       - key: PORT
         value: "8000"
+      - key: CMC_API_KEY
+        value: "92086fab50534fe78d552e3a86dfb0d7"

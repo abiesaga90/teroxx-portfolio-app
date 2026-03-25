@@ -734,6 +734,7 @@ sup.src {
 }
 .chart-box canvas {
     width: 100% !important;
+    height: 300px !important;
     max-height: 350px;
 }
 .chart-box-wide {

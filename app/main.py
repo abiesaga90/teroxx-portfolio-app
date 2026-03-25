@@ -22,6 +22,7 @@ from app.engine import (
     compute_allocations, compute_portfolio, compute_dca,
     compute_rebalance, compute_pnl, compute_rebalance_pnl,
     get_universe_tickers, five_factor_detail, ten_factor_detail, token_scorecard,
+    full_data_breakdown,
 )
 from app.market_data import fetch_prices, fetch_market_data, price_age_str, background_refresh, get_logo_url
 
@@ -29,12 +30,12 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 UNIVERSE_OPTIONS = [
-    "Teroxx Core (10)",
-    "Teroxx Core+Additional (16)",
-    "Pre-Kraken Embed (23)",
-    "Full (25)",
-    "Long (53)",
-    "Extended (79)",
+    "Teroxx Core (9)",
+    "Teroxx Core+Additional (15)",
+    "Pre-Kraken Embed (22)",
+    "Full (24)",
+    "Long (52)",
+    "Extended (78)",
 ]
 
 
@@ -94,7 +95,7 @@ def _position_chart_data(positions: list[dict]) -> str:
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     profile = "Balanced"
-    universe = "Full (25)"
+    universe = "Full (24)"
     mode = "Standard"
     portfolio_value = 100000
     positions = compute_portfolio(profile, universe, mode, portfolio_value)
@@ -131,7 +132,7 @@ async def index(request: Request):
 async def portfolio_partial(
     request: Request,
     profile: str = Form("Balanced"),
-    universe: str = Form("Full (25)"),
+    universe: str = Form("Full (24)"),
     mode: str = Form("Standard"),
     portfolio_value: float = Form(100000),
 ):
@@ -193,14 +194,14 @@ async def portfolio_partial(
 async def scoring_partial(
     request: Request,
     profile: str = Form("Balanced"),
-    universe: str = Form("Full (25)"),
+    universe: str = Form("Full (24)"),
     model: str = Form("factor"),
 ):
     tickers = [t for t in get_universe_tickers(universe) if t not in ("USDC", "EURC", "PAXG")]
     if model == "fundamental":
         detail = ten_factor_detail(profile, tickers)
         weights = TEN_FACTOR_WEIGHTS
-        model_label = "10-Factor Fundamental"
+        model_label = "Value Accrual (VA)"
         is_fundamental = True
     else:
         detail = five_factor_detail(profile, tickers)
@@ -264,7 +265,7 @@ async def scoring_partial(
 async def dca_partial(
     request: Request,
     profile: str = Form("Balanced"),
-    universe: str = Form("Full (25)"),
+    universe: str = Form("Full (24)"),
     mode: str = Form("Standard"),
     monthly_amount: float = Form(1000),
     dca_scope: str = Form("BTC + Large Cap"),
@@ -299,7 +300,7 @@ async def dca_partial(
 async def rebalance_pnl_partial(
     request: Request,
     profile: str = Form("Balanced"),
-    universe: str = Form("Full (25)"),
+    universe: str = Form("Full (24)"),
     mode: str = Form("Standard"),
     portfolio_value: float = Form(100000),
     positions_json: str = Form("{}"),
@@ -344,4 +345,21 @@ async def token_detail(request: Request, ticker: str, profile: str = "Balanced")
         "request": request,
         "d": data,
         "radar_data": radar_data,
+    })
+
+
+@app.post("/api/data", response_class=HTMLResponse)
+async def data_partial(
+    request: Request,
+    profile: str = Form("Balanced"),
+    universe: str = Form("Full (24)"),
+):
+    tickers = [t for t in get_universe_tickers(universe) if t not in ("USDC", "EURC", "PAXG")]
+    rows = full_data_breakdown(tickers, profile)
+    return templates.TemplateResponse("partials/data_results.html", {
+        "request": request,
+        "rows": rows,
+        "profile": profile,
+        "profiles": RISK_PROFILES,
+        "price_age": price_age_str(),
     })

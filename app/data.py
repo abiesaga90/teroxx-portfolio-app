@@ -19,13 +19,13 @@ DRAWDOWN_IMPACT = {
     "Crypto -30%": {"Conservative": -0.135, "Balanced": -0.231, "Growth": -0.276, "Aggressive": -0.297},
 }
 
-ALLOCATION_MODES = ["Standard", "Factor Model", "Fundamental Model"]
+ALLOCATION_MODES = ["Standard", "Factor Model", "VA Model"]
 
 ASSET_UNIVERSES = {
-    "Teroxx Core (10)": ["USDC", "EURC", "PAXG", "BTC", "ETH", "BNB", "XRP", "ADA", "POL", "HT"],
-    "Teroxx Core+Additional (16)": ["USDC", "EURC", "PAXG", "BTC", "ETH", "BNB", "XRP", "ADA", "POL", "HT", "LTC", "LINK", "BCH", "TRX", "SOL", "XLM"],
-    "Pre-Kraken Embed (23)": ["USDC", "EURC", "PAXG", "BTC", "ETH", "BNB", "XRP", "ADA", "POL", "HT", "LTC", "LINK", "BCH", "TRX", "SOL", "XLM", "DOT", "AVAX", "AAVE", "UNI", "TON", "MNT", "ASTER"],
-    "Full (25)": ["USDC", "EURC", "PAXG", "BTC", "ETH", "BNB", "XRP", "ADA", "POL", "HT", "LTC", "LINK", "BCH", "TRX", "SOL", "XLM", "HYPE", "DOT", "AVAX", "SUI", "AAVE", "UNI", "TON", "MNT", "ASTER"],
+    "Teroxx Core (9)": ["USDC", "EURC", "PAXG", "BTC", "ETH", "BNB", "XRP", "ADA", "POL"],
+    "Teroxx Core+Additional (15)": ["USDC", "EURC", "PAXG", "BTC", "ETH", "BNB", "XRP", "ADA", "POL", "LTC", "LINK", "BCH", "TRX", "SOL", "XLM"],
+    "Pre-Kraken Embed (22)": ["USDC", "EURC", "PAXG", "BTC", "ETH", "BNB", "XRP", "ADA", "POL", "LTC", "LINK", "BCH", "TRX", "SOL", "XLM", "DOT", "AVAX", "AAVE", "UNI", "TON", "MNT", "ASTER"],
+    "Full (24)": ["USDC", "EURC", "PAXG", "BTC", "ETH", "BNB", "XRP", "ADA", "POL", "LTC", "LINK", "BCH", "TRX", "SOL", "XLM", "HYPE", "DOT", "AVAX", "SUI", "AAVE", "UNI", "TON", "MNT", "ASTER"],
     "Long (53)": None,  # computed: all non-Short tiers
     "Extended (79)": None,  # all assets
 }
@@ -41,7 +41,6 @@ ASSET_UNIVERSE = [
     {"ticker": "XRP",     "name": "XRP",               "category": "Layer 1",      "tier": "Core",              "risk_tier": "Core"},
     {"ticker": "ADA",     "name": "Cardano",           "category": "Layer 1",      "tier": "Core",              "risk_tier": "Core"},
     {"ticker": "POL",     "name": "Polygon",           "category": "Infrastructure","tier": "Core",             "risk_tier": "Core"},
-    {"ticker": "HT",      "name": "Huobi Token",       "category": "Exchange",     "tier": "Core",              "risk_tier": "Core"},
     {"ticker": "LTC",     "name": "Litecoin",          "category": "Payment",      "tier": "Additional",        "risk_tier": "Growth"},
     {"ticker": "LINK",    "name": "Chainlink",         "category": "Infrastructure","tier": "Additional",       "risk_tier": "Growth"},
     {"ticker": "BCH",     "name": "Bitcoin Cash",      "category": "Payment",      "tier": "Additional",        "risk_tier": "Growth"},
@@ -141,19 +140,66 @@ FIVE_FACTOR_WEIGHTS = {
     "Growth (Fee+DAU D)":     {"Conservative": 0.20, "Balanced": 0.25, "Growth": 0.25, "Aggressive": 0.25},
 }
 
-# 10-Factor fundamental model weights
-TEN_FACTOR_WEIGHTS = {
-    "Value (P/S)":          {"Conservative": 0.25, "Balanced": 0.20, "Growth": 0.15, "Aggressive": 0.10},
-    "Fee Momentum":         {"Conservative": 0.10, "Balanced": 0.15, "Growth": 0.15, "Aggressive": 0.15},
-    "TVL Health":           {"Conservative": 0.15, "Balanced": 0.10, "Growth": 0.10, "Aggressive": 0.05},
-    "Revenue Quality":      {"Conservative": 0.10, "Balanced": 0.10, "Growth": 0.10, "Aggressive": 0.10},
-    "Usage Growth":         {"Conservative": 0.05, "Balanced": 0.10, "Growth": 0.15, "Aggressive": 0.15},
-    "Risk (Low Vol)":       {"Conservative": 0.15, "Balanced": 0.05, "Growth": 0.00, "Aggressive": 0.00},
-    "Dilution Safety":      {"Conservative": 0.10, "Balanced": 0.10, "Growth": 0.10, "Aggressive": 0.10},
-    "Supply Health":        {"Conservative": 0.05, "Balanced": 0.05, "Growth": 0.05, "Aggressive": 0.05},
-    "Smart Money":          {"Conservative": 0.00, "Balanced": 0.10, "Growth": 0.15, "Aggressive": 0.20},
-    "Developer Momentum":   {"Conservative": 0.05, "Balanced": 0.05, "Growth": 0.05, "Aggressive": 0.10},
+# Value Accrual (VA) model weights — aligned with nickel-ls-rv three-pillar framework.
+# 7 signals (unlock excluded — no Messari data). Weights sum to 1.0 per profile.
+# Conservative tilts toward valuation safety; Aggressive tilts toward accrual/growth.
+VA_FACTOR_WEIGHTS = {
+    "Dilution":          {"Conservative": 0.20, "Balanced": 0.15, "Growth": 0.12, "Aggressive": 0.10},
+    "Supply Delta":      {"Conservative": 0.15, "Balanced": 0.15, "Growth": 0.13, "Aggressive": 0.10},
+    "Buyback Intensity": {"Conservative": 0.10, "Balanced": 0.15, "Growth": 0.18, "Aggressive": 0.20},
+    "Rev Capture":       {"Conservative": 0.08, "Balanced": 0.10, "Growth": 0.12, "Aggressive": 0.15},
+    "Fee Momentum":      {"Conservative": 0.07, "Balanced": 0.10, "Growth": 0.12, "Aggressive": 0.15},
+    "FDV / Fees":        {"Conservative": 0.25, "Balanced": 0.20, "Growth": 0.18, "Aggressive": 0.15},
+    "FDV / TVL":         {"Conservative": 0.15, "Balanced": 0.15, "Growth": 0.15, "Aggressive": 0.15},
 }
+
+# VA normalization constants (from nickel-ls-rv config.py)
+VA_FDV_MCAP_NEUTRAL = 2.0         # FDV/MCap = 2.0 → signal = 0 (neutral)
+VA_SUPPLY_DELTA_NORMALIZE = 3.0   # ±3% = max signal
+VA_BUYBACK_NEUTRAL = 5.0          # 5% annualized yield = neutral
+VA_BUYBACK_MAX = 20.0             # 20%+ = max positive
+VA_FEE_MOMENTUM_NORMALIZE = 50.0  # ±50% fee growth = max signal
+VA_FDV_FEES_NEUTRAL = 100.0       # P/E = 100 = neutral (log scale)
+VA_FDV_TVL_NEUTRAL = 10.0         # FDV/TVL = 10 = neutral (log scale)
+
+# VA gating constants (from nickel-ls-rv config.py)
+VA_GATE_MIN_FEES_30D = 50_000              # $50K/mo = meaningful fee threshold
+VA_NO_ACCRUAL_FLOOR = -0.40               # Signal floor for large caps with no mechanism
+VA_NO_ACCRUAL_MCAP_FLOOR = 1_000_000_000  # $1B MCap threshold for floor
+
+# VA Registry — token accrual mechanism mapping (ported from nickel-ls-rv data/value_accrual.py)
+# mechanism: buyback_burn | buyback_treasury | fee_distribution | fee_switch_partial | staking_rewards | none
+# defillama_accurate: whether DeFiLlama holders_revenue is trustworthy for this token
+VA_REGISTRY = {
+    # ── Verified buyback/burn ──
+    "HYPE":  {"mechanism": "buyback_burn",      "defillama_accurate": True},
+    "TRX":   {"mechanism": "buyback_burn",      "defillama_accurate": True},
+    "ETH":   {"mechanism": "buyback_burn",      "defillama_accurate": True},   # EIP-1559 burn
+    "BNB":   {"mechanism": "buyback_burn",      "defillama_accurate": True},
+    # ── Fee distribution / partial fee switch ──
+    "AAVE":  {"mechanism": "fee_switch_partial", "defillama_accurate": True},
+    "UNI":   {"mechanism": "fee_switch_partial", "defillama_accurate": True},
+    "MNT":   {"mechanism": "fee_distribution",   "defillama_accurate": True},
+    # ── Staking rewards (validator/protocol level) ──
+    "SOL":   {"mechanism": "staking_rewards",    "defillama_accurate": True},
+    "AVAX":  {"mechanism": "staking_rewards",    "defillama_accurate": True},
+    "DOT":   {"mechanism": "staking_rewards",    "defillama_accurate": True},
+    "SUI":   {"mechanism": "staking_rewards",    "defillama_accurate": True},
+    "TON":   {"mechanism": "staking_rewards",    "defillama_accurate": True},
+    "ASTER": {"mechanism": "staking_rewards",    "defillama_accurate": True},
+    # ── No accrual mechanism ──
+    "BTC":   {"mechanism": "none"},
+    "XRP":   {"mechanism": "none"},
+    "ADA":   {"mechanism": "none"},   # has staking but no protocol revenue to holders
+    "POL":   {"mechanism": "none"},   # minimal holder revenue
+    "LTC":   {"mechanism": "none"},
+    "LINK":  {"mechanism": "none"},
+    "BCH":   {"mechanism": "none"},
+    "XLM":   {"mechanism": "none"},
+}
+
+# Keep reference to old name for backward compat
+TEN_FACTOR_WEIGHTS = VA_FACTOR_WEIGHTS
 
 # Default factor scores (0-100) — all 50 except noted
 DEFAULT_FIVE_FACTOR_SCORES = {
@@ -163,10 +209,6 @@ DEFAULT_FIVE_FACTOR_SCORES = {
     "Momentum (Vol-Adj)": 50,
     "Growth (Fee+DAU D)": 50,
 }
-
-DEFAULT_TEN_FACTOR_SCORES = {k: 50 for k in TEN_FACTOR_WEIGHTS}
-# ETH has Developer Momentum = 100
-ETH_TEN_FACTOR_OVERRIDES = {"Developer Momentum": 100}
 
 # CoinGecko ID mapping
 TOKEN_MAP = {
@@ -183,7 +225,7 @@ TOKEN_MAP = {
     "GALA": "gala", "ETC": "ethereum-classic", "XLM": "stellar",
     "TRX": "tron", "SHIB": "shiba-inu", "TON": "toncoin",
     "PAXG": "pax-gold", "ZEC": "zcash", "XMR": "monero", "DASH": "dash",
-    "HYPE": "hyperliquid", "POL": "matic-network", "HT": "huobi-token",
+    "HYPE": "hyperliquid", "POL": "matic-network",
     "IOTA": "iota", "ONDO": "ondo-finance", "WLFI": "world-liberty-financial",
     "CRO": "crypto-com-chain", "MNT": "mantle", "PEPE": "pepe",
     "ASTER": "aster-2", "WLD": "worldcoin-wld", "ENA": "ethena",

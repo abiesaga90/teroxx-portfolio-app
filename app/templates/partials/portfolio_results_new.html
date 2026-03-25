@@ -84,7 +84,7 @@
         </div>
     </div>
 </div>
-<script id="sector-data" type="application/json">{{ sector_data|safe }}</script>
+<div id="sector-data" style="display:none">{{ sector_data|safe }}</div>
 
 <!-- Risk Concentration Heatmap -->
 <div class="card">
@@ -191,4 +191,4 @@
 </div>
 
 <!-- Chart data for JS — per-position breakdown -->
-<script id="chart-data" type="application/json">{{ position_chart_data|safe }}</script>
+<div id="chart-data" style="display:none">{{ position_chart_data|safe }}</div>

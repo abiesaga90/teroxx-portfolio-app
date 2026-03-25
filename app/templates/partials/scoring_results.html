@@ -51,10 +51,10 @@
     </div>
 </div>
 
-<!-- Chart Data -->
-<script id="radar-data" type="application/json">{{ radar_data|safe }}</script>
-<script id="bubble-data" type="application/json">{{ bubble_data|safe }}</script>
-<script id="dilution-data" type="application/json">{{ dilution_data|safe }}</script>
+<!-- Chart Data (hidden divs — HTMX strips <script> tags on swap) -->
+<div id="radar-data" style="display:none">{{ radar_data|safe }}</div>
+<div id="bubble-data" style="display:none">{{ bubble_data|safe }}</div>
+<div id="dilution-data" style="display:none">{{ dilution_data|safe }}</div>
 
 <!-- Scores Table -->
 <div class="card">
@@ -74,13 +74,12 @@
             </thead>
             <tbody>
                 {% for d in detail %}
-                <tr>
+                <tr style="cursor:pointer;" onclick="openTokenModal('{{ d.ticker }}')">
                     <td style="color:var(--text-muted)">{{ loop.index }}</td>
-                    <td class="ticker" style="cursor:pointer;" onclick="openTokenModal('{{ d.ticker }}')">
+                    <td class="ticker">
                         <div class="ticker-cell">
                             {% set logo = get_logo(d.ticker) %}{% if logo %}<img src="{{ logo }}" class="token-logo token-logo-sm" alt="{{ d.ticker }}">{% endif %}{{ d.ticker }}
                             {% if d.get('_data_missing') %}<span class="data-warning" title="Missing market data">&#9888;</span>{% endif %}
-                            {% if d.get('_raw') %}<button class="show-raw-btn" onclick="event.stopPropagation();toggleRawData('{{ d.ticker }}')" title="Show raw data">data</button>{% endif %}
                         </div>
                     </td>
                     <td>{{ d.name }}</td>
@@ -89,23 +88,6 @@
                     {% endfor %}
                     <td class="right" style="font-weight:700;color:var(--electric-sky);">{{ d.composite }}</td>
                 </tr>
-                {% if d.get('_raw') %}
-                <tr id="raw-{{ d.ticker }}" class="raw-data-row" style="display:none;">
-                    <td></td>
-                    <td colspan="{{ weights|length + 2 }}">
-                        <div class="raw-grid">
-                            {% set r = d['_raw'] %}
-                            <span class="raw-item"><span class="raw-label">MCap:</span> <span class="raw-val">${{ "{:,.0f}".format(r.get('market_cap', 0)) }}</span></span>
-                            <span class="raw-item"><span class="raw-label">Vol 24h:</span> <span class="raw-val">${{ "{:,.0f}".format(r.get('volume_24h', 0)) }}</span></span>
-                            <span class="raw-item"><span class="raw-label">Vol/MCap:</span> <span class="raw-val">{{ "{:.3f}".format(r.get('vol_mcap_ratio', 0)) }}</span></span>
-                            <span class="raw-item"><span class="raw-label">7d:</span> <span class="raw-val" style="color:{{ 'var(--success)' if r.get('change_7d', 0) >= 0 else 'var(--danger)' }}">{{ "{:+.1f}".format(r.get('change_7d', 0)) }}%</span></span>
-                            <span class="raw-item"><span class="raw-label">30d:</span> <span class="raw-val" style="color:{{ 'var(--success)' if r.get('change_30d', 0) >= 0 else 'var(--danger)' }}">{{ "{:+.1f}".format(r.get('change_30d', 0)) }}%</span></span>
-                            <span class="raw-item"><span class="raw-label">24h:</span> <span class="raw-val" style="color:{{ 'var(--success)' if r.get('change_24h', 0) >= 0 else 'var(--danger)' }}">{{ "{:+.1f}".format(r.get('change_24h', 0)) }}%</span></span>
-                            <span class="raw-item"><span class="raw-label">ATH DD:</span> <span class="raw-val">-{{ "{:.0f}".format(r.get('ath_drawdown', 0)) }}%</span></span>
-                        </div>
-                    </td>
-                </tr>
-                {% endif %}
                 {% endfor %}
             </tbody>
         </table>
@@ -114,15 +96,22 @@
     <div class="sources">
         <div class="sources-title">Sources</div>
         {% if is_fundamental %}
-        <sup class="src">1</sup> Fundamental scores (0-100) via percentile ranking. Mirrors value-accrual signals from Teroxx L/S RV strategy.<br>
-        <sup class="src">2</sup> <strong>Value (P/S)</strong>: market cap / annualized fees &mdash; <a href="https://defillama.com" target="_blank">DefiLlama</a> + <a href="https://www.coingecko.com" target="_blank">CoinGecko</a>.<br>
-        <sup class="src">3</sup> <strong>Fee Momentum, TVL Health, Revenue Quality, Dilution Safety</strong>: <a href="https://defillama.com" target="_blank">DefiLlama</a> protocol data.<br>
-        <sup class="src">4</sup> <strong>Risk, Usage, Float, Smart Money, Dev Momentum</strong>: <a href="https://www.coingecko.com" target="_blank">CoinGecko</a> market data.<br>
+        <sup class="src">1</sup> Value Accrual scores aligned with nickel-ls-rv three-pillar framework. Each signal clamped [-1, +1] then scaled to [0, 100]. Score = 50 is neutral.<br>
+        <sup class="src">2</sup> <strong>Dilution</strong>: (2.0 &minus; FDV/MCap) / 1.0. <strong>Supply Delta</strong>: &minus;supply_growth / 3%. <strong>Buyback</strong>: annualized holder yield vs 5% neutral.<br>
+        <sup class="src">3</sup> <strong>Rev Capture</strong>: holders_revenue / fees. <strong>Fee Momentum</strong>: fee growth vs universe median / 50%. <a href="https://defillama.com" target="_blank">DeFiLlama</a>.<br>
+        <sup class="src">4</sup> <strong>FDV/Fees</strong>: log-scaled P/E, neutral=100. <strong>FDV/TVL</strong>: log-scaled capital efficiency, neutral=10. <a href="https://coinmarketcap.com" target="_blank">CMC</a> + <a href="https://defillama.com" target="_blank">DeFiLlama</a>.<br>
         {% else %}
         <sup class="src">1</sup> Factor scores (0-100) computed via percentile ranking across the asset universe using live market data.<br>
         <sup class="src">2</sup> <strong>Market Beta</strong>: inverse 30-day absolute price change. <strong>Size</strong>: inverse market cap. <strong>Value</strong>: volume/mcap ratio.<br>
-        <sup class="src">3</sup> <strong>Momentum</strong>: 7d + 30d price change. <strong>Growth</strong>: 7d acceleration vs 30d trend.<br>
+        <sup class="src">3</sup> <strong>Momentum</strong>: vol-adjusted 7d + 30d price change. <strong>Growth</strong>: 7d acceleration vs 30d trend.<br>
         {% endif %}
-        <sup class="src">{{ '5' if is_fundamental else '4' }}</sup> Composite = weighted sum using profile-specific weights. Updated: {{ price_age }}.
+        <sup class="src">{{ '5' if is_fundamental else '4' }}</sup> Composite = weighted sum using profile-specific weights. See <strong>Data</strong> tab for raw inputs and full calculation breakdown. Updated: {{ price_age }}.
     </div>
 </div>
+
+<!-- Render charts after HTMX injects this partial into the DOM -->
+<script>
+if (typeof tryRenderAllCharts === 'function') {
+    requestAnimationFrame(function() { setTimeout(tryRenderAllCharts, 50); });
+}
+</script>

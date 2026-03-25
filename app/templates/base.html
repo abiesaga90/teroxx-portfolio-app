@@ -5,12 +5,28 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Teroxx Portfolio Allocator</title>
     <link rel="stylesheet" href="/static/css/teroxx.css">
+    <meta name="htmx-config" content='{"selfRequestsOnly": false}'>
     <script src="/static/js/htmx.min.js"></script>
     <script src="/static/js/chart.min.js"></script>
     <script>
     // Apply dark mode before render to prevent flash
-    if (localStorage.getItem('theme') === 'dark') {
-        document.documentElement.setAttribute('data-theme', 'dark');
+    (function() {
+        var saved = localStorage.getItem('theme') || 'light';
+        if (saved === 'dark') {
+            document.documentElement.setAttribute('data-theme', 'dark');
+        }
+    })();
+
+    // Define toggleTheme early so the header button always works,
+    // even if app.js fails to load or has a runtime error.
+    function toggleTheme() {
+        var html = document.documentElement;
+        var current = html.getAttribute('data-theme');
+        var next = current === 'dark' ? 'light' : 'dark';
+        html.setAttribute('data-theme', next);
+        localStorage.setItem('theme', next);
+        var btn = document.querySelector('.theme-toggle');
+        if (btn) btn.textContent = next === 'dark' ? 'Light Mode' : 'Dark Mode';
     }
     </script>
 </head>
@@ -24,7 +40,16 @@
     </div>
     <div style="display:flex;align-items:center;gap:1rem;">
         <span class="header-meta">Prices: {{ price_age }}</span>
-        <button class="theme-toggle" onclick="toggleTheme()">Dark Mode</button>
+        <button class="theme-toggle" onclick="toggleTheme()">{{ 'Light Mode' if false else 'Dark Mode' }}</button>
+        <script>
+        // Fix button label if dark mode was restored from localStorage
+        (function() {
+            if (document.documentElement.getAttribute('data-theme') === 'dark') {
+                var b = document.querySelector('.theme-toggle');
+                if (b) b.textContent = 'Light Mode';
+            }
+        })();
+        </script>
     </div>
 </header>
 
@@ -40,6 +65,7 @@
 <nav class="tab-nav">
     <button class="tab-btn active" data-tab="tab-portfolio" onclick="switchTab('tab-portfolio')">Portfolio</button>
     <button class="tab-btn" data-tab="tab-scoring" onclick="switchTab('tab-scoring')">Scoring</button>
+    <button class="tab-btn" data-tab="tab-data" onclick="switchTab('tab-data')">Data</button>
     <button class="tab-btn" data-tab="tab-dca" onclick="switchTab('tab-dca')">DCA Planner</button>
     <button class="tab-btn" data-tab="tab-rebalance-pnl" onclick="switchTab('tab-rebalance-pnl')">Rebalancing &amp; P&L</button>
     <button class="tab-btn" data-tab="tab-apis" onclick="switchTab('tab-apis')">APIs</button>
@@ -55,7 +81,8 @@
                   hx-post="/api/portfolio"
                   hx-target="#portfolio-results"
                   hx-trigger="change, keyup changed delay:500ms from:[name=portfolio_value]"
-                  hx-indicator="#portfolio-loading">
+                  hx-indicator="#portfolio-loading"
+                  hx-on::after-settle="requestAnimationFrame(function(){setTimeout(tryRenderAllCharts,50)})">
                 <div class="control-group">
                     <span class="control-label">Risk Profile</span>
                     <select name="profile" onchange="syncGlobal('profile', this.value)">
@@ -100,14 +127,15 @@
             <div class="card-header">Scoring Models</div>
             <div class="scoring-toggle">
                 <button class="scoring-toggle-btn active" data-model="factor" onclick="switchScoringModel('factor')">5-Factor Model</button>
-                <button class="scoring-toggle-btn" data-model="fundamental" onclick="switchScoringModel('fundamental')">10-Factor Fundamental</button>
+                <button class="scoring-toggle-btn" data-model="fundamental" onclick="switchScoringModel('fundamental')">Value Accrual (VA)</button>
             </div>
             <form id="scoring-form" class="controls" style="margin-top:16px;"
                   hx-post="/api/scoring"
                   hx-target="#scoring-results"
                   hx-trigger="change"
                   hx-include="#global-controls"
-                  hx-indicator="#scoring-loading">
+                  hx-indicator="#scoring-loading"
+                  hx-on::after-settle="requestAnimationFrame(function(){setTimeout(tryRenderAllCharts,50)})">
                 <input type="hidden" name="model" value="factor">
                 <span id="scoring-loading" class="htmx-indicator"><span class="spinner"></span></span>
             </form>
@@ -115,7 +143,23 @@
         <div id="scoring-results"></div>
     </div>
 
-    <!-- ═══ Tab 3: DCA Planner ═══ -->
+    <!-- ═══ Tab 3: Data ═══ -->
+    <div id="tab-data" class="tab-panel">
+        <div class="card">
+            <div class="card-header">Underlying Data &amp; Calculations</div>
+            <form id="data-form" class="controls"
+                  hx-post="/api/data"
+                  hx-target="#data-results"
+                  hx-trigger="change"
+                  hx-include="#global-controls"
+                  hx-indicator="#data-loading">
+                <span id="data-loading" class="htmx-indicator"><span class="spinner"></span></span>
+            </form>
+        </div>
+        <div id="data-results"></div>
+    </div>
+
+    <!-- ═══ Tab 4: DCA Planner ═══ -->
     <div id="tab-dca" class="tab-panel">
         <div class="card">
             <div class="card-header">Recurring Buy Planner</div>
@@ -124,7 +168,8 @@
                   hx-target="#dca-results"
                   hx-trigger="change, keyup changed delay:500ms"
                   hx-include="#global-controls"
-                  hx-indicator="#dca-loading">
+                  hx-indicator="#dca-loading"
+                  hx-on::after-settle="requestAnimationFrame(function(){setTimeout(tryRenderAllCharts,50)})">
                 <div class="control-group">
                     <span class="control-label">Monthly Amount ($)</span>
                     <input type="number" name="monthly_amount" value="1000" min="0" step="100">
@@ -160,7 +205,8 @@
                   hx-target="#rebalance-pnl-results"
                   hx-trigger="change"
                   hx-include="#global-controls"
-                  hx-indicator="#rpnl-loading">
+                  hx-indicator="#rpnl-loading"
+                  hx-on::after-settle="requestAnimationFrame(function(){setTimeout(tryRenderAllCharts,50)})">
                 <div class="control-group">
                     <span class="control-label">Portfolio Value ($)</span>
                     <input type="number" name="portfolio_value" value="100000" min="0" step="1000"
@@ -190,10 +236,17 @@
                     </thead>
                     <tbody>
                         <tr>
-                            <td><strong><a href="https://www.coingecko.com/en/api" target="_blank" style="color:var(--electric-sky);">CoinGecko</a></strong></td>
-                            <td>Price, MCap, FDV, Volume, 7d/30d Change, ATH, Supply, Logos</td>
+                            <td><strong><a href="https://coinmarketcap.com/api/" target="_blank" style="color:var(--electric-sky);">CoinMarketCap</a></strong></td>
+                            <td>Price, MCap, FDV, Volume, 24h/7d/30d Change, Supply</td>
                             <td>Free</td>
                             <td>5min (prices), 1hr (market data)</td>
+                            <td>All {{ n_tokens }} tokens (single API call)</td>
+                        </tr>
+                        <tr>
+                            <td><strong><a href="https://www.coingecko.com/en/api" target="_blank" style="color:var(--electric-sky);">CoinGecko</a></strong></td>
+                            <td>Fallback: Price, MCap, ATH, Logos</td>
+                            <td>Free</td>
+                            <td>Fallback only</td>
                             <td>All {{ n_tokens }} tokens</td>
                         </tr>
                         <tr>
@@ -202,13 +255,6 @@
                             <td>Free</td>
                             <td>2hr</td>
                             <td>{{ n_defillama }} protocols mapped</td>
-                        </tr>
-                        <tr>
-                            <td><strong><a href="https://coinmarketcap.com/api/" target="_blank" style="color:var(--electric-sky);">CoinMarketCap</a></strong></td>
-                            <td>Price fallback (when CoinGecko rate-limited)</td>
-                            <td>Free (demo key)</td>
-                            <td>On-demand fallback</td>
-                            <td>All tokens</td>
                         </tr>
                         <tr>
                             <td><strong><a href="https://binance-docs.github.io/apidocs/futures/en/" target="_blank" style="color:var(--electric-sky);">Binance Futures</a></strong></td>
