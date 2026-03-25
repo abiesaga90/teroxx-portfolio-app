@@ -272,6 +272,7 @@ function tryRenderDilution() {
             options: {
                 indexAxis: 'y',
                 responsive: true,
+                maintainAspectRatio: false,
                 plugins: {
                     legend: { display: false },
                     tooltip: { callbacks: { label: (ctx) => `FDV/MCap: ${ctx.raw.toFixed(2)}x` } },

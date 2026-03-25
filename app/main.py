@@ -73,9 +73,26 @@ def fmt_num(value, decimals=2):
         return "-"
     return f"{value:,.{decimals}f}"
 
+def fmt_compact(value):
+    """Format large numbers: $1.42T, $88.3B, $4.16M, $72.0K"""
+    if value is None or value == 0:
+        return "-"
+    abs_val = abs(value)
+    sign = "-" if value < 0 else ""
+    if abs_val >= 1e12:
+        return f"{sign}${abs_val / 1e12:.2f}T"
+    if abs_val >= 1e9:
+        return f"{sign}${abs_val / 1e9:.1f}B"
+    if abs_val >= 1e6:
+        return f"{sign}${abs_val / 1e6:.1f}M"
+    if abs_val >= 1e3:
+        return f"{sign}${abs_val / 1e3:.0f}K"
+    return f"{sign}${abs_val:,.0f}"
+
 templates.env.filters["fmt_pct"] = fmt_pct
 templates.env.filters["fmt_usd"] = fmt_usd
 templates.env.filters["fmt_num"] = fmt_num
+templates.env.filters["fmt_compact"] = fmt_compact
 templates.env.globals["json_dumps"] = json.dumps
 templates.env.globals["get_logo"] = get_logo_url
 

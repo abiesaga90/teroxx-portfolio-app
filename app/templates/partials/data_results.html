@@ -36,8 +36,8 @@
                     <td style="color:var(--text-muted)">{{ loop.index }}</td>
                     <td class="ticker"><div class="ticker-cell">{% set logo = get_logo(r.ticker) %}{% if logo %}<img src="{{ logo }}" class="token-logo token-logo-sm" alt="{{ r.ticker }}">{% endif %}{{ r.ticker }}</div></td>
                     <td class="right">${{ "{:,.4f}".format(r.price) if r.price < 1 else "{:,.2f}".format(r.price) }}</td>
-                    <td class="right">${{ "{:,.0f}".format(r.market_cap) }}</td>
-                    <td class="right">${{ "{:,.0f}".format(r.volume_24h) }}</td>
+                    <td class="right">{{ r.market_cap|fmt_compact }}</td>
+                    <td class="right">{{ r.volume_24h|fmt_compact }}</td>
                     <td class="right">{{ "{:.4f}".format(r.vol_mcap_ratio) }}</td>
                     <td class="right" style="color:{{ 'var(--success)' if r.change_24h >= 0 else 'var(--danger)' }}">{{ "{:+.1f}".format(r.change_24h) }}%</td>
                     <td class="right" style="color:{{ 'var(--success)' if r.change_7d >= 0 else 'var(--danger)' }}">{{ "{:+.1f}".format(r.change_7d) }}%</td>
@@ -80,11 +80,11 @@
                     <td style="color:var(--text-muted)">{{ loop.index }}</td>
                     <td class="ticker"><div class="ticker-cell">{% set logo = get_logo(r.ticker) %}{% if logo %}<img src="{{ logo }}" class="token-logo token-logo-sm" alt="{{ r.ticker }}">{% endif %}{{ r.ticker }}</div></td>
                     {% if r.has_defi %}
-                    <td class="right">${{ "{:,.0f}".format(r.tvl) }}</td>
+                    <td class="right">{{ r.tvl|fmt_compact }}</td>
                     <td class="right" style="color:{{ 'var(--success)' if r.tvl_change_7d >= 0 else 'var(--danger)' }}">{{ "{:+.1f}".format(r.tvl_change_7d) }}%</td>
-                    <td class="right">{% if r.fees_30d > 0 %}${{ "{:,.0f}".format(r.fees_30d) }}{% else %}&mdash;{% endif %}</td>
-                    <td class="right">{% if r.fees_7d > 0 %}${{ "{:,.0f}".format(r.fees_7d) }}{% else %}&mdash;{% endif %}</td>
-                    <td class="right">{% if r.revenue_30d > 0 %}${{ "{:,.0f}".format(r.revenue_30d) }}{% else %}&mdash;{% endif %}</td>
+                    <td class="right">{% if r.fees_30d > 0 %}{{ r.fees_30d|fmt_compact }}{% else %}&mdash;{% endif %}</td>
+                    <td class="right">{% if r.fees_7d > 0 %}{{ r.fees_7d|fmt_compact }}{% else %}&mdash;{% endif %}</td>
+                    <td class="right">{% if r.revenue_30d > 0 %}{{ r.revenue_30d|fmt_compact }}{% else %}&mdash;{% endif %}</td>
                     <td class="right">{% if r.revenue_capture > 0 %}{{ "{:.0f}".format(r.revenue_capture * 100) }}%{% else %}&mdash;{% endif %}</td>
                     <td class="right" style="color:{{ 'var(--success)' if r.fee_momentum >= 0 else 'var(--danger)' }}">{% if r.fees_30d > 0 %}{{ "{:+.1f}".format(r.fee_momentum) }}%{% else %}&mdash;{% endif %}</td>
                     {% else %}
@@ -141,7 +141,7 @@
                     <td class="ticker"><div class="ticker-cell">{% set logo = get_logo(r.ticker) %}{% if logo %}<img src="{{ logo }}" class="token-logo token-logo-sm" alt="{{ r.ticker }}">{% endif %}{{ r.ticker }}</div></td>
                     <td class="right" style="color:{{ 'var(--success)' if r.funding_rate >= 0 else 'var(--danger)' }}">{{ "{:+.4f}".format(r.funding_rate * 100) }}%</td>
                     <td class="right" style="color:{{ 'var(--success)' if r.funding_rate >= 0 else 'var(--danger)' }}">{{ "{:+.1f}".format(r.funding_rate * 100 * 3 * 365) }}%</td>
-                    <td class="right">${{ "{:,.0f}".format(r.open_interest_usd) }}</td>
+                    <td class="right">{{ r.open_interest_usd|fmt_compact }}</td>
                     <td class="right">{% if r.market_cap > 0 %}{{ "{:.2f}".format(r.open_interest_usd / r.market_cap * 100) }}%{% else %}&mdash;{% endif %}</td>
                 </tr>
                 {% endif %}
