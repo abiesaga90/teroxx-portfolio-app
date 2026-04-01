@@ -74,6 +74,7 @@
     <button class="tab-btn" data-tab="tab-dca" onclick="switchTab('tab-dca')">DCA Planner</button>
     <button class="tab-btn" data-tab="tab-rebalance-pnl" onclick="switchTab('tab-rebalance-pnl')">Rebalancing &amp; P&L</button>
     <button class="tab-btn" data-tab="tab-defi-macro" onclick="switchTab('tab-defi-macro')">DeFi Macro</button>
+    <button class="tab-btn" data-tab="tab-methodology" onclick="switchTab('tab-methodology')">Methodology</button>
     <button class="tab-btn" data-tab="tab-apis" onclick="switchTab('tab-apis')">APIs</button>
 </nav>
 
@@ -351,6 +352,244 @@
             <p style="padding:1rem;color:var(--text-muted)">Loading DeFi macro data... Data will appear after the first refresh cycle (up to 2 hours).</p>
         </div>
         {% endif %}
+    </div>
+
+    <!-- ═══ Tab: Methodology ═══ -->
+    <div id="tab-methodology" class="tab-panel">
+
+        <!-- Overview -->
+        <div class="card">
+            <div class="card-header">Allocation Methodology</div>
+            <div class="methodology-content">
+                <p>The Teroxx Portfolio Allocation Model assigns weights to crypto assets through a structured, multi-step process. Three allocation modes are available, each suited to different investment approaches.</p>
+                <p>All modes share the same <strong>tier structure</strong>: assets are grouped into tiers (Store of Value, Large Cap, Mid Cap, Small Cap) and each risk profile allocates a fixed budget per tier. The modes differ in <em>how weights are distributed within each tier</em>.</p>
+            </div>
+        </div>
+
+        <!-- Mode 1: Standard -->
+        <div class="card">
+            <div class="card-header">1. Standard Mode</div>
+            <div class="methodology-content">
+                <p><strong>Approach:</strong> Equal-weight allocation within each tier.</p>
+                <p><strong>How it works:</strong> Each asset in a tier receives an identical share of that tier&rsquo;s budget. If Large Cap has 25% budget and contains 3 tokens, each gets 8.33%.</p>
+                <p><strong>Best for:</strong> Simple, low-maintenance portfolios. No model risk &mdash; purely diversified within each tier.</p>
+                <p><strong>Rebalancing:</strong> Only needed when tier allocations shift (e.g., changing risk profile) or when new assets are added.</p>
+            </div>
+        </div>
+
+        <!-- Mode 2: Factor -->
+        <div class="card">
+            <div class="card-header">2. Factor Mode</div>
+            <div class="methodology-content">
+                <p><strong>Approach:</strong> 5-factor quantitative scoring model. Assets within each tier are weighted proportionally to their composite factor score.</p>
+
+                <table class="data-table" style="margin:1rem 0;">
+                    <thead>
+                        <tr><th>Factor</th><th>What It Measures</th><th>Raw Metric</th><th>Scoring</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Market Beta</strong></td>
+                            <td>Volatility / systematic risk</td>
+                            <td>Absolute 30d price change</td>
+                            <td>Inverse percentile &mdash; lower volatility = higher score</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Size (SMB)</strong></td>
+                            <td>Market capitalization</td>
+                            <td>Market cap (USD)</td>
+                            <td>Inverse percentile &mdash; smaller cap = higher score</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Value</strong></td>
+                            <td>Trading activity relative to size</td>
+                            <td>24h Volume / Market Cap</td>
+                            <td>Percentile &mdash; higher turnover = higher score</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Momentum</strong></td>
+                            <td>Vol-adjusted price trend</td>
+                            <td>(7d + 30d change) / ATH drawdown</td>
+                            <td>Percentile &mdash; tokens near ATH with positive returns score highest</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Growth</strong></td>
+                            <td>Recent acceleration</td>
+                            <td>7d pace / monthly average pace</td>
+                            <td>Percentile &mdash; faster recent growth = higher score</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <p><strong>Composite:</strong> Weighted sum of 5 factor scores. Weights vary by risk profile &mdash; Conservative tilts toward Beta (safety), Aggressive tilts toward Momentum and Growth.</p>
+                <p><strong>Best for:</strong> Investors who want a systematic, quantitative tilt without fundamental analysis. Captures market-structure alpha (low-vol, momentum, size premia).</p>
+            </div>
+        </div>
+
+        <!-- Mode 3: Fundamental -->
+        <div class="card">
+            <div class="card-header">3. Fundamental Mode</div>
+            <div class="methodology-content">
+                <p><strong>Approach:</strong> Two-pillar composite model aligned with the Teroxx Research Team&rsquo;s live trading strategy. Combines Value Accrual (VA) analysis with Protocol Performance (P3) metrics.</p>
+
+                <h4 style="margin:1.2rem 0 0.5rem;font-family:'SometimesTimes',serif;color:var(--nightblue);">Pillar 1: Value Accrual (VA) &mdash; 70% weight</h4>
+                <p>Measures whether protocol economics flow value to token holders. Uses 7 signals, each scored [-1, +1] then scaled to [0, 100]:</p>
+
+                <table class="data-table" style="margin:1rem 0;">
+                    <thead>
+                        <tr><th>Signal</th><th>What It Measures</th><th>Formula</th><th>Neutral</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Dilution</strong></td>
+                            <td>Token supply overhang</td>
+                            <td>(2.0 &minus; FDV/MCap) / (2.0 &minus; 1.0)</td>
+                            <td>FDV/MCap = 2.0&times;</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Supply Delta</strong></td>
+                            <td>Circulating supply changes</td>
+                            <td>&minus;supply_growth% / 3%</td>
+                            <td>0% growth</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Buyback Intensity</strong></td>
+                            <td>Annualised holder yield from burns/buybacks</td>
+                            <td>(yield% &minus; 5%) / 15%</td>
+                            <td>5% annualised</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Revenue Capture</strong></td>
+                            <td>Share of fees flowing to holders</td>
+                            <td>holders_revenue / fees_30d</td>
+                            <td>0% capture</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Fee Momentum</strong></td>
+                            <td>Market-relative fee growth</td>
+                            <td>(token_growth &minus; median) / 50%</td>
+                            <td>At median</td>
+                        </tr>
+                        <tr>
+                            <td><strong>FDV / Fees (P/E)</strong></td>
+                            <td>Valuation vs revenue generation</td>
+                            <td>log(FDV / annual_fees) vs log(100)</td>
+                            <td>P/E = 100</td>
+                        </tr>
+                        <tr>
+                            <td><strong>FDV / TVL</strong></td>
+                            <td>Capital efficiency</td>
+                            <td>log(FDV / TVL) vs log(10)</td>
+                            <td>FDV/TVL = 10</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <p><strong>Sector-Aware Weights:</strong> VA signal weights adapt based on token category. DeFi tokens emphasise buyback and revenue capture. L1 platforms weight FDV/TVL heavily. Privacy/PoW tokens are scored almost entirely on supply scarcity.</p>
+
+                <table class="data-table" style="margin:1rem 0;">
+                    <thead>
+                        <tr><th>Sector Profile</th><th>Categories</th><th>Key Emphasis</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>L1 Platform</strong></td>
+                            <td>Layer 1, Layer 0</td>
+                            <td>FDV/TVL (25%), Dilution (21%), Fee Momentum (15%)</td>
+                        </tr>
+                        <tr>
+                            <td><strong>DeFi</strong></td>
+                            <td>DeFi, DEX, Exchange</td>
+                            <td>Buyback (25%), Revenue Capture (15%), FDV/Fees (15%)</td>
+                        </tr>
+                        <tr>
+                            <td><strong>AI / Compute</strong></td>
+                            <td>AI, AI/Compute</td>
+                            <td>Fee Momentum (20%), FDV/Fees (15%), FDV/TVL (15%)</td>
+                        </tr>
+                        <tr>
+                            <td><strong>PoW / Monetary</strong></td>
+                            <td>Store of Value, Payment, Privacy, Legacy</td>
+                            <td>Dilution (42%), Supply Delta (28%), FDV/TVL (25%)</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <p><strong>VA Gating:</strong> Tokens are mapped to their accrual mechanism (buyback/burn, fee distribution, staking rewards, or none). Tokens with no mechanism have buyback and revenue capture signals zeroed. Large caps ($1B+) with no accrual receive a penalty floor.</p>
+
+                <h4 style="margin:1.2rem 0 0.5rem;font-family:'SometimesTimes',serif;color:var(--nightblue);">Pillar 2: Protocol Performance (P3) &mdash; 30% weight</h4>
+                <p>Measures real-world protocol health and network adoption via 4 growth signals:</p>
+
+                <table class="data-table" style="margin:1rem 0;">
+                    <thead>
+                        <tr><th>Signal</th><th>Source</th><th>What It Measures</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><strong>TVL Growth (7d)</strong></td><td>DeFiLlama</td><td>Total value locked growth &mdash; capital inflow</td></tr>
+                        <tr><td><strong>Borrowed Growth (7d)</strong></td><td>DeFiLlama</td><td>Lending demand growth (lending protocols)</td></tr>
+                        <tr><td><strong>Fee Growth (7d)</strong></td><td>DeFiLlama</td><td>Fee acceleration &mdash; usage growth</td></tr>
+                        <tr><td><strong>Network Activity</strong></td><td>Messari</td><td>Active addresses + transaction count (L1s)</td></tr>
+                    </tbody>
+                </table>
+
+                <h4 style="margin:1.2rem 0 0.5rem;font-family:'SometimesTimes',serif;color:var(--nightblue);">Red Flag Filter</h4>
+                <p>A 4-pillar quality screen penalises tokens with structural risks. Tokens scoring above 60/100 on red flags receive a 50% allocation haircut:</p>
+                <ul style="margin:0.5rem 0 0.5rem 1.5rem;">
+                    <li><strong>Dilution Overhang (30%):</strong> High FDV/MCap ratio + low circulating float</li>
+                    <li><strong>Revenue Void (25%):</strong> No fees, no holder accrual mechanism</li>
+                    <li><strong>Valuation Absurdity (25%):</strong> Extreme P/E + thin trading volume</li>
+                    <li><strong>Unlock Pressure (20%):</strong> Positive supply inflation</li>
+                </ul>
+
+                <p><strong>Best for:</strong> Investors who want fundamentals-driven allocation informed by real protocol economics. This mode reflects the same analytical framework used in Teroxx&rsquo;s institutional research.</p>
+            </div>
+        </div>
+
+        <!-- Tier Structure -->
+        <div class="card">
+            <div class="card-header">Tier Structure &amp; Risk Profiles</div>
+            <div class="methodology-content">
+                <p>Regardless of allocation mode, assets are first grouped into tiers. Each risk profile sets a budget per tier:</p>
+                <table class="data-table" style="margin:1rem 0;">
+                    <thead>
+                        <tr><th>Tier</th><th>Conservative</th><th>Balanced</th><th>Growth</th><th>Aggressive</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><strong>Fixed (USDC, EURC, PAXG)</strong></td><td>55%</td><td>23%</td><td>8%</td><td>1%</td></tr>
+                        <tr><td><strong>Store of Value (BTC)</strong></td><td>30%</td><td>35%</td><td>25%</td><td>20%</td></tr>
+                        <tr><td><strong>Large Cap</strong></td><td>10%</td><td>25%</td><td>35%</td><td>35%</td></tr>
+                        <tr><td><strong>Mid Cap</strong></td><td>5%</td><td>12%</td><td>22%</td><td>29%</td></tr>
+                        <tr><td><strong>Small Cap / Thematic</strong></td><td>0%</td><td>5%</td><td>10%</td><td>15%</td></tr>
+                    </tbody>
+                </table>
+                <p>The allocation mode then determines how the tier budget is divided among individual assets within each tier.</p>
+            </div>
+        </div>
+
+        <!-- Data Sources Summary -->
+        <div class="card">
+            <div class="card-header">Data Sources</div>
+            <div class="methodology-content">
+                <p>All data is sourced from free, public APIs. No paid subscriptions required.</p>
+                <table class="data-table" style="margin:1rem 0;">
+                    <thead>
+                        <tr><th>Source</th><th>Data</th><th>Used By</th><th>Refresh</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><strong>CoinMarketCap</strong></td><td>Prices, MCap, FDV, Volume, Supply</td><td>All modes</td><td>5 min</td></tr>
+                        <tr><td><strong>CoinGecko</strong></td><td>Fallback prices, ATH, Developer activity</td><td>Factor, Fundamental</td><td>Fallback / 24h</td></tr>
+                        <tr><td><strong>DeFiLlama</strong></td><td>TVL, Fees, Revenue, Protocol metrics</td><td>Fundamental (VA + P3)</td><td>2h</td></tr>
+                        <tr><td><strong>Binance Futures</strong></td><td>Funding rates, Open interest</td><td>Data display</td><td>5 min</td></tr>
+                        <tr><td><strong>Messari</strong></td><td>Active addresses, Txn count, Network fees</td><td>Fundamental (P3)</td><td>1h</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="sources" style="margin-top:1rem;">
+            <div class="sources-title">Disclaimer</div>
+            This methodology is provided for informational and educational purposes only. Past allocation model performance does not guarantee future results. The Teroxx Portfolio Allocation Model is a research tool, not financial advice. All investment decisions should consider individual risk tolerance, time horizon, and regulatory requirements.
+        </div>
     </div>
 
     <!-- ═══ Tab 5: APIs ═══ -->

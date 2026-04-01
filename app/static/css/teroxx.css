@@ -954,6 +954,24 @@ sup.src {
 .vol-normal { color: #bfb3a8; }
 .vol-high_vol { color: #f87171; }
 
+/* Methodology tab */
+.methodology-content {
+    padding: 0.8rem 1.2rem;
+    font-size: 0.88rem;
+    line-height: 1.6;
+    color: var(--text-body);
+}
+.methodology-content p {
+    margin: 0.6rem 0;
+}
+.methodology-content h4 {
+    font-size: 1rem;
+    font-weight: 600;
+}
+[data-theme="dark"] .methodology-content h4 {
+    color: var(--electric-sky) !important;
+}
+
 /* Primary button */
 .btn-primary {
     background: var(--electric-sky, #0b688c);
