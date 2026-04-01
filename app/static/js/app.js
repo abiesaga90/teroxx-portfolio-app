@@ -330,39 +330,57 @@ function tryRenderBacktest() {
         const data = JSON.parse(el.textContent);
         const tc = getChartColors();
 
-        // ── Chart 1: Portfolio Value vs Invested ──
+        // ── Single Chart: Portfolio Value + Invested + BTC Price (dual axis) ──
         const ctx1 = document.getElementById('backtest-value-chart');
         if (ctx1) {
             _destroyChart('backtest-value');
+            var datasets = [
+                {
+                    label: 'Portfolio Value',
+                    data: data.value,
+                    borderColor: '#0b688c',
+                    backgroundColor: '#0b688c20',
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 4,
+                    pointBackgroundColor: '#0b688c',
+                    borderWidth: 2,
+                    yAxisID: 'y',
+                },
+                {
+                    label: 'Total Invested',
+                    data: data.invested,
+                    borderColor: '#bfb3a8',
+                    backgroundColor: 'transparent',
+                    borderDash: [5, 5],
+                    fill: false,
+                    tension: 0,
+                    pointRadius: 2,
+                    borderWidth: 2,
+                    yAxisID: 'y',
+                },
+            ];
+            // Overlay BTC price in orange on right axis
+            if (data.buy_prices && data.buy_prices['BTC']) {
+                datasets.push({
+                    label: 'BTC Price',
+                    data: data.buy_prices['BTC'],
+                    borderColor: '#d06643',
+                    backgroundColor: '#d0664320',
+                    fill: false,
+                    tension: 0.3,
+                    pointRadius: 5,
+                    pointStyle: 'circle',
+                    pointBackgroundColor: '#d06643',
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 2,
+                    borderWidth: 2.5,
+                    yAxisID: 'y1',
+                });
+            }
             _charts['backtest-value'] = new Chart(ctx1, {
                 type: 'line',
-                data: {
-                    labels: data.months,
-                    datasets: [
-                        {
-                            label: 'Portfolio Value',
-                            data: data.value,
-                            borderColor: '#0b688c',
-                            backgroundColor: '#0b688c20',
-                            fill: true,
-                            tension: 0.3,
-                            pointRadius: 4,
-                            pointBackgroundColor: '#0b688c',
-                            borderWidth: 2,
-                        },
-                        {
-                            label: 'Total Invested',
-                            data: data.invested,
-                            borderColor: '#bfb3a8',
-                            backgroundColor: 'transparent',
-                            borderDash: [5, 5],
-                            fill: false,
-                            tension: 0,
-                            pointRadius: 2,
-                            borderWidth: 2,
-                        },
-                    ],
-                },
+                data: { labels: data.months, datasets: datasets },
                 options: {
                     responsive: true,
                     interaction: { mode: 'index', intersect: false },
@@ -374,9 +392,8 @@ function tryRenderBacktest() {
                                     return ctx.dataset.label + ': $' + ctx.parsed.y.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0});
                                 },
                                 afterBody: function(items) {
-                                    if (items.length < 2) return '';
-                                    var invested = items.find(i => i.dataset.label === 'Total Invested');
-                                    var value = items.find(i => i.dataset.label === 'Portfolio Value');
+                                    var invested = items.find(function(i) { return i.dataset.label === 'Total Invested'; });
+                                    var value = items.find(function(i) { return i.dataset.label === 'Portfolio Value'; });
                                     if (invested && value) {
                                         var pnl = value.parsed.y - invested.parsed.y;
                                         var pnlPct = invested.parsed.y > 0 ? (pnl / invested.parsed.y * 100).toFixed(1) : '0.0';
@@ -388,54 +405,18 @@ function tryRenderBacktest() {
                     },
                     scales: {
                         x: { grid: { color: tc.grid }, ticks: { color: tc.muted, font: { size: 10 } } },
-                        y: { title: { display: true, text: 'USD', color: tc.muted, font: { size: 10 } }, grid: { color: tc.grid }, ticks: { color: tc.muted, callback: v => '$' + v.toLocaleString() } },
-                    },
-                },
-            });
-        }
-
-        // ── Chart 2: Buy Prices Over Time (per token) ──
-        const ctx2 = document.getElementById('backtest-price-chart');
-        if (ctx2 && data.buy_prices) {
-            _destroyChart('backtest-price');
-            var tickers = Object.keys(data.buy_prices);
-            var priceColors = ['#0b688c', '#d06643', '#010626', '#1a8a4a', '#8B5CF6', '#F59E0B', '#EC4899', '#14B8A6'];
-            var datasets = tickers.map(function(ticker, i) {
-                return {
-                    label: ticker + ' Buy Price',
-                    data: data.buy_prices[ticker],
-                    borderColor: priceColors[i % priceColors.length],
-                    backgroundColor: priceColors[i % priceColors.length],
-                    fill: false,
-                    tension: 0.2,
-                    pointRadius: 6,
-                    pointStyle: 'circle',
-                    pointBorderWidth: 2,
-                    pointBorderColor: '#fff',
-                    borderWidth: 2,
-                    spanGaps: false,
-                };
-            });
-            _charts['backtest-price'] = new Chart(ctx2, {
-                type: 'line',
-                data: { labels: data.months, datasets: datasets },
-                options: {
-                    responsive: true,
-                    interaction: { mode: 'index', intersect: false },
-                    plugins: {
-                        legend: { position: 'bottom', labels: { color: tc.text, font: { size: 11 }, padding: 12 } },
-                        tooltip: {
-                            callbacks: {
-                                label: function(ctx) {
-                                    if (ctx.parsed.y == null) return null;
-                                    return ctx.dataset.label + ': $' + ctx.parsed.y.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
-                                },
-                            },
+                        y: {
+                            position: 'left',
+                            title: { display: true, text: 'Portfolio ($)', color: '#0b688c', font: { size: 10 } },
+                            grid: { color: tc.grid },
+                            ticks: { color: '#0b688c', callback: function(v) { return '$' + v.toLocaleString(); } },
                         },
-                    },
-                    scales: {
-                        x: { grid: { color: tc.grid }, ticks: { color: tc.muted, font: { size: 10 } } },
-                        y: { title: { display: true, text: 'Price (USD)', color: tc.muted, font: { size: 10 } }, grid: { color: tc.grid }, ticks: { color: tc.muted, callback: v => '$' + v.toLocaleString() } },
+                        y1: {
+                            position: 'right',
+                            title: { display: true, text: 'BTC Price ($)', color: '#d06643', font: { size: 10 } },
+                            grid: { drawOnChartArea: false },
+                            ticks: { color: '#d06643', callback: function(v) { return '$' + v.toLocaleString(); } },
+                        },
                     },
                 },
             });

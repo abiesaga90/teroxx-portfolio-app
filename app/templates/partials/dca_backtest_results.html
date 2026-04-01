@@ -20,24 +20,13 @@
     </div>
 </div>
 
-<!-- Chart 1: Portfolio Value vs Total Invested -->
+<!-- Combined Chart: Portfolio Value + Invested + BTC Price -->
 <div class="card">
-    <div class="card-header">Portfolio Value vs Total Invested</div>
+    <div class="card-header">DCA Performance vs BTC Price</div>
     <div class="chart-section">
         <div class="chart-box-wide">
             <canvas id="backtest-value-chart"></canvas>
-            <div class="chart-label">Blue area = portfolio value at each buy date. Dashed line = cumulative capital deployed. Hover for P&L.</div>
-        </div>
-    </div>
-</div>
-
-<!-- Chart 2: Purchase Prices Over Time -->
-<div class="card">
-    <div class="card-header">Purchase Prices Over Time</div>
-    <div class="chart-section">
-        <div class="chart-box-wide">
-            <canvas id="backtest-price-chart"></canvas>
-            <div class="chart-label">Each dot = monthly buy execution price. Shows the actual prices at which the DCA strategy would have purchased each asset.</div>
+            <div class="chart-label">Blue = portfolio value (left axis). Dashed = capital deployed. Orange = BTC buy price each month (right axis). Hover for P&L.</div>
         </div>
     </div>
 </div>
