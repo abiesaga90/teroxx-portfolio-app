@@ -1289,10 +1289,18 @@ def compute_dca_backtest(
             if price_at_date and price_at_date > 0:
                 snapshot_value += pos["units"] * price_at_date
 
+        # Collect buy prices for this month (for chart annotations)
+        buy_prices = {}
+        for ticker in dca_weights:
+            p = _find_price(ticker, target_ts)
+            if p and p > 0:
+                buy_prices[ticker] = round(p, 2)
+
         monthly_snapshots.append({
             "month": month_label,
             "invested": round(total_cost_so_far, 2),
             "value": round(snapshot_value, 2),
+            "buy_prices": buy_prices,
         })
 
     # Final results using current prices

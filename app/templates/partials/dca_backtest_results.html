@@ -1,15 +1,3 @@
-<!-- DCA Backtest: Invested vs Value Chart -->
-<div class="card">
-    <div class="card-header">Historical DCA Performance</div>
-    <div class="chart-section">
-        <div class="chart-box-wide">
-            <canvas id="backtest-chart"></canvas>
-            <div class="chart-label">Portfolio value vs total invested (real historical prices)</div>
-        </div>
-    </div>
-</div>
-<div id="backtest-chart-data" style="display:none">{{ backtest_chart_data|safe }}</div>
-
 {% set s = data.summary %}
 <div class="summary-row">
     <div class="summary-card">
@@ -29,6 +17,67 @@
     <div class="summary-card">
         <div class="summary-label">Period</div>
         <div class="summary-value" style="font-size:1.1rem;">{{ s.months }} months @ {{ s.monthly_amount|fmt_usd }}/mo</div>
+    </div>
+</div>
+
+<!-- Chart 1: Portfolio Value vs Total Invested -->
+<div class="card">
+    <div class="card-header">Portfolio Value vs Total Invested</div>
+    <div class="chart-section">
+        <div class="chart-box-wide">
+            <canvas id="backtest-value-chart"></canvas>
+            <div class="chart-label">Blue area = portfolio value at each buy date. Dashed line = cumulative capital deployed. Hover for P&L.</div>
+        </div>
+    </div>
+</div>
+
+<!-- Chart 2: Purchase Prices Over Time -->
+<div class="card">
+    <div class="card-header">Purchase Prices Over Time</div>
+    <div class="chart-section">
+        <div class="chart-box-wide">
+            <canvas id="backtest-price-chart"></canvas>
+            <div class="chart-label">Each dot = monthly buy execution price. Shows the actual prices at which the DCA strategy would have purchased each asset.</div>
+        </div>
+    </div>
+</div>
+
+<div id="backtest-chart-data" style="display:none">{{ backtest_chart_data|safe }}</div>
+
+<!-- Purchase Schedule -->
+<div class="card">
+    <div class="card-header">Monthly Purchase Schedule</div>
+    <div class="table-wrap">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Month</th>
+                    {% for p in data.positions %}
+                    <th class="right">{{ p.ticker }}</th>
+                    {% endfor %}
+                    <th class="right">Invested</th>
+                    <th class="right">Value</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for snap in data.monthly_snapshots %}
+                <tr>
+                    <td><strong>{{ snap.month }}</strong></td>
+                    {% for p in data.positions %}
+                    <td class="right" style="font-size:0.78rem;color:var(--text-muted)">
+                        {% if snap.buy_prices and p.ticker in snap.buy_prices %}
+                            ${{ '{:,.0f}'.format(snap.buy_prices[p.ticker]) }}
+                        {% else %}-{% endif %}
+                    </td>
+                    {% endfor %}
+                    <td class="right">{{ snap.invested|fmt_usd }}</td>
+                    <td class="right {% if snap.value >= snap.invested %}positive{% else %}danger{% endif %}">
+                        {{ snap.value|fmt_usd }}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
     </div>
 </div>
 
@@ -98,8 +147,8 @@
     </div>
     <div class="sources">
         <div class="sources-title">Sources</div>
-        <sup class="src">1</sup> Historical daily prices from <a href="https://www.coingecko.com" target="_blank">CoinGecko API</a> (free tier).<br>
-        <sup class="src">2</sup> Monthly buys simulated on the 1st of each month at actual historical close prices.<br>
+        <sup class="src">1</sup> Historical daily prices from <a href="https://www.coingecko.com" target="_blank">CoinGecko</a> / <a href="https://coinmarketcap.com" target="_blank">CoinMarketCap</a> APIs (free tier).<br>
+        <sup class="src">2</sup> Monthly buys simulated on the ~1st of each month at actual historical close prices.<br>
         <sup class="src">3</sup> Current value uses live spot prices. Updated: {{ price_age }}.<br>
         <sup class="src">4</sup> DCA weights from Teroxx Portfolio Allocation Model v3.6. Past performance does not guarantee future results.
     </div>

@@ -218,7 +218,7 @@
                 <form id="dca-backtest-form" class="controls"
                       hx-post="/api/dca-backtest"
                       hx-target="#dca-backtest-results"
-                      hx-trigger="submit"
+                      hx-trigger="change, keyup changed delay:500ms"
                       hx-indicator="#backtest-loading"
                       hx-on::after-settle="requestAnimationFrame(function(){setTimeout(tryRenderAllCharts,50)})">
                     <input type="hidden" name="profile" value="Balanced">
@@ -238,21 +238,18 @@
                     <div class="control-group">
                         <span class="control-label">DCA Scope</span>
                         <select name="dca_scope">
-                            <option value="BTC Only">BTC Only</option>
+                            <option value="BTC Only" selected>BTC Only</option>
                             <option value="BTC + Large Cap">BTC + Large Cap</option>
-                            <option value="All Crypto" selected>All Crypto</option>
+                            <option value="All Crypto">All Crypto</option>
                         </select>
                     </div>
                     <div class="control-group">
-                        <span class="control-label">Lookback Period</span>
+                        <span class="control-label">Lookback</span>
                         <select name="months_back">
                             <option value="6">6 months</option>
                             <option value="12" selected>12 months</option>
-                            <option value="18">18 months</option>
-                            <option value="24">24 months</option>
                         </select>
                     </div>
-                    <button type="submit" class="btn-primary" style="margin-left:1rem;">Run Backtest</button>
                     <span id="backtest-loading" class="htmx-indicator"><span class="spinner"></span></span>
                 </form>
             </div>
@@ -793,7 +790,15 @@ function switchDCAMode(mode) {
     document.querySelectorAll('[data-dcamode]').forEach(b => b.classList.remove('active'));
     document.querySelector(`[data-dcamode="${mode}"]`)?.classList.add('active');
     document.getElementById('dca-planner-panel').style.display = mode === 'planner' ? '' : 'none';
-    document.getElementById('dca-backtest-panel').style.display = mode === 'backtest' ? '' : 'none';
+    var btPanel = document.getElementById('dca-backtest-panel');
+    btPanel.style.display = mode === 'backtest' ? '' : 'none';
+    // Auto-trigger backtest on first open
+    if (mode === 'backtest' && !btPanel.dataset.loaded) {
+        btPanel.dataset.loaded = '1';
+        setTimeout(function() {
+            htmx.trigger(document.getElementById('dca-backtest-form'), 'change');
+        }, 100);
+    }
 }
 
 // ── Rebalance + P&L position persistence ──

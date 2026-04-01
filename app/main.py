@@ -364,12 +364,21 @@ async def dca_backtest_partial(
         historical, months_back,
     )
 
-    # Chart data: invested vs value over time
+    # Chart data: invested vs value over time + buy prices per token
     snapshots = data.get("monthly_snapshots", [])
+    # Collect all tickers that have buy prices
+    all_buy_tickers = set()
+    for s in snapshots:
+        all_buy_tickers.update(s.get("buy_prices", {}).keys())
+
     backtest_chart_data = json.dumps({
         "months": [s["month"] for s in snapshots],
         "invested": [s["invested"] for s in snapshots],
         "value": [s["value"] for s in snapshots],
+        "buy_prices": {
+            ticker: [s.get("buy_prices", {}).get(ticker) for s in snapshots]
+            for ticker in sorted(all_buy_tickers)
+        },
     })
 
     return templates.TemplateResponse("partials/dca_backtest_results.html", {
