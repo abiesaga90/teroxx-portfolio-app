@@ -19,15 +19,16 @@ DRAWDOWN_IMPACT = {
     "Crypto -30%": {"Conservative": -0.135, "Balanced": -0.231, "Growth": -0.276, "Aggressive": -0.297},
 }
 
-ALLOCATION_MODES = ["Standard", "Factor Model", "VA Model"]
+ALLOCATION_MODES = ["Standard", "Factor Model", "VA Model", "Enhanced Model"]
 
 ASSET_UNIVERSES = {
     "Teroxx Core (9)": ["USDC", "EURC", "PAXG", "BTC", "ETH", "BNB", "XRP", "ADA", "POL"],
     "Teroxx Core+Additional (15)": ["USDC", "EURC", "PAXG", "BTC", "ETH", "BNB", "XRP", "ADA", "POL", "LTC", "LINK", "BCH", "TRX", "SOL", "XLM"],
     "Pre-Kraken Embed (22)": ["USDC", "EURC", "PAXG", "BTC", "ETH", "BNB", "XRP", "ADA", "POL", "LTC", "LINK", "BCH", "TRX", "SOL", "XLM", "DOT", "AVAX", "AAVE", "UNI", "TON", "MNT", "ASTER"],
     "Full (24)": ["USDC", "EURC", "PAXG", "BTC", "ETH", "BNB", "XRP", "ADA", "POL", "LTC", "LINK", "BCH", "TRX", "SOL", "XLM", "HYPE", "DOT", "AVAX", "SUI", "AAVE", "UNI", "TON", "MNT", "ASTER"],
-    "Long (53)": None,  # computed: all non-Short tiers
-    "Extended (79)": None,  # all assets
+    "Teroxx Research (21)": ["BTC", "ETH", "AAVE", "BNB", "UNI", "HYPE", "ZEC", "SKY", "TRX", "SYRUP", "XMR", "AR", "PENDLE", "AERO", "VVV", "EUL", "RNDR", "AKT", "TAO", "ATH", "MON"],
+    "Long (79)": None,  # computed: all non-Short tiers
+    "Extended (87)": None,  # all assets
 }
 
 # Complete asset universe — 79 tokens
@@ -110,6 +111,16 @@ ASSET_UNIVERSE = [
     {"ticker": "1INCH",   "name": "1inch",             "category": "DEX",          "tier": "Long",              "risk_tier": "Speculative"},
     {"ticker": "DEXE",    "name": "DeXe",              "category": "DeFi",         "tier": "Long",              "risk_tier": "Speculative"},
     {"ticker": "EDU",     "name": "Open Campus",       "category": "Education",    "tier": "Long",              "risk_tier": "Speculative"},
+    # ── Teroxx Research basket (nickel-ls-rv curated long basket) ──
+    {"ticker": "SKY",     "name": "Sky",               "category": "DeFi",         "tier": "Research",          "risk_tier": "Speculative"},
+    {"ticker": "SYRUP",   "name": "Maple Finance",     "category": "DeFi",         "tier": "Research",          "risk_tier": "Speculative"},
+    {"ticker": "AR",      "name": "Arweave",           "category": "AI / Compute", "tier": "Research",          "risk_tier": "Speculative"},
+    {"ticker": "AERO",    "name": "Aerodrome",         "category": "DEX",          "tier": "Research",          "risk_tier": "Speculative"},
+    {"ticker": "VVV",     "name": "Venice",            "category": "AI / Compute", "tier": "Research",          "risk_tier": "Speculative"},
+    {"ticker": "EUL",     "name": "Euler",             "category": "DeFi",         "tier": "Research",          "risk_tier": "Speculative"},
+    {"ticker": "AKT",     "name": "Akash Network",     "category": "AI / Compute", "tier": "Research",          "risk_tier": "Speculative"},
+    {"ticker": "ATH",     "name": "Aethir",            "category": "AI / Compute", "tier": "Research",          "risk_tier": "Speculative"},
+    {"ticker": "MON",     "name": "Mon Protocol",      "category": "Gaming",       "tier": "Research",          "risk_tier": "Speculative"},
 ]
 
 # Build lookup
@@ -196,10 +207,85 @@ VA_REGISTRY = {
     "LINK":  {"mechanism": "none"},
     "BCH":   {"mechanism": "none"},
     "XLM":   {"mechanism": "none"},
+    # ── Extended tokens with Research basket overlap ──
+    "ZEC":   {"mechanism": "none"},                                              # PoW, no accrual
+    "XMR":   {"mechanism": "none"},                                              # PoW, no accrual
+    "PENDLE":{"mechanism": "fee_distribution",   "defillama_accurate": True},    # vePENDLE fee share
+    "RNDR":  {"mechanism": "buyback_burn",       "defillama_accurate": False},   # Render burn-and-mint
+    "TAO":   {"mechanism": "staking_rewards",    "defillama_accurate": False},   # Subnet staking
+    # ── Teroxx Research additions ──
+    "SKY":   {"mechanism": "buyback_burn",       "defillama_accurate": True},   # MKR burn via surplus auctions
+    "SYRUP": {"mechanism": "fee_distribution",   "defillama_accurate": True},   # Maple lending fees to stakers
+    "AR":    {"mechanism": "none"},                                              # Storage endowment, no direct accrual
+    "AERO":  {"mechanism": "fee_distribution",   "defillama_accurate": True},   # veAERO fee distribution
+    "VVV":   {"mechanism": "buyback_burn",       "defillama_accurate": False},  # Venice AI revenue buyback
+    "EUL":   {"mechanism": "fee_switch_partial", "defillama_accurate": True},   # Euler DAO fee switch
+    "AKT":   {"mechanism": "fee_distribution",   "defillama_accurate": False},  # Compute lease fees to stakers
+    "ATH":   {"mechanism": "staking_rewards",    "defillama_accurate": False},  # GPU node staking rewards
+    "MON":   {"mechanism": "none"},
 }
 
 # Keep reference to old name for backward compat
 TEN_FACTOR_WEIGHTS = VA_FACTOR_WEIGHTS
+
+# ── Sector-Aware VA Weight Profiles (ported from nickel-ls-rv) ──
+# Maps categories to different VA weight mixes. supply_health from nickel
+# is decomposed to Dilution (60%) + Supply Delta (40%).
+SECTOR_VA_PROFILES = {
+    "l1_platform": {
+        "Dilution": 0.21, "Supply Delta": 0.14,  # supply_health=0.35
+        "Buyback Intensity": 0.10, "Rev Capture": 0.05,
+        "Fee Momentum": 0.15, "FDV / Fees": 0.10, "FDV / TVL": 0.25,
+    },
+    "defi": {
+        "Dilution": 0.15, "Supply Delta": 0.10,  # supply_health=0.25
+        "Buyback Intensity": 0.25, "Rev Capture": 0.15,
+        "Fee Momentum": 0.15, "FDV / Fees": 0.15, "FDV / TVL": 0.05,
+    },
+    "ai_compute": {
+        "Dilution": 0.15, "Supply Delta": 0.10,  # supply_health=0.25
+        "Buyback Intensity": 0.15, "Rev Capture": 0.10,
+        "Fee Momentum": 0.20, "FDV / Fees": 0.15, "FDV / TVL": 0.15,
+    },
+    "pow_monetary": {
+        "Dilution": 0.42, "Supply Delta": 0.28,  # supply_health=0.70
+        "Buyback Intensity": 0.00, "Rev Capture": 0.00,
+        "Fee Momentum": 0.05, "FDV / Fees": 0.00, "FDV / TVL": 0.25,
+    },
+}
+
+# Map teroxx categories → VA profile key
+CATEGORY_TO_VA_PROFILE = {
+    "Layer 1": "l1_platform",
+    "Layer 0": "l1_platform",
+    "Layer 2": None,           # uses default VA_FACTOR_WEIGHTS
+    "DeFi": "defi",
+    "DEX": "defi",
+    "Exchange": "defi",
+    "AI / Compute": "ai_compute",
+    "AI": "ai_compute",
+    "AI/Identity": "ai_compute",
+    "Store of Value": "pow_monetary",
+    "Payment": "pow_monetary",
+    "Privacy": "pow_monetary",
+    "Legacy": "pow_monetary",
+    "Infrastructure": None,
+    "Gaming": None,
+    "Meme": None,
+    "Meme/NFT": None,
+    "IoT": None,
+    "RWA": None,
+    "CeFi": None,
+    "Enterprise": None,
+    "Sports": None,
+    "Education": None,
+    "Wallet": None,
+}
+
+# Per-token overrides (takes precedence)
+VA_PROFILE_OVERRIDES = {
+    "BTC": "pow_monetary",  # Tagged as "Store of Value" but PoW monetary policy
+}
 
 # Default factor scores (0-100) — all 50 except noted
 DEFAULT_FIVE_FACTOR_SCORES = {
@@ -237,6 +323,10 @@ TOKEN_MAP = {
     "1INCH": "1inch", "DEXE": "dexe", "EDU": "edu-coin",
     "MYX": "myx-finance",
     "USDC": "usd-coin", "EURC": "euro-coin",
+    # Teroxx Research additions
+    "SKY": "sky", "SYRUP": "syrup", "AR": "arweave",
+    "AERO": "aerodrome-finance", "VVV": "venice-token", "EUL": "euler",
+    "AKT": "akash-network", "ATH": "aethir", "MON": "monad",
 }
 
 # DefiLlama protocol slug mapping (for fees/TVL data)
@@ -255,6 +345,44 @@ DEFILLAMA_MAP = {
     # Gaming / other
     "SAND": "sandbox", "MANA": "decentraland", "GALA": "gala",
     "IMX": "immutable-x", "RNDR": "render", "FET": "fetch-ai",
+    # Teroxx Research additions
+    "SKY": "maker", "SYRUP": "maple", "AR": "arweave",
+    "AERO": "aerodrome", "EUL": "euler", "AKT": "akash-network",
+}
+
+# DefiLlama per-protocol TVL history mapping
+# "chain:{name}" for L1 chain TVL (historicalChainTvl endpoint)
+# "protocol:{slug}" for protocol TVL (/protocol/{slug} endpoint)
+# Comma-separated slugs are summed (multi-version protocols)
+DEFILLAMA_TVL_MAP = {
+    # L1 chains — use historicalChainTvl endpoint
+    "BTC": "chain:Bitcoin", "ETH": "chain:Ethereum", "SOL": "chain:Solana",
+    "BNB": "chain:BSC", "AVAX": "chain:Avalanche", "DOT": "chain:Polkadot",
+    "ADA": "chain:Cardano", "NEAR": "chain:Near", "APT": "chain:Aptos",
+    "ALGO": "chain:Algorand", "ICP": "chain:ICP", "SUI": "chain:Sui",
+    "ARB": "chain:Arbitrum", "OP": "chain:Optimism", "TRX": "chain:Tron",
+    "HBAR": "chain:Hedera", "TON": "chain:TON", "ASTER": "chain:Astar",
+    "MNT": "chain:Mantle",
+    # DeFi protocols — use /protocol/{slug} endpoint
+    "AAVE": "protocol:aave",
+    "UNI": "protocol:uniswap-v3,uniswap-v2,uniswap-v4",  # multi-slug: sum TVL
+    "MKR": "protocol:maker", "SKY": "protocol:maker",
+    "CRV": "protocol:curve-dex",
+    "LDO": "protocol:lido",
+    "SNX": "protocol:synthetix",
+    "COMP": "protocol:compound-finance",
+    "PENDLE": "protocol:pendle",
+    "MORPHO": "protocol:morpho",
+    "ETHFI": "protocol:ether.fi",
+    "ENA": "protocol:ethena",
+    "CAKE": "protocol:pancakeswap-amm-v3,pancakeswap-amm",
+    "1INCH": "protocol:1inch-network",
+    "HYPE": "protocol:hyperliquid",
+    "INJ": "protocol:injective",
+    "SYRUP": "protocol:maple",
+    "AERO": "protocol:aerodrome-slipstream,aerodrome",
+    "EUL": "protocol:euler",
+    "AKT": "protocol:akash-network",
 }
 
 # DefiLlama fees slug mapping (separate from protocol slugs)
@@ -267,6 +395,23 @@ DEFILLAMA_FEES_MAP = {
     "ENA": "ethena", "ETH": "ethereum", "SOL": "solana",
     "BNB": "bsc", "AVAX": "avalanche", "ARB": "arbitrum",
     "OP": "optimism", "TRX": "tron", "SUI": "sui",
+    # Teroxx Research additions
+    "SKY": "maker", "SYRUP": "maple", "AERO": "aerodrome-slipstream",
+    "EUL": "euler", "AKT": "akash-network",
+}
+
+# Messari network slug mapping (for free metrics API)
+# Slugs verified from Messari /metrics/v2/networks endpoint
+MESSARI_NETWORK_MAP = {
+    "BTC": "bitcoin", "ETH": "ethereum", "SOL": "solana",
+    "BNB": "binance-smart-chain", "ADA": "cardano", "AVAX": "avalanche",
+    "DOT": "polkadot", "NEAR": "near", "APT": "aptos",
+    "ALGO": "algorand", "SUI": "sui", "TRX": "tron",
+    "HBAR": "hedera", "ICP": "internet-computer", "TON": "the-open-network",
+    "ARB": "arbitrum-one", "OP": "optimism",
+    "ATOM": "cosmos", "FIL": "filecoin",
+    "XLM": "stellar", "FTM": "fantom", "POL": "polygon-pos",
+    "ASTER": "astar",
 }
 
 # DCA scope options

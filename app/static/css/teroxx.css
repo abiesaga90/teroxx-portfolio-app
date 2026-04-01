@@ -947,3 +947,75 @@ sup.src {
 [data-theme="dark"] .raw-data-row .raw-val {
     color: #c8ccd8;
 }
+
+/* ── DeFi Health Banner ── */
+.defi-health-banner {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.5rem 1.5rem;
+    font-size: 0.82rem;
+    font-family: 'Sohne', Arial, sans-serif;
+    color: #fff;
+    background: var(--deep-indigo, #060d43);
+    flex-wrap: wrap;
+}
+.defi-health-label {
+    font-weight: 600;
+    opacity: 0.7;
+}
+.defi-health-regime {
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.defi-health-score {
+    opacity: 0.7;
+}
+.defi-health-sub {
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+    background: rgba(255,255,255,0.1);
+    font-size: 0.75rem;
+    cursor: help;
+}
+.defi-health-date {
+    margin-left: auto;
+    opacity: 0.5;
+    font-size: 0.72rem;
+}
+/* Regime color accents */
+/* Vol regime badges */
+.vol-low_vol { color: #4ade80; }
+.vol-normal { color: #bfb3a8; }
+.vol-high_vol { color: #f87171; }
+
+/* Source health footer */
+.source-health-footer {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 1.5rem;
+    font-size: 0.72rem;
+    font-family: 'Sohne', Arial, sans-serif;
+    color: #888;
+    border-top: 1px solid var(--border, #e0e0e0);
+    flex-wrap: wrap;
+}
+.source-health-label { font-weight: 600; opacity: 0.6; }
+.source-health-badge {
+    padding: 0.1rem 0.4rem;
+    border-radius: 3px;
+    font-size: 0.68rem;
+    cursor: help;
+}
+.source-ok { background: rgba(74,222,128,0.15); color: #4ade80; }
+.source-stale { background: rgba(251,191,36,0.15); color: #fbbf24; }
+.source-down { background: rgba(248,113,113,0.15); color: #f87171; }
+.source-unknown { background: rgba(156,163,175,0.15); color: #9ca3af; }
+
+.defi-contraction { background: #7a1b1b; }
+.defi-cooling { background: #5c3d1e; }
+.defi-neutral { background: var(--deep-indigo, #060d43); }
+.defi-expanding { background: #1b4a2e; }
+.defi-boom { background: #0b688c; }

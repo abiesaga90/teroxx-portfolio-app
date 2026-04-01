@@ -14,8 +14,12 @@ from app.data import (
     VA_FEE_MOMENTUM_NORMALIZE, VA_FDV_FEES_NEUTRAL, VA_FDV_TVL_NEUTRAL,
     VA_REGISTRY, VA_GATE_MIN_FEES_30D, VA_NO_ACCRUAL_FLOOR, VA_NO_ACCRUAL_MCAP_FLOOR,
     DCA_SCOPES, get_alloc_tier,
+    SECTOR_VA_PROFILES, CATEGORY_TO_VA_PROFILE, VA_PROFILE_OVERRIDES,
 )
-from app.market_data import get_price, get_market_info, get_defillama_info, get_binance_info, get_supply_delta_pct
+from app.market_data import (
+    get_price, get_market_info, get_defillama_info, get_binance_info, get_supply_delta_pct,
+    get_defillama_protocol_info, get_messari_info, get_dev_info,
+)
 
 
 def get_universe_tickers(universe_name: str) -> list[str]:
@@ -26,7 +30,7 @@ def get_universe_tickers(universe_name: str) -> list[str]:
     if "Extended" in universe_name:
         return [a["ticker"] for a in ASSET_UNIVERSE]
     if "Long" in universe_name:
-        return [a["ticker"] for a in ASSET_UNIVERSE if a["tier"] != "Short"]
+        return [a["ticker"] for a in ASSET_UNIVERSE if a["tier"] not in ("Short",)]
     return [a["ticker"] for a in ASSET_UNIVERSE]
 
 
@@ -390,15 +394,33 @@ def compute_five_factor_scores(profile: str, tickers: list[str]) -> dict[str, fl
     return composites
 
 
+def _get_va_weights_for_ticker(ticker: str, profile: str) -> dict[str, float]:
+    """Get sector-aware VA weights for a token. Returns {factor_name: weight}."""
+    # Check per-token override first
+    profile_key = VA_PROFILE_OVERRIDES.get(ticker)
+    if not profile_key:
+        # Look up category → sector profile
+        asset = ASSET_BY_TICKER.get(ticker, {})
+        category = asset.get("category", "")
+        profile_key = CATEGORY_TO_VA_PROFILE.get(category)
+
+    if profile_key and profile_key in SECTOR_VA_PROFILES:
+        # Use sector-specific weights (same for all risk profiles)
+        return SECTOR_VA_PROFILES[profile_key]
+    else:
+        # Use default profile-specific weights
+        return {factor: weights.get(profile, 0) for factor, weights in VA_FACTOR_WEIGHTS.items()}
+
+
 def compute_ten_factor_scores(profile: str, tickers: list[str]) -> dict[str, float]:
-    """Returns {ticker: composite_score} for allocation weighting."""
+    """Returns {ticker: composite_score} for allocation weighting. Uses sector-aware VA weights."""
     individual = compute_live_ten_factor_scores(tickers)
     composites = {}
     for t in tickers:
         scores = individual.get(t, {})
+        weights = _get_va_weights_for_ticker(t, profile)
         composite = 0
-        for factor, weights in VA_FACTOR_WEIGHTS.items():
-            w = weights.get(profile, 0)
+        for factor, w in weights.items():
             s = scores.get(factor, 50)
             composite += w * s
         composites[t] = composite
@@ -434,12 +456,18 @@ def ten_factor_detail(profile: str, tickers: list[str]) -> list[dict]:
     for t in tickers:
         scores = individual.get(t, {})
         row = {"ticker": t, "name": ASSET_BY_TICKER.get(t, {}).get("name", t)}
+        # Sector-aware VA weights
+        weights = _get_va_weights_for_ticker(t, profile)
         composite = 0
-        for factor, weights in VA_FACTOR_WEIGHTS.items():
+        for factor, w in weights.items():
             s = scores.get(factor, 50)
             row[factor] = round(s, 1)
-            composite += weights.get(profile, 0) * s
+            composite += w * s
         row["composite"] = round(composite, 1)
+        # Record which sector profile was used
+        asset = ASSET_BY_TICKER.get(t, {})
+        sector_key = VA_PROFILE_OVERRIDES.get(t) or CATEGORY_TO_VA_PROFILE.get(asset.get("category", ""))
+        row["_va_profile"] = sector_key or "default"
         row["_raw"] = five_individual.get(t, {}).get("_raw", {})
         row["_data_missing"] = five_individual.get(t, {}).get("_data_missing", False)
         row["_va_signals"] = scores.get("_va_signals", {})
@@ -447,6 +475,214 @@ def ten_factor_detail(profile: str, tickers: list[str]) -> list[dict]:
         results.append(row)
     results.sort(key=lambda x: -x["composite"])
     return results
+
+
+# ── P3 (Protocol Performance) Pillar ──────────────────────────────────
+
+P3_FACTOR_WEIGHTS = {
+    "TVL Growth 7d":      {"Conservative": 0.40, "Balanced": 0.35, "Growth": 0.30, "Aggressive": 0.25},
+    "Borrowed Growth 7d": {"Conservative": 0.20, "Balanced": 0.20, "Growth": 0.15, "Aggressive": 0.10},
+    "Fee Growth 7d":      {"Conservative": 0.25, "Balanced": 0.25, "Growth": 0.30, "Aggressive": 0.35},
+    "Network Activity":   {"Conservative": 0.15, "Balanced": 0.20, "Growth": 0.25, "Aggressive": 0.30},
+}
+
+
+def compute_p3_scores(tickers: list[str]) -> dict[str, dict]:
+    """Protocol Performance pillar: TVL growth, borrowed growth, fee growth, network activity.
+    Each signal normalized [-1, +1] → [0, 100]. Returns {ticker: {sub_scores + composite}}."""
+    if not tickers:
+        return {}
+
+    result = {}
+    for t in tickers:
+        proto = get_defillama_protocol_info(t) or {}
+        messari = get_messari_info(t) or {}
+        dl = get_defillama_info(t) or {}
+
+        signals = {}
+        n_signals = 0
+
+        # 1. TVL Growth 7d — from protocol detail
+        tvl_g = proto.get("tvl_growth_7d")
+        if tvl_g is not None:
+            signals["tvl_growth_7d"] = _clamp(tvl_g / 0.10)  # ±10% = max signal
+            n_signals += 1
+        else:
+            # Fallback to aggregate DeFiLlama tvl_change_7d
+            tvl_c = dl.get("tvl_change_7d")
+            if tvl_c and tvl_c != 0:
+                signals["tvl_growth_7d"] = _clamp(tvl_c / 10.0)  # tvl_change_7d is already %
+                n_signals += 1
+            else:
+                signals["tvl_growth_7d"] = 0.0
+
+        # 2. Borrowed Growth 7d — lending protocols only
+        borrowed = proto.get("borrowed_current", 0)
+        if borrowed and borrowed > 0:
+            # Use TVL growth as proxy for borrowed growth (both move together for lending)
+            signals["borrowed_growth_7d"] = signals["tvl_growth_7d"]
+            n_signals += 1
+        else:
+            signals["borrowed_growth_7d"] = 0.0
+
+        # 3. Fee Growth 7d — from DeFiLlama fee momentum
+        fee_mom = dl.get("fee_momentum", 0)
+        if fee_mom != 0:
+            signals["fee_growth_7d"] = _clamp(fee_mom / 50.0)  # ±50% = max signal
+            n_signals += 1
+        else:
+            signals["fee_growth_7d"] = 0.0
+
+        # 4. Network Activity — from Messari
+        active_addrs = messari.get("active_addresses", 0)
+        txn_count = messari.get("txn_count", 0)
+        if active_addrs > 0 or txn_count > 0:
+            # Normalize: 100K active addresses = max signal
+            addr_sig = _clamp(active_addrs / 100_000) if active_addrs else 0
+            # Normalize: 1M daily txns = max signal
+            txn_sig = _clamp(txn_count / 1_000_000) if txn_count else 0
+            signals["network_activity"] = _clamp((addr_sig + txn_sig) / 2)
+            n_signals += 1
+        else:
+            signals["network_activity"] = 0.0
+
+        # Convert to scores
+        scores = {name: _signal_to_score(sig) for name, sig in signals.items()}
+        scores["_n_signals"] = n_signals
+        scores["_has_p3"] = n_signals > 0
+
+        result[t] = scores
+
+    return result
+
+
+def compute_p3_composite(profile: str, tickers: list[str]) -> dict[str, float]:
+    """Returns {ticker: p3_composite_score}."""
+    p3 = compute_p3_scores(tickers)
+    composites = {}
+    p3_names = list(P3_FACTOR_WEIGHTS.keys())
+    signal_keys = ["tvl_growth_7d", "borrowed_growth_7d", "fee_growth_7d", "network_activity"]
+    for t in tickers:
+        scores = p3.get(t, {})
+        composite = 0
+        total_w = 0
+        for p3_name, sig_key in zip(p3_names, signal_keys):
+            s = scores.get(sig_key, 50)
+            w = P3_FACTOR_WEIGHTS[p3_name].get(profile, 0)
+            composite += w * s
+            total_w += w
+        composites[t] = composite / total_w * total_w if total_w > 0 else 50.0
+    return composites
+
+
+# ── Red Flag / Conviction Quality Filter ─────────────────────────────
+
+def compute_red_flag_scores(tickers: list[str]) -> dict[str, dict]:
+    """Detect value-extractive tokens. Score 0-100 where 100 = worst red flags.
+    Inverted nickel-ls-rv conviction scoring for long-only use.
+
+    4 pillars:
+      1. Dilution Overhang (30%): High FDV/MCap + low float
+      2. Revenue Void (25%): No fees, no holder value
+      3. Valuation Absurdity (25%): Extreme PE, thin volume
+      4. Unlock Pressure (20%): Supply inflation
+    """
+    if not tickers:
+        return {}
+
+    result = {}
+    for t in tickers:
+        info = get_market_info(t) or {}
+        dl = get_defillama_info(t) or {}
+        mc = info.get("market_cap") or 0
+        vol = info.get("total_volume") or 0
+        fdv_ratio = info.get("fdv_mcap_ratio") or 1.0
+        fees_30d = dl.get("fees_30d", 0)
+        holders_rev = dl.get("revenue_30d", 0)
+        sd = get_supply_delta_pct(t) or 0
+        registry = VA_REGISTRY.get(t, {})
+        mechanism = registry.get("mechanism", "unknown")
+
+        # 1. Dilution Overhang: FDV/MCap [1x, 10x] → [0, 100]
+        dilution = min(100, max(0, (fdv_ratio - 1.0) / 9.0 * 100))
+
+        # 2. Revenue Void: no fees + no accrual mechanism
+        if fees_30d > 50_000 and mechanism not in ("none", "unknown"):
+            rev_void = 0  # has real revenue + mechanism
+        elif fees_30d > 50_000:
+            rev_void = 30  # has fees but no mechanism
+        elif fees_30d > 0:
+            rev_void = 60  # minimal fees
+        else:
+            rev_void = 90  # zero fees
+
+        # Adjust: if has accrual mechanism, reduce severity
+        if mechanism not in ("none", "unknown") and holders_rev > 0:
+            rev_void = max(0, rev_void - 40)
+
+        # 3. Valuation Absurdity: extreme PE + thin volume
+        if fees_30d > 0 and mc > 0:
+            annual_fees = fees_30d * 12
+            pe = mc / annual_fees if annual_fees > 0 else 9999
+            pe_score = min(100, max(0, (math.log(max(pe, 1)) - math.log(10)) / (math.log(1000) - math.log(10)) * 100))
+        else:
+            pe_score = 80  # no fees = high valuation concern
+
+        # Volume thinness: low vol/mcap = illiquid
+        vol_mcap = vol / mc if mc > 0 else 0
+        thin_score = min(100, max(0, (1 - vol_mcap / 0.10) * 100)) if vol_mcap < 0.10 else 0
+
+        valuation = (pe_score * 0.6 + thin_score * 0.4)
+
+        # 4. Unlock Pressure: positive supply delta = inflationary
+        unlock = min(100, max(0, sd / 5.0 * 100)) if sd > 0 else 0
+
+        # Composite
+        total = dilution * 0.30 + rev_void * 0.25 + valuation * 0.25 + unlock * 0.20
+
+        result[t] = {
+            "total": round(total, 1),
+            "dilution": round(dilution, 1),
+            "revenue_void": round(rev_void, 1),
+            "valuation": round(valuation, 1),
+            "unlock": round(unlock, 1),
+            "is_flagged": total > 60,
+        }
+
+    return result
+
+
+# ── Enhanced Model (VA + P3 two-pillar composite) ────────────────────
+
+PILLAR_WEIGHTS = {
+    "VA":  {"Conservative": 0.80, "Balanced": 0.70, "Growth": 0.65, "Aggressive": 0.60},
+    "P3":  {"Conservative": 0.20, "Balanced": 0.30, "Growth": 0.35, "Aggressive": 0.40},
+}
+
+
+def compute_enhanced_scores(profile: str, tickers: list[str]) -> dict[str, float]:
+    """Two-pillar composite: VA (sector-aware) + P3, with red flag haircuts."""
+    va_composites = compute_ten_factor_scores(profile, tickers)
+    p3_composites = compute_p3_composite(profile, tickers)
+    red_flags = compute_red_flag_scores(tickers)
+
+    va_w = PILLAR_WEIGHTS["VA"].get(profile, 0.70)
+    p3_w = PILLAR_WEIGHTS["P3"].get(profile, 0.30)
+
+    composites = {}
+    for t in tickers:
+        va_score = va_composites.get(t, 50)
+        p3_score = p3_composites.get(t, 50)
+        enhanced = va_w * va_score + p3_w * p3_score
+
+        # Red flag haircut: >60 red flag → 0.5x allocation multiplier
+        rf = red_flags.get(t, {})
+        if rf.get("is_flagged", False):
+            enhanced *= 0.5
+
+        composites[t] = enhanced
+
+    return composites
 
 
 # ── Token scorecard ────────────────────────────────────────────────────
@@ -523,6 +759,9 @@ def full_data_breakdown(tickers: list[str], profile: str) -> list[dict]:
         return []
 
     raw = _get_raw_market_vectors(tickers)
+
+    # ── P3 scores (pre-compute for all tickers) ──
+    p3_all = compute_p3_scores(tickers)
 
     # ── 5-Factor intermediates ──
     beta_raw = [abs(c) for c in raw["change_30d"]]
@@ -642,10 +881,182 @@ def full_data_breakdown(tickers: list[str], profile: str) -> list[dict]:
             "va_rev_capture_ratio": va_raw.get("rev_capture_ratio", 0),
             "va_mechanism": va_raw.get("mechanism", "unknown"),
             "va_has_accrual": va_raw.get("has_accrual", False),
+            # ── Developer & Community (CoinGecko) ──
+            "dev_info": get_dev_info(t),
+            # ── P3 Protocol Performance ──
+            "p3_tvl_growth": p3_all.get(t, {}).get("tvl_growth_7d", 0),
+            "p3_borrowed_growth": p3_all.get(t, {}).get("borrowed_growth_7d", 0),
+            "p3_fee_growth": p3_all.get(t, {}).get("fee_growth_7d", 0),
+            "p3_network": p3_all.get(t, {}).get("network_activity", 0),
+            "p3_has_data": p3_all.get(t, {}).get("_has_p3", False),
+            # ── Messari Network Metrics ──
+            "messari_info": get_messari_info(t),
         })
 
     rows.sort(key=lambda x: -x["market_cap"])
     return rows
+
+
+# ── Volatility Regime Detection ──────────────────────────────────────
+
+_VOL_REGIME_LOW = 10.0    # BTC |30d change| < 10% = low vol
+_VOL_REGIME_HIGH = 20.0   # BTC |30d change| > 20% = high vol
+_VOL_HYSTERESIS = 3.0     # 3% buffer
+_prev_vol_regime = "NORMAL"
+
+
+def detect_vol_regime() -> dict:
+    """Detect market vol regime from BTC 30d price change."""
+    global _prev_vol_regime
+    info = get_market_info("BTC") or {}
+    change_30d = abs(info.get("price_change_30d") or 0)
+
+    # With hysteresis
+    if _prev_vol_regime == "LOW_VOL":
+        if change_30d > _VOL_REGIME_LOW + _VOL_HYSTERESIS:
+            regime = "HIGH_VOL" if change_30d > _VOL_REGIME_HIGH else "NORMAL"
+        else:
+            regime = "LOW_VOL"
+    elif _prev_vol_regime == "HIGH_VOL":
+        if change_30d < _VOL_REGIME_HIGH - _VOL_HYSTERESIS:
+            regime = "LOW_VOL" if change_30d < _VOL_REGIME_LOW else "NORMAL"
+        else:
+            regime = "HIGH_VOL"
+    else:
+        if change_30d < _VOL_REGIME_LOW:
+            regime = "LOW_VOL"
+        elif change_30d > _VOL_REGIME_HIGH:
+            regime = "HIGH_VOL"
+        else:
+            regime = "NORMAL"
+
+    _prev_vol_regime = regime
+
+    suggestions = {
+        "LOW_VOL": "Low volatility — favorable for risk-on allocations",
+        "NORMAL": "Normal market conditions",
+        "HIGH_VOL": "High volatility — consider increasing stablecoin allocation",
+    }
+
+    return {
+        "regime": regime,
+        "btc_30d_change": round(change_30d, 1),
+        "suggestion": suggestions[regime],
+    }
+
+
+# ── Drawdown Scenario Analysis ───────────────────────────────────────
+
+STRESS_SCENARIOS = {
+    "COVID Crash (Mar 2020)":    -50,
+    "FTX Collapse (Nov 2022)":   -25,
+    "Japan Carry (Aug 2024)":    -15,
+    "China Ban (May 2021)":      -55,
+    "Flash Crash (-35%)":        -35,
+}
+
+
+def compute_stress_scenarios(allocations: list[dict], portfolio_value: float) -> list[dict]:
+    """Apply BTC shock scenarios to portfolio. Uses 30d change as beta proxy."""
+    results = []
+    for scenario_name, btc_shock in STRESS_SCENARIOS.items():
+        total_impact_pct = 0
+        for pos in allocations:
+            if pos["alloc_pct"] <= 0:
+                continue
+            t = pos["ticker"]
+            if t in ("USDC", "EURC"):
+                continue  # stablecoins don't move
+            if t == "PAXG":
+                # Gold typically rises ~5% in crypto crashes
+                total_impact_pct += pos["alloc_pct"] * 5 / 100
+                continue
+            # Estimate beta from 30d change
+            info = get_market_info(t) or {}
+            btc_info = get_market_info("BTC") or {}
+            btc_30d = abs(btc_info.get("price_change_30d") or 10)
+            token_30d = abs(info.get("price_change_30d") or 10)
+            beta = token_30d / btc_30d if btc_30d > 0 else 1.0
+            beta = min(beta, 3.0)  # cap at 3x
+            token_impact = btc_shock / 100 * beta
+            total_impact_pct += pos["alloc_pct"] * token_impact
+
+        results.append({
+            "scenario": scenario_name,
+            "btc_shock_pct": btc_shock,
+            "portfolio_impact_pct": round(total_impact_pct * 100, 1),
+            "portfolio_impact_usd": round(total_impact_pct * portfolio_value, 0),
+        })
+    return results
+
+
+# ── Diversification Score ────────────────────────────────────────────
+
+# Category pairwise correlation proxy
+_CORR_PROXY = {
+    ("Layer 1", "Layer 1"): 0.85,
+    ("Layer 1", "DeFi"): 0.70,
+    ("Layer 1", "Layer 2"): 0.80,
+    ("Layer 1", "AI / Compute"): 0.60,
+    ("Layer 1", "Gaming"): 0.55,
+    ("Layer 1", "Privacy"): 0.65,
+    ("DeFi", "DeFi"): 0.80,
+    ("DeFi", "DEX"): 0.85,
+    ("DeFi", "Layer 2"): 0.70,
+    ("AI / Compute", "AI / Compute"): 0.75,
+    ("Gaming", "Gaming"): 0.70,
+    ("Privacy", "Privacy"): 0.65,
+}
+
+
+def _get_corr_proxy(cat1: str, cat2: str) -> float:
+    """Symmetric lookup with default 0.50."""
+    return _CORR_PROXY.get((cat1, cat2)) or _CORR_PROXY.get((cat2, cat1)) or 0.50
+
+
+def compute_diversification_score(allocations: list[dict]) -> dict:
+    """Portfolio-level diversification grade from category correlations."""
+    crypto_pos = [p for p in allocations if p["alloc_pct"] > 0 and p["ticker"] not in ("USDC", "EURC", "PAXG")]
+    if len(crypto_pos) < 2:
+        return {"score": 100, "grade": "A", "avg_corr": 0.0, "n_assets": len(crypto_pos)}
+
+    # Weighted average pairwise correlation
+    total_corr = 0
+    total_weight = 0
+    for i, p1 in enumerate(crypto_pos):
+        for j, p2 in enumerate(crypto_pos):
+            if i >= j:
+                continue
+            cat1 = ASSET_BY_TICKER.get(p1["ticker"], {}).get("category", "Other")
+            cat2 = ASSET_BY_TICKER.get(p2["ticker"], {}).get("category", "Other")
+            corr = _get_corr_proxy(cat1, cat2)
+            w = p1["alloc_pct"] * p2["alloc_pct"]
+            total_corr += corr * w
+            total_weight += w
+
+    avg_corr = total_corr / total_weight if total_weight > 0 else 0.50
+
+    # Score: lower correlation = better (0-100)
+    score = max(0, min(100, round((1 - avg_corr) * 100)))
+
+    # Grade
+    if score >= 60:
+        grade = "A"
+    elif score >= 45:
+        grade = "B"
+    elif score >= 30:
+        grade = "C"
+    elif score >= 15:
+        grade = "D"
+    else:
+        grade = "F"
+
+    return {
+        "score": score,
+        "grade": grade,
+        "avg_corr": round(avg_corr, 3),
+        "n_assets": len(crypto_pos),
+    }
 
 
 # ── Allocation engine (unchanged) ──────────────────────────────────────
@@ -680,6 +1091,8 @@ def compute_allocations(profile: str, universe: str, mode: str = "Standard") -> 
         scores = compute_five_factor_scores(profile, crypto_tickers)
     elif mode == "VA Model":
         scores = compute_ten_factor_scores(profile, crypto_tickers)
+    elif mode == "Enhanced Model":
+        scores = compute_enhanced_scores(profile, crypto_tickers)
 
     for tier_name, tier_tickers in tier_groups.items():
         tier_budget = TIER_ALLOCATIONS.get(tier_name, {}).get(profile, 0)
@@ -713,7 +1126,7 @@ def compute_allocations(profile: str, universe: str, mode: str = "Standard") -> 
             total_score = sum(tier_scores.values())
             for t in tier_tickers:
                 asset = ASSET_BY_TICKER.get(t, {})
-                weight = tier_scores[t] / total_score
+                weight = tier_scores[t] / total_score if total_score > 0 else 1 / len(tier_tickers)
                 results.append({
                     "ticker": t,
                     "name": asset.get("name", t),

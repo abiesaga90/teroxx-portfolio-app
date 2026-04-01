@@ -6,6 +6,9 @@
         <button class="scoring-toggle-btn" data-dview="perps" onclick="switchDataView('perps')">Perp Futures</button>
         <button class="scoring-toggle-btn" data-dview="f5" onclick="switchDataView('f5')">5-Factor Calc</button>
         <button class="scoring-toggle-btn" data-dview="f10" onclick="switchDataView('f10')">VA Calc</button>
+        <button class="scoring-toggle-btn" data-dview="dev" onclick="switchDataView('dev')">Developer</button>
+        <button class="scoring-toggle-btn" data-dview="p3" onclick="switchDataView('p3')">P3 Protocol</button>
+        <button class="scoring-toggle-btn" data-dview="messari" onclick="switchDataView('messari')">Messari Network</button>
     </div>
 </div>
 
@@ -258,6 +261,128 @@
         <strong>FDV/Fees</strong>: log-scaled P/E ratio. P/E=100&rarr;0, P/E=10&rarr;+1, P/E=1000&rarr;&minus;1. No fees=&minus;1.<br>
         <strong>FDV/TVL</strong>: log-scaled capital efficiency. FDV/TVL=10&rarr;0, =1&rarr;+1, =100&rarr;&minus;1.<br>
     </div>
+</div>
+</div>
+
+<!-- ═══ DEVELOPER & COMMUNITY (CoinGecko) ═══ -->
+<div id="dview-dev" class="data-view-panel" style="display:none;">
+<div class="card">
+    <div class="card-header">Developer & Community <span style="font-size:0.7rem;color:var(--text-muted);font-family:'Sohne',sans-serif;font-weight:400;">&mdash; CoinGecko</span></div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Ticker</th>
+                    <th class="right">Commits (4w)</th>
+                    <th class="right">PRs Merged</th>
+                    <th class="right">Contributors</th>
+                    <th class="right">Forks</th>
+                    <th class="right">Reddit Subs</th>
+                    <th class="right">Telegram Users</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in rows %}
+                <tr{% if not r.dev_info %} style="opacity:0.35"{% endif %}>
+                    <td style="color:var(--text-muted)">{{ loop.index }}</td>
+                    <td class="ticker"><div class="ticker-cell">{% set logo = get_logo(r.ticker) %}{% if logo %}<img src="{{ logo }}" class="token-logo token-logo-sm" alt="{{ r.ticker }}">{% endif %}{{ r.ticker }}</div></td>
+                    {% if r.dev_info %}
+                    <td class="right">{{ r.dev_info.commit_count_4_weeks|fmt_compact }}</td>
+                    <td class="right">{{ r.dev_info.pull_requests_merged|fmt_compact }}</td>
+                    <td class="right">{{ r.dev_info.pull_request_contributors|fmt_compact }}</td>
+                    <td class="right">{{ r.dev_info.forks|fmt_compact }}</td>
+                    <td class="right">{{ r.dev_info.reddit_subscribers|fmt_compact }}</td>
+                    <td class="right">{{ r.dev_info.telegram_channel_user_count|fmt_compact }}</td>
+                    {% else %}
+                    <td class="right" colspan="6" style="color:var(--text-muted);font-size:0.7rem;">No developer data available</td>
+                    {% endif %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="sources"><div class="sources-title">Notes</div>Developer activity and community metrics from CoinGecko. Commits = GitHub commits in the last 4 weeks. PRs Merged and Contributors reflect recent development pace. Reddit/Telegram = community size.</div>
+</div>
+</div>
+
+<!-- ═══ P3 PROTOCOL PERFORMANCE ═══ -->
+<div id="dview-p3" class="data-view-panel" style="display:none;">
+<div class="card">
+    <div class="card-header">P3 Protocol Performance <span style="font-size:0.7rem;color:var(--text-muted);font-family:'Sohne',sans-serif;font-weight:400;">&mdash; DeFiLlama + Native APIs</span></div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Ticker</th>
+                    <th class="right">TVL Growth 7d</th>
+                    <th class="right">Borrowed Growth 7d</th>
+                    <th class="right">Fee Growth 7d</th>
+                    <th class="right">Network Activity</th>
+                    <th class="center">P3 Has Data</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in rows %}
+                <tr{% if not r.p3_has_data %} style="opacity:0.35"{% endif %}>
+                    <td style="color:var(--text-muted)">{{ loop.index }}</td>
+                    <td class="ticker"><div class="ticker-cell">{% set logo = get_logo(r.ticker) %}{% if logo %}<img src="{{ logo }}" class="token-logo token-logo-sm" alt="{{ r.ticker }}">{% endif %}{{ r.ticker }}</div></td>
+                    <td class="right" style="color:{{ 'var(--success)' if r.p3_tvl_growth >= 0 else 'var(--danger)' }}">{{ "{:+.2f}".format(r.p3_tvl_growth) }}</td>
+                    <td class="right" style="color:{{ 'var(--success)' if r.p3_borrowed_growth >= 0 else 'var(--danger)' }}">{{ "{:+.2f}".format(r.p3_borrowed_growth) }}</td>
+                    <td class="right" style="color:{{ 'var(--success)' if r.p3_fee_growth >= 0 else 'var(--danger)' }}">{{ "{:+.2f}".format(r.p3_fee_growth) }}</td>
+                    <td class="right">{{ "{:.2f}".format(r.p3_network) }}</td>
+                    <td class="center">{% if r.p3_has_data %}<span style="color:var(--success);font-weight:600;">Yes</span>{% else %}<span style="color:var(--text-muted);">No</span>{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="sources"><div class="sources-title">Notes</div>P3 (Protocol Performance Pillar) signals normalized to [-1, +1]. TVL Growth and Fee Growth from DeFiLlama. Borrowed Growth from lending protocol data. Network Activity from Messari active addresses + transaction count. Tokens with "No" have no P3 data and receive neutral (0) scores.</div>
+</div>
+</div>
+
+<!-- ═══ MESSARI NETWORK METRICS ═══ -->
+<div id="dview-messari" class="data-view-panel" style="display:none;">
+<div class="card">
+    <div class="card-header">Network Metrics <span style="font-size:0.7rem;color:var(--text-muted);font-family:'Sohne',sans-serif;font-weight:400;">&mdash; Messari</span></div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Ticker</th>
+                    <th class="right">Active Addresses</th>
+                    <th class="right">Txn Count</th>
+                    <th class="right">Fees 24h</th>
+                    <th class="right">Revenue 24h</th>
+                    <th class="right">Dev Commits</th>
+                    <th class="right">Active Devs</th>
+                    <th class="right">DEX Volume</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in rows %}
+                <tr{% if not r.messari_info %} style="opacity:0.35"{% endif %}>
+                    <td style="color:var(--text-muted)">{{ loop.index }}</td>
+                    <td class="ticker"><div class="ticker-cell">{% set logo = get_logo(r.ticker) %}{% if logo %}<img src="{{ logo }}" class="token-logo token-logo-sm" alt="{{ r.ticker }}">{% endif %}{{ r.ticker }}</div></td>
+                    {% if r.messari_info %}
+                    <td class="right">{{ r.messari_info.active_addresses|fmt_compact }}</td>
+                    <td class="right">{{ r.messari_info.txn_count|fmt_compact }}</td>
+                    <td class="right">{% if r.messari_info.fees_24h_usd %}${{ r.messari_info.fees_24h_usd|fmt_compact }}{% else %}&mdash;{% endif %}</td>
+                    <td class="right">{% if r.messari_info.revenue_24h_usd %}${{ r.messari_info.revenue_24h_usd|fmt_compact }}{% else %}&mdash;{% endif %}</td>
+                    <td class="right">{{ r.messari_info.dev_commits|fmt_compact }}</td>
+                    <td class="right">{{ r.messari_info.active_devs|fmt_compact }}</td>
+                    <td class="right">{% if r.messari_info.dex_volume_usd %}${{ r.messari_info.dex_volume_usd|fmt_compact }}{% else %}&mdash;{% endif %}</td>
+                    {% else %}
+                    <td class="right" colspan="7" style="color:var(--text-muted);font-size:0.7rem;">No Messari data available</td>
+                    {% endif %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="sources"><div class="sources-title">Notes</div>On-chain network metrics from Messari free API. Active Addresses and Txn Count reflect daily network usage. Fees/Revenue are 24h USD values. Dev Commits and Active Devs track development activity. DEX Volume = 24h decentralized exchange volume.</div>
 </div>
 </div>
 

@@ -22,9 +22,11 @@ from app.engine import (
     compute_allocations, compute_portfolio, compute_dca,
     compute_rebalance, compute_pnl, compute_rebalance_pnl,
     get_universe_tickers, five_factor_detail, ten_factor_detail, token_scorecard,
-    full_data_breakdown,
+    full_data_breakdown, compute_p3_scores, compute_red_flag_scores,
+    detect_vol_regime, compute_stress_scenarios, compute_diversification_score,
 )
-from app.market_data import fetch_prices, fetch_market_data, price_age_str, background_refresh, get_logo_url
+from app.market_data import fetch_prices, fetch_market_data, price_age_str, background_refresh, get_logo_url, get_source_health
+from app.defi_health import refresh_defi_health, get_defi_health
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -34,8 +36,9 @@ UNIVERSE_OPTIONS = [
     "Teroxx Core+Additional (15)",
     "Pre-Kraken Embed (22)",
     "Full (24)",
-    "Long (52)",
-    "Extended (78)",
+    "Teroxx Research (21)",
+    "Long (79)",
+    "Extended (87)",
 ]
 
 
@@ -48,9 +51,24 @@ async def lifespan(app: FastAPI):
         logger.info("Initial market data loaded")
     except Exception as e:
         logger.warning(f"Initial fetch failed (will retry in background): {e}")
+    # DeFi health (non-blocking — ok if it fails on first load)
+    try:
+        await refresh_defi_health()
+    except Exception as e:
+        logger.warning(f"Initial DeFi health fetch failed: {e}")
     task = asyncio.create_task(background_refresh())
+
+    async def _defi_health_loop():
+        while True:
+            await asyncio.sleep(7200)  # 2 hours
+            try:
+                await refresh_defi_health()
+            except Exception as e:
+                logger.warning(f"DeFi health refresh failed: {e}")
+    defi_task = asyncio.create_task(_defi_health_loop())
     yield
     task.cancel()
+    defi_task.cancel()
 
 
 app = FastAPI(title="Teroxx Portfolio Allocator", lifespan=lifespan)
@@ -140,6 +158,9 @@ async def index(request: Request):
         "n_tokens": len(TOKEN_MAP),
         "n_defillama": len(DEFILLAMA_MAP),
         "n_defillama_fees": len(DEFILLAMA_FEES_MAP),
+        "defi_health": get_defi_health(),
+        "vol_regime": detect_vol_regime(),
+        "source_health": get_source_health(),
     })
 
 
@@ -186,6 +207,10 @@ async def portfolio_partial(
         "matrix": sector_matrix,
     })
 
+    # Stress scenarios + diversification
+    stress = compute_stress_scenarios(positions, portfolio_value)
+    diversity = compute_diversification_score(positions)
+
     return templates.TemplateResponse("partials/portfolio_results_new.html", {
         "request": request,
         "positions": positions,
@@ -200,6 +225,8 @@ async def portfolio_partial(
         "heatmap_cats": heatmap_cats,
         "heatmap_data": heatmap_data,
         "risk_tiers": risk_tiers,
+        "stress_scenarios": stress,
+        "diversity": diversity,
 
         "tier_allocs": TIER_ALLOCATIONS,
         "fixed": FIXED_STRATEGIC,

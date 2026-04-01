@@ -16,6 +16,14 @@
         <div class="summary-label">Total Assets</div>
         <div class="summary-value">{{ positions|selectattr('alloc_pct', 'gt', 0)|list|length }}</div>
     </div>
+    {% if diversity %}
+    <div class="summary-card">
+        <div class="summary-label">Diversification</div>
+        <div class="summary-value {% if diversity.grade in ('A', 'B') %}positive{% elif diversity.grade in ('D', 'F') %}danger{% endif %}">
+            Grade {{ diversity.grade }} <small>({{ diversity.avg_corr|round(2) }} avg corr)</small>
+        </div>
+    </div>
+    {% endif %}
 </div>
 
 <div class="grid-2col">
@@ -182,6 +190,33 @@
         </div>
     </div>
 </div>
+
+<!-- Stress Scenarios -->
+{% if stress_scenarios %}
+<div class="card" style="margin-top:1rem;">
+    <h3 class="card-title">Drawdown Scenario Analysis</h3>
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Scenario</th>
+                <th style="text-align:right">BTC Shock</th>
+                <th style="text-align:right">Portfolio Impact</th>
+                <th style="text-align:right">Dollar Impact</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for s in stress_scenarios %}
+            <tr>
+                <td>{{ s.scenario }}</td>
+                <td style="text-align:right" class="danger">{{ s.btc_shock_pct }}%</td>
+                <td style="text-align:right" class="danger">{{ s.portfolio_impact_pct }}%</td>
+                <td style="text-align:right" class="danger">{{ s.portfolio_impact_usd|int|abs }}$</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
 
 <div class="sources">
     <div class="sources-title">Sources</div>

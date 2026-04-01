@@ -39,6 +39,11 @@
         <span class="header-title">Portfolio Allocation Model v3.6</span>
     </div>
     <div style="display:flex;align-items:center;gap:1rem;">
+        {% if vol_regime %}
+        <span class="header-meta vol-{{ vol_regime.regime|lower }}" title="{{ vol_regime.suggestion }}">
+            Vol: {{ vol_regime.regime|replace('_', ' ') }} (BTC {{ vol_regime.btc_30d_change }}% 30d)
+        </span>
+        {% endif %}
         <span class="header-meta">Prices: {{ price_age }}</span>
         <button class="theme-toggle" onclick="toggleTheme()">{{ 'Light Mode' if false else 'Dark Mode' }}</button>
         <script>
@@ -52,6 +57,21 @@
         </script>
     </div>
 </header>
+
+<!-- DeFi Health Banner -->
+{% if defi_health %}
+<div class="defi-health-banner defi-{{ defi_health.regime|lower|replace('defi_', '') }}">
+    <span class="defi-health-label">DeFi Macro:</span>
+    <span class="defi-health-regime">{{ defi_health.regime_label }}</span>
+    <span class="defi-health-score">({{ defi_health.composite_score }}/100)</span>
+    {% for name, sig in defi_health.sub_signals.items() %}
+    <span class="defi-health-sub" title="{{ name }}: {{ sig.growth_7d_pct|round(1) }}% 7d growth">
+        {{ name|replace('_', ' ')|title }}: {{ sig.score|round(0)|int }}
+    </span>
+    {% endfor %}
+    <span class="defi-health-date">{{ defi_health.date }}</span>
+</div>
+{% endif %}
 
 <!-- Global Controls -->
 <form id="global-controls" style="display:none;">
@@ -471,6 +491,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 </script>
+
+<!-- Source Health Footer -->
+{% if source_health %}
+<footer class="source-health-footer">
+    <span class="source-health-label">Data Sources:</span>
+    {% for source, health in source_health.items() %}
+    <span class="source-health-badge source-{{ health.status }}" title="{{ source }}: {{ health.status }}{% if health.age_seconds %} ({{ (health.age_seconds / 60)|round(0)|int }}m ago){% endif %}{% if health.consecutive_fails > 0 %} — {{ health.consecutive_fails }} consecutive failures{% endif %}">
+        {{ source|replace('_', ' ')|title }}
+    </span>
+    {% endfor %}
+</footer>
+{% endif %}
 
 </body>
 </html>

@@ -2,6 +2,8 @@
 Market data client — CoinMarketCap primary, CoinGecko fallback.
 In-memory TTL cache, retry with exponential backoff.
 """
+from __future__ import annotations
+
 import asyncio
 import os
 import time
@@ -10,7 +12,7 @@ from typing import Optional
 
 import httpx
 
-from app.data import TOKEN_MAP, ASSET_UNIVERSE, DEFILLAMA_MAP, DEFILLAMA_FEES_MAP
+from app.data import TOKEN_MAP, ASSET_UNIVERSE, DEFILLAMA_MAP, DEFILLAMA_FEES_MAP, DEFILLAMA_TVL_MAP, MESSARI_NETWORK_MAP
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +37,66 @@ _defillama_ts: float = 0
 _binance_cache: dict[str, dict] = {}
 _binance_ts: float = 0
 _supply_history: dict[str, list[tuple[float, float]]] = {}  # {cg_id: [(ts, supply), ...]}
+_coingecko_dev_cache: dict[str, dict] = {}
+_coingecko_dev_ts: float = 0
+COINGECKO_DEV_TTL = 86400  # 24 hours
+
+MESSARI_BASE = "https://api.messari.io"
+MESSARI_TTL = 3600  # 1 hour
+_messari_cache: dict[str, dict] = {}
+_messari_ts: float = 0
+_defillama_protocol_cache: dict[str, dict] = {}
+_defillama_protocol_ts: float = 0
+
+# ── Data Source Health Tracking ──
+_source_health: dict[str, dict] = {
+    "cmc": {"last_ok": 0, "last_fail": 0, "consecutive_fails": 0},
+    "coingecko": {"last_ok": 0, "last_fail": 0, "consecutive_fails": 0},
+    "defillama": {"last_ok": 0, "last_fail": 0, "consecutive_fails": 0},
+    "defillama_protocol": {"last_ok": 0, "last_fail": 0, "consecutive_fails": 0},
+    "binance": {"last_ok": 0, "last_fail": 0, "consecutive_fails": 0},
+    "coingecko_dev": {"last_ok": 0, "last_fail": 0, "consecutive_fails": 0},
+    "messari": {"last_ok": 0, "last_fail": 0, "consecutive_fails": 0},
+}
+
+
+def _mark_source_ok(source: str):
+    _source_health[source]["last_ok"] = time.time()
+    _source_health[source]["consecutive_fails"] = 0
+
+
+def _mark_source_fail(source: str):
+    _source_health[source]["last_fail"] = time.time()
+    _source_health[source]["consecutive_fails"] += 1
+
+
+def get_source_health() -> dict[str, dict]:
+    """Get health status for all data sources."""
+    now = time.time()
+    ttls = {
+        "cmc": PRICE_TTL, "coingecko": PRICE_TTL, "defillama": DEFILLAMA_TTL,
+        "defillama_protocol": DEFILLAMA_TTL, "binance": BINANCE_TTL,
+        "coingecko_dev": COINGECKO_DEV_TTL, "messari": MESSARI_TTL,
+    }
+    result = {}
+    for source, health in _source_health.items():
+        ttl = ttls.get(source, 300)
+        last_ok = health["last_ok"]
+        age = now - last_ok if last_ok > 0 else float("inf")
+        if last_ok == 0:
+            status = "unknown"
+        elif age <= ttl * 2:
+            status = "ok"
+        elif age <= ttl * 5:
+            status = "stale"
+        else:
+            status = "down"
+        result[source] = {
+            "status": status,
+            "age_seconds": round(age) if last_ok > 0 else None,
+            "consecutive_fails": health["consecutive_fails"],
+        }
+    return result
 
 # Reverse map: CoinGecko ID → ticker (for cache lookups)
 _CGID_TO_TICKER = {v: k for k, v in TOKEN_MAP.items() if v}
@@ -283,7 +345,7 @@ async def fetch_market_data() -> dict[str, dict]:
                 if cg_id not in _supply_history:
                     _supply_history[cg_id] = []
                 _supply_history[cg_id].append((now, circ_supply))
-                _supply_history[cg_id] = _supply_history[cg_id][-48:]
+                _supply_history[cg_id] = _supply_history[cg_id][-288:]
 
         logger.info(f"Market data refreshed from CMC: {len(market)} tokens")
         return _market_cache
@@ -302,7 +364,7 @@ async def fetch_market_data() -> dict[str, dict]:
                 if cg_id not in _supply_history:
                     _supply_history[cg_id] = []
                 _supply_history[cg_id].append((now, circ_supply))
-                _supply_history[cg_id] = _supply_history[cg_id][-48:]
+                _supply_history[cg_id] = _supply_history[cg_id][-288:]
 
     return _market_cache
 
@@ -404,6 +466,175 @@ async def fetch_defillama_data() -> dict[str, dict]:
     return _defillama_cache
 
 
+# ── DefiLlama Per-Protocol TVL History ────────────────────────────────
+
+def _find_tvl_at_offset(entries: list[dict], target_ts: float, ts_key: str = "date", val_key: str = "tvl") -> float | None:
+    """Find TVL value closest to target_ts from a list of {date, tvl} entries."""
+    if not entries:
+        return None
+    best = None
+    best_diff = float("inf")
+    for e in entries:
+        diff = abs(e.get(ts_key, 0) - target_ts)
+        if diff < best_diff:
+            best_diff = diff
+            best = e.get(val_key, 0)
+    # Only accept if within 2 days of target
+    if best_diff > 2 * 86400:
+        return None
+    return best
+
+
+async def _fetch_chain_tvl_history(client: httpx.AsyncClient, chain: str) -> list[dict]:
+    """Fetch historical TVL for an L1 chain. Returns [{date, tvl}, ...]."""
+    try:
+        resp = await _fetch_with_retry(
+            client, "GET",
+            f"{DEFILLAMA_BASE}/v2/historicalChainTvl/{chain}",
+        )
+        if resp:
+            return resp.json()  # [{date: unix_ts, tvl: float}, ...]
+    except Exception as e:
+        logger.warning(f"DefiLlama chain TVL fetch failed for {chain}: {e}")
+    return []
+
+
+async def _fetch_protocol_tvl_history(client: httpx.AsyncClient, slug: str) -> dict:
+    """Fetch protocol detail. Returns full protocol object."""
+    try:
+        resp = await _fetch_with_retry(
+            client, "GET",
+            f"{DEFILLAMA_BASE}/protocol/{slug}",
+        )
+        if resp:
+            return resp.json()
+    except Exception as e:
+        logger.warning(f"DefiLlama protocol fetch failed for {slug}: {e}")
+    return {}
+
+
+def _compute_tvl_growth(entries: list[dict], ts_key: str = "date", val_key: str = "tvl") -> dict:
+    """Compute TVL growth metrics from a time series of TVL entries."""
+    now_ts = time.time()
+    ts_7d = now_ts - 7 * 86400
+    ts_30d = now_ts - 30 * 86400
+
+    tvl_current = entries[-1].get(val_key, 0) if entries else 0
+    tvl_7d_ago = _find_tvl_at_offset(entries, ts_7d, ts_key, val_key)
+    tvl_30d_ago = _find_tvl_at_offset(entries, ts_30d, ts_key, val_key)
+
+    result: dict = {"tvl_current": tvl_current}
+    if tvl_7d_ago and tvl_7d_ago > 0:
+        result["tvl_7d_ago"] = tvl_7d_ago
+        result["tvl_growth_7d"] = (tvl_current - tvl_7d_ago) / tvl_7d_ago
+    if tvl_30d_ago and tvl_30d_ago > 0:
+        result["tvl_30d_ago"] = tvl_30d_ago
+        result["tvl_growth_30d"] = (tvl_current - tvl_30d_ago) / tvl_30d_ago
+
+    return result
+
+
+async def fetch_defillama_protocol_detail() -> dict[str, dict]:
+    """Fetch per-protocol TVL history with 7d/30d growth from DeFiLlama."""
+    global _defillama_protocol_cache, _defillama_protocol_ts
+    now = time.time()
+    if _defillama_protocol_cache and (now - _defillama_protocol_ts) < DEFILLAMA_TTL:
+        return _defillama_protocol_cache
+
+    result: dict[str, dict] = {}
+    async with httpx.AsyncClient(timeout=30) as client:
+        for ticker, source in DEFILLAMA_TVL_MAP.items():
+            try:
+                if source.startswith("chain:"):
+                    chain_name = source[len("chain:"):]
+                    entries = await _fetch_chain_tvl_history(client, chain_name)
+                    if entries:
+                        metrics = _compute_tvl_growth(entries)
+                        result[ticker] = metrics
+
+                elif source.startswith("protocol:"):
+                    slugs = source[len("protocol:"):].split(",")
+                    # Single-slug protocol
+                    if len(slugs) == 1:
+                        proto = await _fetch_protocol_tvl_history(client, slugs[0])
+                        if proto:
+                            tvl_entries = proto.get("tvl", [])
+                            # Protocol TVL uses totalLiquidityUSD
+                            normalized = [
+                                {"date": e.get("date", 0), "tvl": e.get("totalLiquidityUSD", 0)}
+                                for e in tvl_entries
+                            ]
+                            metrics = _compute_tvl_growth(normalized)
+
+                            # Extract borrowed and staking from currentChainTvls
+                            chain_tvls = proto.get("currentChainTvls", {})
+                            borrowed = sum(
+                                v for k, v in chain_tvls.items()
+                                if k.endswith("-borrowed") and isinstance(v, (int, float))
+                            )
+                            staking = sum(
+                                v for k, v in chain_tvls.items()
+                                if k.endswith("-staking") and isinstance(v, (int, float))
+                            )
+                            if borrowed > 0:
+                                metrics["borrowed_current"] = borrowed
+                            if staking > 0:
+                                metrics["staking_current"] = staking
+
+                            result[ticker] = metrics
+                    else:
+                        # Multi-slug: fetch each, aggregate TVL by date
+                        all_tvl_by_date: dict[int, float] = {}
+                        total_borrowed = 0.0
+                        total_staking = 0.0
+                        for slug in slugs:
+                            proto = await _fetch_protocol_tvl_history(client, slug.strip())
+                            if not proto:
+                                continue
+                            for e in proto.get("tvl", []):
+                                d = e.get("date", 0)
+                                all_tvl_by_date[d] = all_tvl_by_date.get(d, 0) + e.get("totalLiquidityUSD", 0)
+                            chain_tvls = proto.get("currentChainTvls", {})
+                            total_borrowed += sum(
+                                v for k, v in chain_tvls.items()
+                                if k.endswith("-borrowed") and isinstance(v, (int, float))
+                            )
+                            total_staking += sum(
+                                v for k, v in chain_tvls.items()
+                                if k.endswith("-staking") and isinstance(v, (int, float))
+                            )
+                            await asyncio.sleep(0.5)  # rate limit between slugs
+
+                        if all_tvl_by_date:
+                            sorted_entries = [
+                                {"date": d, "tvl": v}
+                                for d, v in sorted(all_tvl_by_date.items())
+                            ]
+                            metrics = _compute_tvl_growth(sorted_entries)
+                            if total_borrowed > 0:
+                                metrics["borrowed_current"] = total_borrowed
+                            if total_staking > 0:
+                                metrics["staking_current"] = total_staking
+                            result[ticker] = metrics
+
+            except Exception as e:
+                logger.warning(f"DefiLlama protocol detail failed for {ticker}: {e}")
+
+            # Rate limit: 0.5s between requests
+            await asyncio.sleep(0.5)
+
+    if result:
+        _defillama_protocol_cache = result
+        _defillama_protocol_ts = now
+        logger.info(f"DefiLlama protocol detail refreshed: {len(result)} tokens")
+    return _defillama_protocol_cache
+
+
+def get_defillama_protocol_info(ticker: str) -> dict | None:
+    """Return per-protocol TVL history and growth metrics for a ticker."""
+    return _defillama_protocol_cache.get(ticker)
+
+
 # ── Binance Futures ────────────────────────────────────────────────────
 
 async def fetch_binance_perp_data() -> dict[str, dict]:
@@ -455,7 +686,136 @@ async def fetch_binance_perp_data() -> dict[str, dict]:
     return _binance_cache
 
 
+# ── CoinGecko Developer & Community Data ──────────────────────────────
+
+async def fetch_coingecko_dev_data() -> dict[str, dict]:
+    """Fetch developer activity and community data from CoinGecko (per-coin endpoint)."""
+    global _coingecko_dev_cache, _coingecko_dev_ts
+    now = time.time()
+    if _coingecko_dev_cache and (now - _coingecko_dev_ts) < COINGECKO_DEV_TTL:
+        return _coingecko_dev_cache
+
+    result: dict[str, dict] = {}
+    ids = _coingecko_ids()
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        for cg_id in ids:
+            ticker = _CGID_TO_TICKER.get(cg_id)
+            if not ticker:
+                continue
+            try:
+                resp = await _fetch_with_retry(
+                    client, "GET",
+                    f"{COINGECKO_BASE}/coins/{cg_id}",
+                    params={
+                        "localization": "false",
+                        "tickers": "false",
+                        "market_data": "false",
+                        "community_data": "true",
+                        "developer_data": "true",
+                    },
+                )
+                if resp:
+                    data = resp.json()
+                    dev = data.get("developer_data") or {}
+                    community = data.get("community_data") or {}
+                    result[ticker] = {
+                        "commit_count_4_weeks": dev.get("commit_count_4_weeks", 0),
+                        "forks": dev.get("forks", 0),
+                        "pull_requests_merged": dev.get("pull_requests_merged", 0),
+                        "pull_request_contributors": dev.get("pull_request_contributors", 0),
+                        "reddit_subscribers": community.get("reddit_subscribers", 0),
+                        "telegram_channel_user_count": community.get("telegram_channel_user_count", 0),
+                    }
+            except Exception as e:
+                logger.warning(f"CoinGecko dev data fetch failed for {cg_id}: {e}")
+
+            # Rate limit: 1 request per 2 seconds (CoinGecko free tier = 30/min)
+            await asyncio.sleep(2)
+
+    if result:
+        _coingecko_dev_cache = result
+        _coingecko_dev_ts = now
+        logger.info(f"CoinGecko dev/community data refreshed: {len(result)} tokens")
+    return _coingecko_dev_cache
+
+
+# ── Messari Free Network Metrics ─────────────────────────────────────
+
+# Reverse map: slug → ticker (for matching API response to our universe)
+_MESSARI_SLUG_TO_TICKER = {v: k for k, v in MESSARI_NETWORK_MAP.items()}
+
+
+async def fetch_messari_networks() -> dict[str, dict]:
+    """Fetch network metrics from Messari free API (no auth required)."""
+    global _messari_cache, _messari_ts
+    now = time.time()
+    if _messari_cache and (now - _messari_ts) < MESSARI_TTL:
+        return _messari_cache
+
+    result: dict[str, dict] = {}
+    async with httpx.AsyncClient(timeout=30) as client:
+        try:
+            resp = await _fetch_with_retry(
+                client, "GET",
+                f"{MESSARI_BASE}/metrics/v2/networks",
+                params={"limit": 200},
+            )
+            if not resp:
+                return _messari_cache
+
+            raw = resp.json()
+            # Response structure: {"data": {"data": [...]}}
+            networks = raw.get("data", {})
+            if isinstance(networks, dict):
+                networks = networks.get("data", [])
+
+            for net in networks:
+                slug = net.get("slug", "")
+                ticker = _MESSARI_SLUG_TO_TICKER.get(slug)
+                if not ticker:
+                    continue
+
+                metrics = net.get("metrics", {})
+                activity = metrics.get("activity", {}) or {}
+                financial = metrics.get("financial", {}) or {}
+                ecosystem = metrics.get("ecosystem", {}) or {}
+                stablecoin = metrics.get("stablecoin", {}) or {}
+
+                result[ticker] = {
+                    "active_addresses": activity.get("activeAddresses24Hour"),
+                    "txn_count": activity.get("txnCount24Hour"),
+                    "fees_24h_usd": financial.get("feesTotal24HourUsd"),
+                    "revenue_24h_usd": financial.get("revenue24HourUsd"),
+                    "fees_7d_avg_usd": financial.get("rolling7dAvgFeeUsd"),
+                    "dev_commits": ecosystem.get("coreCommits24Hour"),
+                    "active_devs": ecosystem.get("activeDevelopers24Hour"),
+                    "tvl_usd": ecosystem.get("tvl24HourUsd"),
+                    "dex_volume_usd": ecosystem.get("dexVolume24HourUsd"),
+                    "stablecoin_supply_usd": stablecoin.get("outstandingSupplyUsd"),
+                }
+
+            logger.info(f"Messari networks: fetched {len(result)} chains")
+        except Exception as e:
+            logger.warning(f"Messari networks fetch failed: {e}")
+
+    if result:
+        _messari_cache = result
+        _messari_ts = now
+    return _messari_cache
+
+
 # ── Public getters ─────────────────────────────────────────────────────
+
+def get_messari_info(ticker: str) -> dict | None:
+    """Return Messari network metrics for a ticker."""
+    return _messari_cache.get(ticker)
+
+
+def get_dev_info(ticker: str) -> dict | None:
+    """Return developer & community data for a ticker."""
+    return _coingecko_dev_cache.get(ticker)
+
 
 def get_binance_info(ticker: str) -> Optional[dict]:
     return _binance_cache.get(ticker)
@@ -521,15 +881,42 @@ async def background_refresh():
         try:
             await fetch_prices()
             await fetch_market_data()
+            _mark_source_ok("cmc")
             logger.info(f"Market data refreshed: {len(_price_cache)} prices, {len(_market_cache)} market")
         except Exception as e:
+            _mark_source_fail("cmc")
             logger.error(f"Background refresh error: {e}")
         try:
             await fetch_defillama_data()
+            _mark_source_ok("defillama")
         except Exception as e:
+            _mark_source_fail("defillama")
             logger.error(f"DefiLlama refresh error: {e}")
         try:
             await fetch_binance_perp_data()
+            _mark_source_ok("binance")
         except Exception as e:
+            _mark_source_fail("binance")
             logger.error(f"Binance perp refresh error: {e}")
+        try:
+            if time.time() - _coingecko_dev_ts >= COINGECKO_DEV_TTL:
+                await fetch_coingecko_dev_data()
+                _mark_source_ok("coingecko_dev")
+        except Exception as e:
+            _mark_source_fail("coingecko_dev")
+            logger.error(f"CoinGecko dev data refresh error: {e}")
+        try:
+            if time.time() - _messari_ts >= MESSARI_TTL:
+                await fetch_messari_networks()
+                _mark_source_ok("messari")
+        except Exception as e:
+            _mark_source_fail("messari")
+            logger.error(f"Messari networks refresh error: {e}")
+        try:
+            if time.time() - _defillama_protocol_ts >= DEFILLAMA_TTL:
+                await fetch_defillama_protocol_detail()
+                _mark_source_ok("defillama_protocol")
+        except Exception as e:
+            _mark_source_fail("defillama_protocol")
+            logger.error(f"DefiLlama protocol detail refresh error: {e}")
         await asyncio.sleep(PRICE_TTL)
