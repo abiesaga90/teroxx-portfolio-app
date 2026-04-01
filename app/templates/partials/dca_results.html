@@ -1,15 +1,4 @@
-<!-- DCA Accumulation Chart -->
-<div class="card">
-    <div class="card-header">Accumulation Projection</div>
-    <div class="chart-section">
-        <div class="chart-box-wide">
-            <canvas id="dca-chart"></canvas>
-            <div class="chart-label">Cumulative investment over DCA horizon</div>
-        </div>
-    </div>
-</div>
-<div id="dca-chart-data" style="display:none">{{ dca_chart_data|safe }}</div>
-
+<!-- Summary Cards -->
 <div class="summary-row">
     <div class="summary-card">
         <div class="summary-label">Monthly Investment</div>
@@ -29,10 +18,23 @@
     </div>
 </div>
 
+<!-- Accumulation Chart -->
+<div class="card">
+    <div class="card-header">Cumulative Allocation Projection</div>
+    <div class="chart-section">
+        <div class="chart-box-wide">
+            <canvas id="dca-chart"></canvas>
+            <div class="chart-label">Coloured areas = cumulative allocation per token. Dashed line = total capital deployed. Assumes constant monthly investment at current allocation weights.</div>
+        </div>
+    </div>
+</div>
+<div id="dca-chart-data" style="display:none">{{ dca_chart_data|safe }}</div>
+
+<!-- Monthly Buy Schedule -->
 <div class="card">
     <div class="card-header">Monthly Buy Schedule</div>
     <div class="table-wrap">
-        <table>
+        <table class="data-table">
             <thead>
                 <tr>
                     <th>#</th>
@@ -43,7 +45,9 @@
                     <th class="right">DCA Weight</th>
                     <th class="right">Monthly Buy</th>
                     <th class="right">{{ horizon_months }}mo Total</th>
-                    <th class="right">Price</th>
+                    <th class="right">Current Price</th>
+                    <th class="right">Units / Month</th>
+                    <th class="right">Total Units</th>
                 </tr>
             </thead>
             <tbody>
@@ -61,13 +65,15 @@
                     <td class="right">{{ s.monthly_buy|fmt_usd }}</td>
                     <td class="right">{{ s.horizon_total|fmt_usd }}</td>
                     <td class="right">{% if s.price %}{{ s.price|fmt_usd }}{% else %}-{% endif %}</td>
+                    <td class="right" style="color:var(--text-muted)">{% if s.price and s.price > 0 %}{{ (s.monthly_buy / s.price)|fmt_num(6) }}{% else %}-{% endif %}</td>
+                    <td class="right" style="color:var(--text-muted)">{% if s.price and s.price > 0 %}{{ (s.horizon_total / s.price)|fmt_num(4) }}{% else %}-{% endif %}</td>
                 </tr>
                 {% endfor %}
                 <tr class="total-row">
                     <td colspan="6" style="text-align:right;color:var(--sandstone);">Total</td>
                     <td class="right">{{ ns.total_monthly|fmt_usd }}</td>
                     <td class="right">{{ ns.total_horizon|fmt_usd }}</td>
-                    <td></td>
+                    <td colspan="3"></td>
                 </tr>
             </tbody>
         </table>
@@ -75,7 +81,7 @@
     <div class="sources">
         <div class="sources-title">Sources</div>
         <sup class="src">1</sup> DCA weights derived from Teroxx Portfolio Allocation Model v3.6 allocation percentages.<br>
-        <sup class="src">2</sup> Live spot prices from <a href="https://www.coingecko.com" target="_blank">CoinGecko API</a>. Updated: {{ price_age }}.<br>
-        <sup class="src">3</sup> Projection assumes fixed monthly investment at current allocation weights. Actual returns will vary.
+        <sup class="src">2</sup> Live spot prices from CoinMarketCap API. Updated: {{ price_age }}.<br>
+        <sup class="src">3</sup> Units/month calculated at current price. Actual purchase prices will vary. Past performance does not guarantee future results.
     </div>
 </div>

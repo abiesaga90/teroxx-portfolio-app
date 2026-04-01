@@ -319,9 +319,10 @@ async def dca_partial(
 ):
     schedule = compute_dca(profile, universe, mode, monthly_amount, dca_scope, horizon_months, min_order)
 
-    # DCA accumulation chart: cumulative per top tokens across months
-    top_dca = [s for s in schedule if s.get("monthly_buy", 0) > 0][:6]
+    # DCA chart: stacked cumulative per token + total invested line
+    top_dca = [s for s in schedule if s.get("monthly_buy", 0) > 0][:8]
     months = list(range(1, horizon_months + 1))
+    month_labels = [f"M{m}" for m in months]
     dca_series = []
     for s in top_dca:
         monthly = s.get("monthly_buy", 0)
@@ -329,7 +330,27 @@ async def dca_partial(
             "label": s["ticker"],
             "values": [round(monthly * m, 2) for m in months],
         })
-    dca_chart_data = json.dumps({"months": [f"M{m}" for m in months], "series": dca_series})
+    # Total invested line
+    total_invested = [round(monthly_amount * m, 2) for m in months]
+    # Projected units accumulated per token at current prices
+    projected_units = []
+    for s in top_dca:
+        price = s.get("price") or 0
+        monthly = s.get("monthly_buy", 0)
+        if price > 0:
+            projected_units.append({
+                "ticker": s["ticker"],
+                "units_per_month": round(monthly / price, 6),
+                "total_units": round(monthly * horizon_months / price, 6),
+                "current_price": price,
+            })
+
+    dca_chart_data = json.dumps({
+        "months": month_labels,
+        "series": dca_series,
+        "total_invested": total_invested,
+        "projected_units": projected_units,
+    })
 
     return templates.TemplateResponse("partials/dca_results.html", {
         "request": request,

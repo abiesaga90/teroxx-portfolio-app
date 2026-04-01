@@ -289,33 +289,61 @@ function tryRenderDilution() {
 // ── DCA Accumulation Area Chart ──
 function tryRenderDCA() {
     const el = document.getElementById('dca-chart-data');
-    if (!el) return;
+    if (!el || !el.textContent.trim()) return;
     try {
         const data = JSON.parse(el.textContent);
         const ctx = document.getElementById('dca-chart');
         if (!ctx) return;
         _destroyChart('dca');
         const tc = getChartColors();
-        const areaColors = ['#0b688c', '#d06643', '#010626', '#1a8a4a', '#8B5CF6', '#F59E0B'];
-        const datasets = data.series.map((s, i) => ({
-            label: s.label,
-            data: s.values,
-            borderColor: areaColors[i % areaColors.length],
-            backgroundColor: areaColors[i % areaColors.length] + '30',
-            fill: true,
-            tension: 0.3,
-            pointRadius: 2,
-            borderWidth: 2,
-        }));
+        const areaColors = ['#0b688c', '#1a8a4a', '#8B5CF6', '#F59E0B', '#EC4899', '#14B8A6'];
+        // Stacked area per token
+        var datasets = data.series.map(function(s, i) {
+            return {
+                label: s.label,
+                data: s.values,
+                borderColor: areaColors[i % areaColors.length],
+                backgroundColor: areaColors[i % areaColors.length] + '25',
+                fill: true,
+                tension: 0.3,
+                pointRadius: 3,
+                pointBackgroundColor: areaColors[i % areaColors.length],
+                borderWidth: 2,
+            };
+        });
+        // Total invested overlay (dashed)
+        if (data.total_invested) {
+            datasets.push({
+                label: 'Total Invested',
+                data: data.total_invested,
+                borderColor: '#bfb3a8',
+                backgroundColor: 'transparent',
+                borderDash: [5, 5],
+                fill: false,
+                tension: 0,
+                pointRadius: 2,
+                borderWidth: 2,
+            });
+        }
         _charts['dca'] = new Chart(ctx, {
             type: 'line',
-            data: { labels: data.months, datasets },
+            data: { labels: data.months, datasets: datasets },
             options: {
                 responsive: true,
-                plugins: { legend: { position: 'bottom', labels: { color: tc.text, font: { size: 10 }, padding: 10 } } },
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { position: 'bottom', labels: { color: tc.text, font: { size: 11 }, padding: 12 } },
+                    tooltip: {
+                        callbacks: {
+                            label: function(ctx) {
+                                return ctx.dataset.label + ': $' + ctx.parsed.y.toLocaleString(undefined, {maximumFractionDigits: 0});
+                            },
+                        },
+                    },
+                },
                 scales: {
-                    x: { title: { display: true, text: 'Month', color: tc.muted, font: { size: 10 } }, grid: { color: tc.grid }, ticks: { color: tc.muted } },
-                    y: { title: { display: true, text: 'Cumulative ($)', color: tc.muted, font: { size: 10 } }, grid: { color: tc.grid }, ticks: { color: tc.muted, callback: v => '$' + v.toLocaleString() } },
+                    x: { grid: { color: tc.grid }, ticks: { color: tc.muted, font: { size: 10 } } },
+                    y: { title: { display: true, text: 'Cumulative ($)', color: tc.muted, font: { size: 10 } }, grid: { color: tc.grid }, ticks: { color: tc.muted, callback: function(v) { return '$' + v.toLocaleString(); } } },
                 },
             },
         });
