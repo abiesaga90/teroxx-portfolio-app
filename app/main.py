@@ -355,8 +355,8 @@ async def dca_backtest_partial(
     tickers = get_universe_tickers(universe)
     crypto_tickers = [t for t in tickers if t not in ("USDC", "EURC")]
 
-    # Fetch historical prices (cached 24h)
-    historical = await fetch_historical_prices(crypto_tickers, days=months_back * 31 + 30)
+    # Fetch historical prices (cached 24h, capped at 365 days)
+    historical = await fetch_historical_prices(crypto_tickers, days=min(months_back * 31, 365))
 
     # Run backtest
     data = compute_dca_backtest(

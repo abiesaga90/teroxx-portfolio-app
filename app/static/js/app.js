@@ -407,7 +407,7 @@ function tryRenderWaterfall() {
 // ── Sector Stacked Bar ──
 function tryRenderSector() {
     const el = document.getElementById('sector-data');
-    if (!el) return;
+    if (!el || !el.textContent.trim()) return;
     try {
         const data = JSON.parse(el.textContent);
         const ctx = document.getElementById('sector-chart');

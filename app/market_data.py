@@ -693,22 +693,30 @@ _historical_cache_ts: float = 0
 HISTORICAL_TTL = 86400  # 24h — historical data doesn't change
 
 
+_SKIP_HISTORICAL = {"USDC", "EURC"}  # stablecoins — constant $1
+
+
 async def fetch_historical_prices(tickers: list[str], days: int = 365) -> dict[str, list[tuple[float, float]]]:
-    """Fetch daily historical prices from CoinGecko for DCA backtesting.
+    """Fetch daily historical prices for DCA backtesting.
+
+    Primary: CoinGecko /market_chart (free, up to 365 days).
+    Fallback: CoinMarketCap /v3/cryptocurrency/quotes/historical (if CoinGecko fails).
 
     Returns {ticker: [(unix_ts, price_usd), ...]} sorted ascending by date.
     Uses in-memory cache with 24h TTL.
     """
     global _historical_cache, _historical_cache_ts
 
-    # Check if we already have fresh data for all requested tickers
+    days = min(days, 365)
+    fetch_tickers = [t for t in tickers if t not in _SKIP_HISTORICAL]
+
     now = time.time()
-    missing = [t for t in tickers if TOKEN_MAP.get(t) not in _historical_cache
+    missing = [t for t in fetch_tickers if TOKEN_MAP.get(t) not in _historical_cache
                or now - _historical_cache_ts > HISTORICAL_TTL]
 
     if not missing:
         result = {}
-        for t in tickers:
+        for t in fetch_tickers:
             cg_id = TOKEN_MAP.get(t)
             if cg_id and cg_id in _historical_cache:
                 result[t] = _historical_cache[cg_id]
@@ -716,6 +724,8 @@ async def fetch_historical_prices(tickers: list[str], days: int = 365) -> dict[s
 
     logger.info(f"Fetching historical prices for {len(missing)} tokens ({days} days)")
 
+    # ── Try CoinGecko first ──
+    cg_failed = []
     async with httpx.AsyncClient() as client:
         for t in missing:
             cg_id = TOKEN_MAP.get(t)
@@ -730,13 +740,71 @@ async def fetch_historical_prices(tickers: list[str], days: int = 365) -> dict[s
                 )
                 data = resp.json()
                 prices = data.get("prices", [])
-                # prices = [[unix_ms, price], ...]
                 daily = [(p[0] / 1000, p[1]) for p in prices]
-                _historical_cache[cg_id] = daily
-                logger.info(f"  {t} ({cg_id}): {len(daily)} daily prices")
+                if daily:
+                    _historical_cache[cg_id] = daily
+                    logger.info(f"  {t} ({cg_id}): {len(daily)} daily prices from CoinGecko")
+                else:
+                    cg_failed.append(t)
             except Exception as e:
-                logger.warning(f"Historical prices failed for {t}: {e}")
-            await asyncio.sleep(2)  # CoinGecko free tier rate limit
+                logger.warning(f"CoinGecko historical failed for {t}: {e}")
+                cg_failed.append(t)
+            await asyncio.sleep(4)
+
+    # ── Fallback: CMC for tokens that failed ──
+    if cg_failed:
+        logger.info(f"Falling back to CMC for {len(cg_failed)} tokens: {cg_failed}")
+        from datetime import datetime, timezone, timedelta
+        end = datetime.now(timezone.utc)
+        start = end - timedelta(days=days)
+
+        async with httpx.AsyncClient() as client:
+            for t in cg_failed:
+                cmc_sym = CMC_SYMBOL_OVERRIDES.get(t, t)
+                try:
+                    resp = await _fetch_with_retry(
+                        client, "GET",
+                        f"{CMC_BASE}/v2/cryptocurrency/quotes/historical",
+                        headers={"X-CMC_PRO_API_KEY": CMC_API_KEY},
+                        params={
+                            "symbol": cmc_sym,
+                            "time_start": start.strftime("%Y-%m-%dT00:00:00Z"),
+                            "time_end": end.strftime("%Y-%m-%dT00:00:00Z"),
+                            "interval": "daily",
+                            "convert": "USD",
+                        },
+                        timeout=30,
+                    )
+                    data = resp.json()
+                    quotes = data.get("data", {}).get("quotes", [])
+                    if not quotes:
+                        # Try nested under symbol key
+                        for sym_data in data.get("data", {}).values():
+                            if isinstance(sym_data, dict) and "quotes" in sym_data:
+                                quotes = sym_data["quotes"]
+                                break
+                            elif isinstance(sym_data, list):
+                                quotes = sym_data
+                                break
+
+                    daily = []
+                    for q in quotes:
+                        ts_str = q.get("timestamp") or q.get("time_open", "")
+                        price = None
+                        quote = q.get("quote", {}).get("USD", {})
+                        price = quote.get("price") or quote.get("close")
+                        if ts_str and price:
+                            ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00")).timestamp()
+                            daily.append((ts, float(price)))
+
+                    if daily:
+                        cg_id = TOKEN_MAP.get(t, t)
+                        _historical_cache[cg_id] = daily
+                        logger.info(f"  {t}: {len(daily)} daily prices from CMC")
+                    else:
+                        logger.warning(f"CMC historical: no quotes for {t}")
+                except Exception as e:
+                    logger.warning(f"CMC historical failed for {t}: {e}")
 
     _historical_cache_ts = now
 
