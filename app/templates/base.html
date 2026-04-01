@@ -168,38 +168,94 @@
     <!-- ═══ Tab 4: DCA Planner ═══ -->
     <div id="tab-dca" class="tab-panel">
         <div class="card">
-            <div class="card-header">Recurring Buy Planner</div>
-            <form class="controls"
-                  hx-post="/api/dca"
-                  hx-target="#dca-results"
-                  hx-trigger="change, keyup changed delay:500ms"
-                  hx-include="#global-controls"
-                  hx-indicator="#dca-loading"
-                  hx-on::after-settle="requestAnimationFrame(function(){setTimeout(tryRenderAllCharts,50)})">
-                <div class="control-group">
-                    <span class="control-label">Monthly Amount ($)</span>
-                    <input type="number" name="monthly_amount" value="1000" min="0" step="100">
-                </div>
-                <div class="control-group">
-                    <span class="control-label">DCA Scope</span>
-                    <select name="dca_scope">
-                        <option value="BTC Only">BTC Only</option>
-                        <option value="BTC + Large Cap" selected>BTC + Large Cap</option>
-                        <option value="All Crypto">All Crypto</option>
-                    </select>
-                </div>
-                <div class="control-group">
-                    <span class="control-label">Horizon (months)</span>
-                    <input type="number" name="horizon_months" value="12" min="1" max="120">
-                </div>
-                <div class="control-group">
-                    <span class="control-label">Min Order Size ($)</span>
-                    <input type="number" name="min_order" value="10" min="1">
-                </div>
-                <span id="dca-loading" class="htmx-indicator"><span class="spinner"></span></span>
-            </form>
+            <div class="card-header">DCA Planner</div>
+            <div class="scoring-toggle">
+                <button class="scoring-toggle-btn active" data-dcamode="planner" onclick="switchDCAMode('planner')">Recurring Buy Planner</button>
+                <button class="scoring-toggle-btn" data-dcamode="backtest" onclick="switchDCAMode('backtest')">Historical Backtest</button>
+            </div>
         </div>
-        <div id="dca-results"></div>
+
+        <!-- Sub-panel: Recurring Buy Planner -->
+        <div id="dca-planner-panel">
+            <div class="card">
+                <form class="controls"
+                      hx-post="/api/dca"
+                      hx-target="#dca-results"
+                      hx-trigger="change, keyup changed delay:500ms"
+                      hx-include="#global-controls"
+                      hx-indicator="#dca-loading"
+                      hx-on::after-settle="requestAnimationFrame(function(){setTimeout(tryRenderAllCharts,50)})">
+                    <div class="control-group">
+                        <span class="control-label">Monthly Amount ($)</span>
+                        <input type="number" name="monthly_amount" value="1000" min="0" step="100">
+                    </div>
+                    <div class="control-group">
+                        <span class="control-label">DCA Scope</span>
+                        <select name="dca_scope">
+                            <option value="BTC Only">BTC Only</option>
+                            <option value="BTC + Large Cap" selected>BTC + Large Cap</option>
+                            <option value="All Crypto">All Crypto</option>
+                        </select>
+                    </div>
+                    <div class="control-group">
+                        <span class="control-label">Horizon (months)</span>
+                        <input type="number" name="horizon_months" value="12" min="1" max="120">
+                    </div>
+                    <div class="control-group">
+                        <span class="control-label">Min Order Size ($)</span>
+                        <input type="number" name="min_order" value="10" min="1">
+                    </div>
+                    <span id="dca-loading" class="htmx-indicator"><span class="spinner"></span></span>
+                </form>
+            </div>
+            <div id="dca-results"></div>
+        </div>
+
+        <!-- Sub-panel: Historical Backtest -->
+        <div id="dca-backtest-panel" style="display:none">
+            <div class="card">
+                <form id="dca-backtest-form" class="controls"
+                      hx-post="/api/dca-backtest"
+                      hx-target="#dca-backtest-results"
+                      hx-trigger="submit"
+                      hx-include="#global-controls"
+                      hx-indicator="#backtest-loading"
+                      hx-on::after-settle="requestAnimationFrame(function(){setTimeout(tryRenderAllCharts,50)})">
+                    <div class="control-group">
+                        <span class="control-label">Universe</span>
+                        <select name="universe">
+                            {% for u in universes %}
+                            <option value="{{ u }}" {% if u == "Teroxx Core (9)" %}selected{% endif %}>{{ u }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="control-group">
+                        <span class="control-label">Monthly Investment ($)</span>
+                        <input type="number" name="monthly_amount" value="1000" min="100" step="100">
+                    </div>
+                    <div class="control-group">
+                        <span class="control-label">DCA Scope</span>
+                        <select name="dca_scope">
+                            <option value="BTC Only">BTC Only</option>
+                            <option value="BTC + Large Cap">BTC + Large Cap</option>
+                            <option value="All Crypto" selected>All Crypto</option>
+                        </select>
+                    </div>
+                    <div class="control-group">
+                        <span class="control-label">Lookback Period</span>
+                        <select name="months_back">
+                            <option value="6">6 months</option>
+                            <option value="12" selected>12 months</option>
+                            <option value="18">18 months</option>
+                            <option value="24">24 months</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn-primary" style="margin-left:1rem;">Run Backtest</button>
+                    <span id="backtest-loading" class="htmx-indicator"><span class="spinner"></span></span>
+                </form>
+            </div>
+            <div id="dca-backtest-results"></div>
+        </div>
     </div>
 
     <!-- ═══ Tab 4: Rebalancing & P&L ═══ -->
@@ -490,6 +546,14 @@ function switchScoringModel(model) {
     document.querySelector(`.scoring-toggle-btn[data-model="${model}"]`)?.classList.add('active');
     document.querySelector('#scoring-form [name=model]').value = model;
     htmx.trigger(document.getElementById('scoring-form'), 'change');
+}
+
+// ── DCA mode toggle (Planner vs Backtest) ──
+function switchDCAMode(mode) {
+    document.querySelectorAll('[data-dcamode]').forEach(b => b.classList.remove('active'));
+    document.querySelector(`[data-dcamode="${mode}"]`)?.classList.add('active');
+    document.getElementById('dca-planner-panel').style.display = mode === 'planner' ? '' : 'none';
+    document.getElementById('dca-backtest-panel').style.display = mode === 'backtest' ? '' : 'none';
 }
 
 // ── Rebalance + P&L position persistence ──

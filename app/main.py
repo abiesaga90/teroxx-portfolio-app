@@ -24,8 +24,9 @@ from app.engine import (
     get_universe_tickers, five_factor_detail, ten_factor_detail, token_scorecard,
     full_data_breakdown, compute_p3_scores, compute_red_flag_scores,
     detect_vol_regime, compute_stress_scenarios, compute_diversification_score,
+    compute_dca_backtest,
 )
-from app.market_data import fetch_prices, fetch_market_data, price_age_str, background_refresh, get_logo_url, get_source_health
+from app.market_data import fetch_prices, fetch_market_data, price_age_str, background_refresh, get_logo_url, get_source_health, fetch_historical_prices
 from app.defi_health import refresh_defi_health, get_defi_health
 
 logging.basicConfig(level=logging.INFO)
@@ -337,6 +338,45 @@ async def dca_partial(
         "horizon_months": horizon_months,
         "price_age": price_age_str(),
         "dca_chart_data": dca_chart_data,
+    })
+
+
+@app.post("/api/dca-backtest", response_class=HTMLResponse)
+async def dca_backtest_partial(
+    request: Request,
+    profile: str = Form("Balanced"),
+    universe: str = Form("Teroxx Core (9)"),
+    mode: str = Form("Standard"),
+    monthly_amount: float = Form(1000),
+    dca_scope: str = Form("All Crypto"),
+    months_back: int = Form(12),
+):
+    # Get tickers for the universe to fetch historical data
+    tickers = get_universe_tickers(universe)
+    crypto_tickers = [t for t in tickers if t not in ("USDC", "EURC")]
+
+    # Fetch historical prices (cached 24h)
+    historical = await fetch_historical_prices(crypto_tickers, days=months_back * 31 + 30)
+
+    # Run backtest
+    data = compute_dca_backtest(
+        profile, universe, mode, monthly_amount, dca_scope,
+        historical, months_back,
+    )
+
+    # Chart data: invested vs value over time
+    snapshots = data.get("monthly_snapshots", [])
+    backtest_chart_data = json.dumps({
+        "months": [s["month"] for s in snapshots],
+        "invested": [s["invested"] for s in snapshots],
+        "value": [s["value"] for s in snapshots],
+    })
+
+    return templates.TemplateResponse("partials/dca_backtest_results.html", {
+        "request": request,
+        "data": data,
+        "backtest_chart_data": backtest_chart_data,
+        "price_age": price_age_str(),
     })
 
 

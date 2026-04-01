@@ -322,6 +322,56 @@ function tryRenderDCA() {
     } catch (e) { console.warn('DCA chart error:', e); }
 }
 
+// ── DCA Backtest Chart ──
+function tryRenderBacktest() {
+    const el = document.getElementById('backtest-chart-data');
+    if (!el) return;
+    try {
+        const data = JSON.parse(el.textContent);
+        const ctx = document.getElementById('backtest-chart');
+        if (!ctx) return;
+        _destroyChart('backtest');
+        const tc = getChartColors();
+        _charts['backtest'] = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: data.months,
+                datasets: [
+                    {
+                        label: 'Portfolio Value',
+                        data: data.value,
+                        borderColor: '#0b688c',
+                        backgroundColor: '#0b688c30',
+                        fill: true,
+                        tension: 0.3,
+                        pointRadius: 3,
+                        borderWidth: 2,
+                    },
+                    {
+                        label: 'Total Invested',
+                        data: data.invested,
+                        borderColor: '#bfb3a8',
+                        backgroundColor: 'transparent',
+                        borderDash: [5, 5],
+                        fill: false,
+                        tension: 0,
+                        pointRadius: 2,
+                        borderWidth: 2,
+                    },
+                ],
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { position: 'bottom', labels: { color: tc.text, font: { size: 10 }, padding: 10 } } },
+                scales: {
+                    x: { title: { display: true, text: 'Month', color: tc.muted, font: { size: 10 } }, grid: { color: tc.grid }, ticks: { color: tc.muted } },
+                    y: { title: { display: true, text: 'Value ($)', color: tc.muted, font: { size: 10 } }, grid: { color: tc.grid }, ticks: { color: tc.muted, callback: v => '$' + v.toLocaleString() } },
+                },
+            },
+        });
+    } catch (e) { console.warn('Backtest chart error:', e); }
+}
+
 // ── P&L Waterfall Chart ──
 function tryRenderWaterfall() {
     const el = document.getElementById('pnl-chart-data');
@@ -491,6 +541,7 @@ function tryRenderAllCharts() {
     tryRenderBubble();
     tryRenderDilution();
     tryRenderDCA();
+    tryRenderBacktest();
     tryRenderWaterfall();
     tryRenderSector();
 }

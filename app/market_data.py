@@ -686,6 +686,68 @@ async def fetch_binance_perp_data() -> dict[str, dict]:
     return _binance_cache
 
 
+# ── CoinGecko Historical Prices (for DCA backtest) ───────────────────
+
+_historical_cache: dict[str, list[tuple[float, float]]] = {}  # {cg_id: [(ts, price), ...]}
+_historical_cache_ts: float = 0
+HISTORICAL_TTL = 86400  # 24h — historical data doesn't change
+
+
+async def fetch_historical_prices(tickers: list[str], days: int = 365) -> dict[str, list[tuple[float, float]]]:
+    """Fetch daily historical prices from CoinGecko for DCA backtesting.
+
+    Returns {ticker: [(unix_ts, price_usd), ...]} sorted ascending by date.
+    Uses in-memory cache with 24h TTL.
+    """
+    global _historical_cache, _historical_cache_ts
+
+    # Check if we already have fresh data for all requested tickers
+    now = time.time()
+    missing = [t for t in tickers if TOKEN_MAP.get(t) not in _historical_cache
+               or now - _historical_cache_ts > HISTORICAL_TTL]
+
+    if not missing:
+        result = {}
+        for t in tickers:
+            cg_id = TOKEN_MAP.get(t)
+            if cg_id and cg_id in _historical_cache:
+                result[t] = _historical_cache[cg_id]
+        return result
+
+    logger.info(f"Fetching historical prices for {len(missing)} tokens ({days} days)")
+
+    async with httpx.AsyncClient() as client:
+        for t in missing:
+            cg_id = TOKEN_MAP.get(t)
+            if not cg_id:
+                continue
+            try:
+                resp = await _fetch_with_retry(
+                    client, "GET",
+                    f"{COINGECKO_BASE}/coins/{cg_id}/market_chart",
+                    params={"vs_currency": "usd", "days": str(days), "interval": "daily"},
+                    timeout=30,
+                )
+                data = resp.json()
+                prices = data.get("prices", [])
+                # prices = [[unix_ms, price], ...]
+                daily = [(p[0] / 1000, p[1]) for p in prices]
+                _historical_cache[cg_id] = daily
+                logger.info(f"  {t} ({cg_id}): {len(daily)} daily prices")
+            except Exception as e:
+                logger.warning(f"Historical prices failed for {t}: {e}")
+            await asyncio.sleep(2)  # CoinGecko free tier rate limit
+
+    _historical_cache_ts = now
+
+    result = {}
+    for t in tickers:
+        cg_id = TOKEN_MAP.get(t)
+        if cg_id and cg_id in _historical_cache:
+            result[t] = _historical_cache[cg_id]
+    return result
+
+
 # ── CoinGecko Developer & Community Data ──────────────────────────────
 
 async def fetch_coingecko_dev_data() -> dict[str, dict]:

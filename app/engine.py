@@ -1087,11 +1087,9 @@ def compute_allocations(profile: str, universe: str, mode: str = "Standard") -> 
         tier_groups.setdefault(atier, []).append(t)
 
     scores = {}
-    if mode == "Factor Model":
+    if mode in ("Factor", "Factor Model"):
         scores = compute_five_factor_scores(profile, crypto_tickers)
-    elif mode == "VA Model":
-        scores = compute_ten_factor_scores(profile, crypto_tickers)
-    elif mode == "Enhanced Model":
+    elif mode in ("Fundamental", "VA Model", "Enhanced Model"):
         scores = compute_enhanced_scores(profile, crypto_tickers)
 
     for tier_name, tier_tickers in tier_groups.items():
@@ -1185,6 +1183,160 @@ def compute_dca(
 
     results.sort(key=lambda x: -x["dca_weight"])
     return results
+
+
+def compute_dca_backtest(
+    profile: str, universe: str, mode: str,
+    monthly_amount: float, dca_scope: str,
+    historical_prices: dict[str, list[tuple[float, float]]],
+    months_back: int = 12,
+) -> dict:
+    """Backtest a monthly DCA strategy using real historical prices.
+
+    Args:
+        historical_prices: {ticker: [(unix_ts, price), ...]} from CoinGecko
+        months_back: how many months to look back
+
+    Returns dict with:
+        - summary: total_invested, current_value, pnl, pnl_pct
+        - positions: per-token breakdown
+        - monthly_snapshots: monthly portfolio value for charting
+    """
+    from datetime import datetime, timezone, timedelta
+
+    allocs = compute_allocations(profile, universe, mode)
+    scope_def = DCA_SCOPES.get(dca_scope, "all")
+    if isinstance(scope_def, list):
+        eligible = [a for a in allocs if a["ticker"] in scope_def]
+    else:
+        eligible = [a for a in allocs if a["ticker"] not in ("USDC", "EURC")]
+
+    total_alloc = sum(a["alloc_pct"] for a in eligible)
+    if total_alloc == 0:
+        return {"summary": {}, "positions": [], "monthly_snapshots": []}
+
+    # Build DCA weights
+    dca_weights = {}
+    for a in eligible:
+        dca_weights[a["ticker"]] = {
+            "weight": a["alloc_pct"] / total_alloc,
+            "name": a["name"],
+            "tier": a["tier"],
+        }
+
+    # Generate monthly buy dates (1st of each month, going back)
+    now = datetime.now(timezone.utc)
+    buy_dates = []
+    for m in range(months_back, 0, -1):
+        dt = now - timedelta(days=m * 30)
+        buy_dates.append(dt)
+
+    # Helper: find price closest to a target date
+    def _find_price(ticker: str, target_ts: float) -> float | None:
+        prices = historical_prices.get(ticker, [])
+        if not prices:
+            return None
+        best = None
+        best_diff = float("inf")
+        for ts, price in prices:
+            diff = abs(ts - target_ts)
+            if diff < best_diff:
+                best_diff = diff
+                best = price
+        # Only accept if within 3 days
+        if best_diff > 3 * 86400:
+            return None
+        return best
+
+    # Simulate DCA
+    positions: dict[str, dict] = {}
+    monthly_snapshots = []
+
+    for ticker in dca_weights:
+        positions[ticker] = {
+            "units": 0.0,
+            "total_cost": 0.0,
+            "buys": [],
+        }
+
+    for buy_date in buy_dates:
+        target_ts = buy_date.timestamp()
+        month_label = buy_date.strftime("%b %Y")
+
+        for ticker, info in dca_weights.items():
+            buy_amount = monthly_amount * info["weight"]
+            price = _find_price(ticker, target_ts)
+            if price and price > 0:
+                units = buy_amount / price
+                positions[ticker]["units"] += units
+                positions[ticker]["total_cost"] += buy_amount
+                positions[ticker]["buys"].append({
+                    "date": month_label,
+                    "price": price,
+                    "amount": buy_amount,
+                    "units": units,
+                })
+
+        # Snapshot portfolio value at this point
+        snapshot_value = 0
+        total_cost_so_far = 0
+        for ticker in dca_weights:
+            pos = positions[ticker]
+            total_cost_so_far += pos["total_cost"]
+            price_at_date = _find_price(ticker, target_ts)
+            if price_at_date and price_at_date > 0:
+                snapshot_value += pos["units"] * price_at_date
+
+        monthly_snapshots.append({
+            "month": month_label,
+            "invested": round(total_cost_so_far, 2),
+            "value": round(snapshot_value, 2),
+        })
+
+    # Final results using current prices
+    total_invested = 0
+    current_value = 0
+    position_results = []
+
+    for ticker, info in dca_weights.items():
+        pos = positions[ticker]
+        total_invested += pos["total_cost"]
+        current_price = get_price(ticker) or 0
+        pos_value = pos["units"] * current_price
+        current_value += pos_value
+        avg_cost = pos["total_cost"] / pos["units"] if pos["units"] > 0 else 0
+        pnl = pos_value - pos["total_cost"]
+
+        position_results.append({
+            "ticker": ticker,
+            "name": info["name"],
+            "tier": info["tier"],
+            "dca_weight": info["weight"],
+            "units": pos["units"],
+            "total_cost": pos["total_cost"],
+            "avg_cost": avg_cost,
+            "current_price": current_price,
+            "current_value": pos_value,
+            "pnl": pnl,
+            "pnl_pct": (pnl / pos["total_cost"] * 100) if pos["total_cost"] > 0 else 0,
+            "n_buys": len(pos["buys"]),
+        })
+
+    position_results.sort(key=lambda x: -x["current_value"])
+
+    pnl = current_value - total_invested
+    return {
+        "summary": {
+            "total_invested": round(total_invested, 2),
+            "current_value": round(current_value, 2),
+            "pnl": round(pnl, 2),
+            "pnl_pct": round(pnl / total_invested * 100, 2) if total_invested > 0 else 0,
+            "months": months_back,
+            "monthly_amount": monthly_amount,
+        },
+        "positions": position_results,
+        "monthly_snapshots": monthly_snapshots,
+    }
 
 
 def compute_rebalance(

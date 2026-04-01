@@ -19,7 +19,7 @@ DRAWDOWN_IMPACT = {
     "Crypto -30%": {"Conservative": -0.135, "Balanced": -0.231, "Growth": -0.276, "Aggressive": -0.297},
 }
 
-ALLOCATION_MODES = ["Standard", "Factor Model", "VA Model", "Enhanced Model"]
+ALLOCATION_MODES = ["Standard", "Factor", "Fundamental"]
 
 ASSET_UNIVERSES = {
     "Teroxx Core (9)": ["USDC", "EURC", "PAXG", "BTC", "ETH", "BNB", "XRP", "ADA", "POL"],
