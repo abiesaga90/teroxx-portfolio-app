@@ -4,6 +4,8 @@ Allocation engine — factor scoring, DCA planner, rebalancer, P&L calculator.
 5-Factor model: percentile-ranked market factors (beta, size, value, momentum, growth).
 VA model: nickel-ls-rv aligned value accrual signals, clamped [-1,+1] then scaled to [0,100].
 """
+from __future__ import annotations
+
 import math
 from app.data import (
     ASSET_UNIVERSE, ASSET_BY_TICKER, ASSET_UNIVERSES,

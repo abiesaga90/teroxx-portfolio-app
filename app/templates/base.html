@@ -219,9 +219,10 @@
                       hx-post="/api/dca-backtest"
                       hx-target="#dca-backtest-results"
                       hx-trigger="submit"
-                      hx-include="#global-controls"
                       hx-indicator="#backtest-loading"
                       hx-on::after-settle="requestAnimationFrame(function(){setTimeout(tryRenderAllCharts,50)})">
+                    <input type="hidden" name="profile" value="Balanced">
+                    <input type="hidden" name="mode" value="Standard">
                     <div class="control-group">
                         <span class="control-label">Universe</span>
                         <select name="universe">
