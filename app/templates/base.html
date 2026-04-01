@@ -58,21 +58,6 @@
     </div>
 </header>
 
-<!-- DeFi Health Banner -->
-{% if defi_health %}
-<div class="defi-health-banner defi-{{ defi_health.regime|lower|replace('defi_', '') }}">
-    <span class="defi-health-label">DeFi Macro:</span>
-    <span class="defi-health-regime">{{ defi_health.regime_label }}</span>
-    <span class="defi-health-score">({{ defi_health.composite_score }}/100)</span>
-    {% for name, sig in defi_health.sub_signals.items() %}
-    <span class="defi-health-sub" title="{{ name }}: {{ sig.growth_7d_pct|round(1) }}% 7d growth">
-        {{ name|replace('_', ' ')|title }}: {{ sig.score|round(0)|int }}
-    </span>
-    {% endfor %}
-    <span class="defi-health-date">{{ defi_health.date }}</span>
-</div>
-{% endif %}
-
 <!-- Global Controls -->
 <form id="global-controls" style="display:none;">
     <input type="hidden" name="profile" value="{{ profile }}">
@@ -88,6 +73,7 @@
     <button class="tab-btn" data-tab="tab-data" onclick="switchTab('tab-data')">Data</button>
     <button class="tab-btn" data-tab="tab-dca" onclick="switchTab('tab-dca')">DCA Planner</button>
     <button class="tab-btn" data-tab="tab-rebalance-pnl" onclick="switchTab('tab-rebalance-pnl')">Rebalancing &amp; P&L</button>
+    <button class="tab-btn" data-tab="tab-defi-macro" onclick="switchTab('tab-defi-macro')">DeFi Macro</button>
     <button class="tab-btn" data-tab="tab-apis" onclick="switchTab('tab-apis')">APIs</button>
 </nav>
 
@@ -237,6 +223,78 @@
             </form>
         </div>
         <div id="rebalance-pnl-results"></div>
+    </div>
+
+    <!-- ═══ Tab: DeFi Macro ═══ -->
+    <div id="tab-defi-macro" class="tab-panel">
+        {% if defi_health %}
+        <div class="card">
+            <div class="card-header">DeFi Macro Health</div>
+            <div class="summary-row">
+                <div class="summary-card">
+                    <div class="summary-label">Regime</div>
+                    <div class="summary-value defi-regime-{{ defi_health.regime|lower|replace('defi_', '') }}">{{ defi_health.regime_label }}</div>
+                </div>
+                <div class="summary-card">
+                    <div class="summary-label">Composite Score</div>
+                    <div class="summary-value">{{ defi_health.composite_score }} / 100</div>
+                </div>
+                <div class="summary-card">
+                    <div class="summary-label">Updated</div>
+                    <div class="summary-value" style="font-size:0.85rem">{{ defi_health.date }}</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">Sub-Signals (7d Growth)</div>
+            <div class="table-wrap">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Signal</th>
+                            <th style="text-align:right">Score (0-100)</th>
+                            <th style="text-align:right">7d Growth</th>
+                            <th style="text-align:right">Current Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for name, sig in defi_health.sub_signals.items() %}
+                        <tr>
+                            <td><strong>{{ name|replace('_', ' ')|title }}</strong></td>
+                            <td style="text-align:right">
+                                <span class="{% if sig.score >= 55 %}positive{% elif sig.score <= 45 %}danger{% endif %}">
+                                    {{ sig.score|round(1) }}
+                                </span>
+                            </td>
+                            <td style="text-align:right">
+                                <span class="{% if sig.growth_7d_pct > 0 %}positive{% elif sig.growth_7d_pct < 0 %}danger{% endif %}">
+                                    {{ '%+.2f'|format(sig.growth_7d_pct) }}%
+                                </span>
+                            </td>
+                            <td style="text-align:right">{{ sig.current|fmt_compact }}</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">Methodology</div>
+            <div class="sources">
+                <p>Composite DeFi macro health score from 5 free DeFiLlama sub-signals, each measuring 7-day growth normalized to 0-100 (50 = neutral).</p>
+                <p><strong>Weights:</strong> TVL (25%), Fees (25%), DEX Volume (20%), Stablecoin Supply (15%), Borrowed (15%)</p>
+                <p><strong>Regimes:</strong> Contraction (&lt;30) &middot; Cooling (30-45) &middot; Neutral (45-55) &middot; Expanding (55-70) &middot; Boom (&gt;70)</p>
+                <p>5-point hysteresis prevents rapid regime flipping. Refreshed every 2 hours.</p>
+            </div>
+        </div>
+        {% else %}
+        <div class="card">
+            <div class="card-header">DeFi Macro Health</div>
+            <p style="padding:1rem;color:var(--text-muted)">Loading DeFi macro data... Data will appear after the first refresh cycle (up to 2 hours).</p>
+        </div>
+        {% endif %}
     </div>
 
     <!-- ═══ Tab 5: APIs ═══ -->

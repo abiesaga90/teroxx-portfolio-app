@@ -948,42 +948,6 @@ sup.src {
     color: #c8ccd8;
 }
 
-/* ── DeFi Health Banner ── */
-.defi-health-banner {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    padding: 0.5rem 1.5rem;
-    font-size: 0.82rem;
-    font-family: 'Sohne', Arial, sans-serif;
-    color: #fff;
-    background: var(--deep-indigo, #060d43);
-    flex-wrap: wrap;
-}
-.defi-health-label {
-    font-weight: 600;
-    opacity: 0.7;
-}
-.defi-health-regime {
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-}
-.defi-health-score {
-    opacity: 0.7;
-}
-.defi-health-sub {
-    padding: 0.15rem 0.5rem;
-    border-radius: 4px;
-    background: rgba(255,255,255,0.1);
-    font-size: 0.75rem;
-    cursor: help;
-}
-.defi-health-date {
-    margin-left: auto;
-    opacity: 0.5;
-    font-size: 0.72rem;
-}
 /* Regime color accents */
 /* Vol regime badges */
 .vol-low_vol { color: #4ade80; }
@@ -1014,8 +978,9 @@ sup.src {
 .source-down { background: rgba(248,113,113,0.15); color: #f87171; }
 .source-unknown { background: rgba(156,163,175,0.15); color: #9ca3af; }
 
-.defi-contraction { background: #7a1b1b; }
-.defi-cooling { background: #5c3d1e; }
-.defi-neutral { background: var(--deep-indigo, #060d43); }
-.defi-expanding { background: #1b4a2e; }
-.defi-boom { background: #0b688c; }
+/* DeFi regime colors (tab) */
+.defi-regime-contraction { color: #f87171; }
+.defi-regime-cooling { color: #fbbf24; }
+.defi-regime-neutral { color: var(--text-body); }
+.defi-regime-expanding { color: #4ade80; }
+.defi-regime-boom { color: #0b688c; }
