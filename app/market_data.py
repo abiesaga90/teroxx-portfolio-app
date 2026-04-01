@@ -706,7 +706,7 @@ async def fetch_historical_prices(tickers: list[str], days: int = 365) -> dict[s
     """
     global _historical_cache, _historical_cache_ts
 
-    days = min(days, 365)
+    days = min(days, 1100)  # CryptoCompare supports up to 2000
     fetch_tickers = [t for t in tickers if t not in _SKIP_HISTORICAL]
 
     now = time.time()
