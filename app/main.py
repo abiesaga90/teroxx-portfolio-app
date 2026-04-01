@@ -351,12 +351,17 @@ async def dca_backtest_partial(
     dca_scope: str = Form("All Crypto"),
     months_back: int = Form(12),
 ):
-    # Get tickers for the universe to fetch historical data
-    tickers = get_universe_tickers(universe)
-    crypto_tickers = [t for t in tickers if t not in ("USDC", "EURC")]
+    # Only fetch historical prices for tokens in scope (not entire universe)
+    from app.data import DCA_SCOPES
+    scope_def = DCA_SCOPES.get(dca_scope, "all")
+    if isinstance(scope_def, list):
+        fetch_tickers = scope_def
+    else:
+        tickers = get_universe_tickers(universe)
+        fetch_tickers = [t for t in tickers if t not in ("USDC", "EURC", "PAXG")]
 
     # Fetch historical prices (cached 24h, capped at 365 days)
-    historical = await fetch_historical_prices(crypto_tickers, days=min(months_back * 31, 365))
+    historical = await fetch_historical_prices(fetch_tickers, days=min(months_back * 31, 365))
 
     # Run backtest
     data = compute_dca_backtest(
