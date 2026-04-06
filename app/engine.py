@@ -631,7 +631,9 @@ def ten_factor_detail(profile: str, tickers: list[str]) -> list[dict]:
         row["_data_missing"] = five_individual.get(t, {}).get("_data_missing", False)
         row["_signals_raw"] = scores.get("_signals_raw", {})
         results.append(row)
-    results.sort(key=lambda x: -x["composite"])
+    # Sort by sector first (for grouped display), then by composite within sector
+    sector_order = ["pow_monetary", "l1_platform", "defi", "ai_compute", "speculative"]
+    results.sort(key=lambda x: (sector_order.index(x["_sector"]) if x["_sector"] in sector_order else 99, -x["composite"]))
     return results
 
 
