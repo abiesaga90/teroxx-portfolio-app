@@ -7,7 +7,8 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Form
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
+from starlette.middleware.sessions import SessionMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -92,6 +93,27 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Teroxx Portfolio Allocator", lifespan=lifespan)
+from app.auth import SESSION_SECRET, verify_password, get_current_user, require_auth
+from starlette.middleware import Middleware
+from starlette.middleware.base import BaseHTTPMiddleware
+
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        if path.startswith("/static") or path in ("/health", "/login", "/favicon.ico"):
+            return await call_next(request)
+        user = get_current_user(request)
+        if not user and path != "/logout":
+            if path.startswith("/api/"):
+                return HTMLResponse("Session expired. Please refresh the page.", status_code=401)
+            return RedirectResponse("/login", status_code=302)
+        return await call_next(request)
+
+
+# Order matters: SessionMiddleware must wrap AuthMiddleware (added last = outermost)
+app.add_middleware(AuthMiddleware)
+app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET, max_age=86400 * 7)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
 
@@ -140,6 +162,31 @@ async def health():
     return {"status": "ok"}
 
 
+# ── Authentication Routes ────────────────────────────────────────────
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request):
+    if get_current_user(request):
+        return RedirectResponse("/", status_code=302)
+    return templates.TemplateResponse("login.html", {"request": request, "error": None, "email": None})
+
+
+@app.post("/login", response_class=HTMLResponse)
+async def login_submit(request: Request, email: str = Form(...), password: str = Form(...)):
+    if verify_password(email, password):
+        request.session["user_email"] = email.lower()
+        return RedirectResponse("/", status_code=302)
+    return templates.TemplateResponse("login.html", {
+        "request": request, "error": "Invalid email or password.", "email": email,
+    })
+
+
+@app.get("/logout")
+async def logout(request: Request):
+    request.session.clear()
+    return RedirectResponse("/login", status_code=302)
+
+
 def _position_chart_data(positions: list[dict]) -> str:
     """Per-position pie chart data (only assets with alloc > 0)."""
     labels = [p["ticker"] for p in positions if p["alloc_pct"] > 0]
@@ -149,6 +196,7 @@ def _position_chart_data(positions: list[dict]) -> str:
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
+    user = get_current_user(request)
     profile = "Balanced"
     universe = "Full (24)"
     mode = "Fundamental"
@@ -159,6 +207,7 @@ async def index(request: Request):
     dd_50 = DRAWDOWN_IMPACT["Crypto -50%"].get(profile, 0)
     return templates.TemplateResponse("base.html", {
         "request": request,
+        "current_user": user,
         "profiles": RISK_PROFILES,
         "universes": UNIVERSE_OPTIONS,
         "modes": ALLOCATION_MODES,

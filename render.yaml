@@ -10,3 +10,5 @@ services:
         value: "8000"
       - key: CMC_API_KEY
         value: "92086fab50534fe78d552e3a86dfb0d7"
+      - key: SESSION_SECRET
+        value: "yWA6t5xdbhUT6Kl_FVLShJrlC1-vityaYZMd43dDtew"

@@ -46,6 +46,10 @@
         {% endif %}
         <span class="header-meta">Prices: {{ price_age }}</span>
         <button class="theme-toggle" onclick="toggleTheme()">{{ 'Light Mode' if false else 'Dark Mode' }}</button>
+        {% if current_user %}
+        <span class="header-meta" style="margin-left:8px;">{{ current_user.name }}</span>
+        <a href="/logout" class="header-meta" style="margin-left:4px;color:var(--sunset-ember);text-decoration:none;font-size:0.7rem;">Logout</a>
+        {% endif %}
         <script>
         // Fix button label if dark mode was restored from localStorage
         (function() {

@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login — Teroxx Portfolio Allocation Model</title>
+    <link rel="stylesheet" href="/static/css/teroxx.css">
+    <style>
+        body {
+            background: #010626;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            font-family: 'Söhne', Arial, sans-serif;
+        }
+        .login-card {
+            background: #ffffff;
+            border-radius: 12px;
+            padding: 40px 36px;
+            width: 100%;
+            max-width: 380px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        }
+        .login-logo {
+            text-align: center;
+            margin-bottom: 8px;
+        }
+        .login-logo img {
+            height: 32px;
+        }
+        .login-title {
+            text-align: center;
+            font-family: 'SometimesTimes', Georgia, serif;
+            color: #010626;
+            font-size: 1.1rem;
+            margin-bottom: 28px;
+        }
+        .login-field {
+            margin-bottom: 16px;
+        }
+        .login-field label {
+            display: block;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #060d43;
+            margin-bottom: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .login-field input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #bfb3a8;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-family: 'Söhne', Arial, sans-serif;
+            color: #060d43;
+            background: #fafaf8;
+            box-sizing: border-box;
+            transition: border-color 0.2s;
+        }
+        .login-field input:focus {
+            outline: none;
+            border-color: #0b688c;
+            box-shadow: 0 0 0 2px rgba(11,104,140,0.15);
+        }
+        .login-btn {
+            width: 100%;
+            padding: 11px;
+            background: #0b688c;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            font-family: 'Söhne', Arial, sans-serif;
+            cursor: pointer;
+            margin-top: 8px;
+            transition: background 0.2s;
+        }
+        .login-btn:hover {
+            background: #095a7a;
+        }
+        .login-error {
+            background: #fef2f2;
+            color: #c0432a;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            margin-bottom: 16px;
+            text-align: center;
+        }
+        .login-footer {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 0.65rem;
+            color: #bfb3a8;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <div class="login-logo">
+            <img src="/static/img/logo.svg" alt="Teroxx">
+        </div>
+        <div class="login-title">Portfolio Allocation Model v4.0</div>
+
+        {% if error %}
+        <div class="login-error">{{ error }}</div>
+        {% endif %}
+
+        <form method="POST" action="/login">
+            <div class="login-field">
+                <label for="email">Email</label>
+                <input type="email" id="email" name="email" required autofocus
+                       placeholder="you@teroxx.com" value="{{ email or '' }}">
+            </div>
+            <div class="login-field">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" required
+                       placeholder="Enter password">
+            </div>
+            <button type="submit" class="login-btn">Sign In</button>
+        </form>
+
+        <div class="login-footer">
+            Teroxx &mdash; For informational purposes only. Not financial advice.
+        </div>
+    </div>
+</body>
+</html>
