@@ -57,19 +57,20 @@ async def lifespan(app: FastAPI):
         logger.info("Initial market data loaded")
     except Exception as e:
         logger.warning(f"Initial fetch failed (will retry in background): {e}")
-    # Fetch all scoring data sources on startup (non-blocking individually)
+    # Fetch fast scoring data on startup (DeFiLlama, Messari, Binance)
     for name, fn in [
         ("DeFiLlama", fetch_defillama_data),
         ("DeFiLlama protocols", fetch_defillama_protocol_detail),
         ("Messari networks", fetch_messari_networks),
         ("Binance perps", fetch_binance_perp_data),
-        ("CoinGecko dev", fetch_coingecko_dev_data),
     ]:
         try:
             await fn()
             logger.info(f"Initial {name} data loaded")
         except Exception as e:
             logger.warning(f"Initial {name} fetch failed: {e}")
+    # CoinGecko dev data is slow (87 tokens × 2s + rate limits) — load in background
+    asyncio.create_task(fetch_coingecko_dev_data())
     # DeFi health (non-blocking — ok if it fails on first load)
     try:
         await refresh_defi_health()
