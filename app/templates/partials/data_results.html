@@ -223,13 +223,14 @@
                 <tr>
                     <th>#</th>
                     <th>Ticker</th>
-                    <th class="right" style="white-space:normal;max-width:60px;font-size:0.5rem;">Dilution<br><span style="font-weight:400;">FDV/MCap</span></th>
-                    <th class="right" style="white-space:normal;max-width:60px;font-size:0.5rem;">Supply &Delta;<br><span style="font-weight:400;">&minus;&delta;/3%</span></th>
-                    <th class="right" style="white-space:normal;max-width:60px;font-size:0.5rem;">Buyback<br><span style="font-weight:400;">yield %</span></th>
-                    <th class="right" style="white-space:normal;max-width:60px;font-size:0.5rem;">Rev Cap<br><span style="font-weight:400;">rev/fees</span></th>
-                    <th class="right" style="white-space:normal;max-width:60px;font-size:0.5rem;">Fee Mom<br><span style="font-weight:400;">vs median</span></th>
-                    <th class="right" style="white-space:normal;max-width:60px;font-size:0.5rem;">FDV/Fees<br><span style="font-weight:400;">log P/E</span></th>
-                    <th class="right" style="white-space:normal;max-width:60px;font-size:0.5rem;">FDV/TVL<br><span style="font-weight:400;">log eff.</span></th>
+                    <th class="right" style="font-size:0.55rem;">Sector</th>
+                    <th class="right" style="white-space:normal;max-width:55px;font-size:0.5rem;">Sig 1</th>
+                    <th class="right" style="white-space:normal;max-width:55px;font-size:0.5rem;">Sig 2</th>
+                    <th class="right" style="white-space:normal;max-width:55px;font-size:0.5rem;">Sig 3</th>
+                    <th class="right" style="white-space:normal;max-width:55px;font-size:0.5rem;">Sig 4</th>
+                    <th class="right" style="white-space:normal;max-width:55px;font-size:0.5rem;">Sig 5</th>
+                    <th class="right" style="white-space:normal;max-width:55px;font-size:0.5rem;">Sig 6</th>
+                    <th class="right" style="white-space:normal;max-width:55px;font-size:0.5rem;">Sig 7</th>
                     <th class="right" style="font-size:0.6rem;color:var(--electric-sky);">Comp.</th>
                 </tr>
             </thead>
@@ -238,13 +239,14 @@
                 <tr>
                     <td style="color:var(--text-muted)">{{ loop.index }}</td>
                     <td class="ticker" style="font-size:0.7rem;"><div class="ticker-cell">{% set logo = get_logo(r.ticker) %}{% if logo %}<img src="{{ logo }}" class="token-logo token-logo-sm" alt="{{ r.ticker }}">{% endif %}{{ r.ticker }}</div></td>
-                    <td class="right" style="font-size:0.6rem;">{{ "{:+.2f}".format(r.va_dilution_sig) }}<br><strong>{{ r.va_dilution_score }}</strong></td>
-                    <td class="right" style="font-size:0.6rem;">{{ "{:+.2f}".format(r.va_supply_sig) }}<br><strong>{{ r.va_supply_score }}</strong></td>
-                    <td class="right" style="font-size:0.6rem;">{{ "{:+.2f}".format(r.va_buyback_sig) }}<br><strong>{{ r.va_buyback_score }}</strong></td>
-                    <td class="right" style="font-size:0.6rem;">{{ "{:+.2f}".format(r.va_revcap_sig) }}<br><strong>{{ r.va_revcap_score }}</strong></td>
-                    <td class="right" style="font-size:0.6rem;">{{ "{:+.2f}".format(r.va_feemom_sig) }}<br><strong>{{ r.va_feemom_score }}</strong></td>
-                    <td class="right" style="font-size:0.6rem;">{{ "{:+.2f}".format(r.va_fdvfees_sig) }}<br><strong>{{ r.va_fdvfees_score }}</strong></td>
-                    <td class="right" style="font-size:0.6rem;">{{ "{:+.2f}".format(r.va_fdvtvl_sig) }}<br><strong>{{ r.va_fdvtvl_score }}</strong></td>
+                    <td class="right" style="font-size:0.55rem;color:var(--text-muted);">{{ r.va_sector_label }}</td>
+                    {% for sig_name in r.va_signal_names %}
+                    {% set sig_raw = r.va_signals_raw.get(sig_name, 0) %}
+                    {% set sig_score = r.va_signals.get(sig_name, 50) %}
+                    <td class="right" style="font-size:0.55rem;" title="{{ sig_name }}: {{ '{:+.2f}'.format(sig_raw) }}">
+                        <strong {% if sig_score >= 70 %}style="color:var(--success)"{% elif sig_score <= 30 %}style="color:var(--danger)"{% endif %}>{{ sig_score|round(0)|int }}</strong>
+                    </td>
+                    {% endfor %}
                     <td class="right" style="font-weight:700;color:var(--electric-sky);">{{ r.va_composite }}</td>
                 </tr>
                 {% endfor %}
@@ -252,14 +254,13 @@
         </table>
     </div>
     <div class="sources">
-        <div class="sources-title">Signal Formulas (nickel-ls-rv aligned)</div>
-        <strong>Dilution</strong>: (2.0 &minus; FDV/MCap) / 1.0. FDV/MCap=1&rarr;+1, =2&rarr;0, =3&rarr;&minus;1.<br>
-        <strong>Supply Delta</strong>: &minus;blended_supply_growth / 3%. Deflation=+1, 3%+ inflation=&minus;1.<br>
-        <strong>Buyback</strong>: (annualized_holder_yield% &minus; 5%) / 15%. Yield=5%&rarr;0, =20%&rarr;+1, =0&rarr;&minus;0.33.<br>
-        <strong>Rev Capture</strong>: holders_revenue / fees_30d, clamped. 100% capture=+1.<br>
-        <strong>Fee Momentum</strong>: (token_fee_growth &minus; universe_median) / 50%. Market-relative.<br>
-        <strong>FDV/Fees</strong>: log-scaled P/E ratio. P/E=100&rarr;0, P/E=10&rarr;+1, P/E=1000&rarr;&minus;1. No fees=&minus;1.<br>
-        <strong>FDV/TVL</strong>: log-scaled capital efficiency. FDV/TVL=10&rarr;0, =1&rarr;+1, =100&rarr;&minus;1.<br>
+        <div class="sources-title">Sector-Differentiated Scoring</div>
+        Each sector uses signals tailored to its asset class. Hover over scores to see signal name + raw value.<br>
+        <strong>L1 Chains</strong>: Dilution, Network Activity, Fee Revenue, Ecosystem TVL, Dev Activity, DEX Volume, Momentum.<br>
+        <strong>DeFi</strong>: Dilution, Buyback Yield, Rev Capture, Fee Momentum, FDV/Fees, TVL Growth, Dev Activity.<br>
+        <strong>AI/Compute</strong>: Dilution, Dev Activity, Momentum, Volume Intensity, TVL/Usage, Fee Revenue, Funding Rate.<br>
+        <strong>PoW/Monetary</strong>: Scarcity, Txn Activity, Fee Revenue, Adoption, Dev Activity, Volume/MCap, Momentum.<br>
+        <strong>Speculative</strong>: Dilution, Volume Intensity, Momentum 7d/30d, Dev Activity, Liquidity Depth, Funding Rate.<br>
     </div>
 </div>
 </div>

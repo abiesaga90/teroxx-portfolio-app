@@ -17,6 +17,7 @@ from app.data import (
     VA_REGISTRY, VA_GATE_MIN_FEES_30D, VA_NO_ACCRUAL_FLOOR, VA_NO_ACCRUAL_MCAP_FLOOR,
     DCA_SCOPES, get_alloc_tier,
     SECTOR_VA_PROFILES, CATEGORY_TO_VA_PROFILE, VA_PROFILE_OVERRIDES,
+    SECTOR_SIGNAL_NAMES, SECTOR_WEIGHTS, SECTOR_LABELS,
 )
 from app.market_data import (
     get_price, get_market_info, get_defillama_info, get_binance_info, get_supply_delta_pct,
@@ -216,167 +217,328 @@ def _signal_to_score(signal: float) -> float:
     return round(_clamp(signal) * 50 + 50, 1)
 
 
-def compute_live_ten_factor_scores(tickers: list[str]) -> dict[str, dict[str, float]]:
-    """
-    Compute Value Accrual (VA) scores aligned with nickel-ls-rv three-pillar framework.
-    Each signal is computed using the same formula and normalization constants as the
-    live trading bot, clamped to [-1, +1], then scaled to [0, 100] for display.
+def _get_sector(ticker: str) -> str:
+    """Determine the sector scoring model for a token."""
+    sector = VA_PROFILE_OVERRIDES.get(ticker)
+    if not sector:
+        cat = ASSET_BY_TICKER.get(ticker, {}).get("category", "")
+        sector = CATEGORY_TO_VA_PROFILE.get(cat)
+    return sector or "speculative"
 
-    7 signals (unlock excluded — no Messari data):
-      Dilution          — (neutral - FDV/MCap) / (neutral - 1), neutral=2.0
-      Supply Delta      — -blended_delta / 3%, contracting = positive
-      Buyback Intensity — (BI% - 5%) / 15%, annualized holder yield
-      Rev Capture       — holders_revenue / fees_30d, clamped
-      Fee Momentum      — (fee_mom - median) / 50%, market-relative
-      FDV / Fees        — log-scaled P/E, neutral=100
-      FDV / TVL         — log-scaled capital efficiency, neutral=10
+
+def _dilution_signal(fdv_mcap: float) -> float:
+    """Universal dilution signal from FDV/MCap ratio."""
+    if fdv_mcap <= 0:
+        fdv_mcap = VA_FDV_MCAP_NEUTRAL
+    return _clamp((VA_FDV_MCAP_NEUTRAL - fdv_mcap) / (VA_FDV_MCAP_NEUTRAL - 1.0))
+
+
+def _momentum_signal(c7d: float, c30d: float) -> float:
+    """Vol-adjusted momentum from 7d + 30d price changes."""
+    total = (c7d or 0) + (c30d or 0)
+    vol = max(abs(c30d or 0), 1)
+    return _clamp(total / vol / 2)
+
+
+def _dev_activity_signal(ticker: str) -> float:
+    """Developer activity from CoinGecko: commits + PRs, scaled."""
+    dev = get_dev_info(ticker) or {}
+    commits = dev.get("commit_count_4_weeks", 0) or 0
+    prs = dev.get("pull_requests_merged", 0) or 0
+    contributors = dev.get("pull_request_contributors", 0) or 0
+    # Composite: commits dominate, PRs and contributors add signal
+    score = commits + prs * 2 + contributors * 3
+    # Normalize: 50 = strong, 100+ = exceptional
+    return _clamp((score - 25) / 50)
+
+
+def _volume_intensity_signal(vol: float, mc: float) -> float:
+    """Volume/MCap turnover ratio as a signal."""
+    if mc <= 0:
+        return 0.0
+    ratio = vol / mc
+    # Median crypto turnover ~0.03, high ~0.10+
+    return _clamp((ratio - 0.03) / 0.07)
+
+
+def _funding_rate_signal(ticker: str) -> float:
+    """Binance funding rate as contrarian signal. Negative funding = long-crowded."""
+    bn = get_binance_info(ticker)
+    if not bn:
+        return 0.0
+    fr = bn.get("funding_rate", 0)
+    # Normalize: ±0.03% = max signal
+    return _clamp(-fr / 0.0003)
+
+
+def _fee_revenue_signal_log(fees: float, fdv: float) -> float:
+    """Log-scaled P/E signal. Lower PE = better."""
+    if fees <= 0 or fdv <= 0:
+        return -0.5  # mild penalty for no fees
+    annual_fees = fees * 12
+    pe = fdv / annual_fees
+    if pe <= 0:
+        return 1.0
+    log_pe = math.log(pe)
+    log_neutral = math.log(VA_FDV_FEES_NEUTRAL)
+    return _clamp((log_neutral - log_pe) / log_neutral)
+
+
+def _compute_l1_signals(ticker: str, mc: float, fdv_mcap: float, vol: float,
+                         c7d: float, c30d: float) -> list[float]:
+    """L1 Platform: Dilution, Network Activity, Fee Revenue, Ecosystem TVL, Dev Activity, DEX Volume, Momentum."""
+    messari = get_messari_info(ticker) or {}
+    dl = get_defillama_info(ticker) or {}
+    dl_proto = get_defillama_protocol_info(ticker) or {}
+
+    # 1. Dilution
+    sig_dilution = _dilution_signal(fdv_mcap)
+
+    # 2. Network Activity: active addresses + txn count (Messari)
+    addrs = messari.get("active_addresses") or 0
+    txns = messari.get("txn_count") or 0
+    if addrs > 0 or txns > 0:
+        # Log-scale: 100K addrs + 1M txns = strong
+        addr_score = math.log(max(addrs, 1)) / math.log(1_000_000) if addrs > 0 else 0
+        txn_score = math.log(max(txns, 1)) / math.log(10_000_000) if txns > 0 else 0
+        sig_network = _clamp((addr_score + txn_score) / 2 * 2 - 1)
+    else:
+        sig_network = 0.0
+
+    # 3. Fee Revenue (Messari fees_24h or DeFiLlama fees_30d)
+    fees_24h = messari.get("fees_24h_usd") or 0
+    fees_30d = dl.get("fees_30d", 0)
+    if fees_24h > 0:
+        # Log-scale: $100K/day = strong, $1M+ = exceptional
+        sig_fees = _clamp((math.log(max(fees_24h, 1)) - math.log(10_000)) / (math.log(1_000_000) - math.log(10_000)) * 2 - 1)
+    elif fees_30d > 0:
+        daily_fees = fees_30d / 30
+        sig_fees = _clamp((math.log(max(daily_fees, 1)) - math.log(10_000)) / (math.log(1_000_000) - math.log(10_000)) * 2 - 1)
+    else:
+        sig_fees = -0.3
+
+    # 4. Ecosystem TVL (Messari or DeFiLlama, relative to mcap)
+    tvl = messari.get("tvl_usd") or dl_proto.get("tvl_current") or dl.get("tvl", 0) or 0
+    if tvl > 0 and mc > 0:
+        ratio = tvl / mc
+        # TVL/MCap: 0.1 = neutral, 1.0+ = excellent
+        sig_tvl = _clamp((math.log(max(ratio, 0.001)) - math.log(0.1)) / (math.log(2) - math.log(0.1)))
+    else:
+        sig_tvl = -0.3
+
+    # 5. Dev Activity
+    sig_dev = _dev_activity_signal(ticker)
+
+    # 6. DEX Volume (Messari, relative to mcap)
+    dex_vol = messari.get("dex_volume_usd") or 0
+    if dex_vol > 0 and mc > 0:
+        ratio = dex_vol / mc
+        sig_dex = _clamp((math.log(max(ratio, 0.0001)) - math.log(0.001)) / (math.log(0.1) - math.log(0.001)))
+    else:
+        sig_dex = 0.0
+
+    # 7. Momentum
+    sig_momentum = _momentum_signal(c7d, c30d)
+
+    return [sig_dilution, sig_network, sig_fees, sig_tvl, sig_dev, sig_dex, sig_momentum]
+
+
+def _compute_defi_signals(ticker: str, mc: float, fdv_mcap: float, fdv: float,
+                           c7d: float, c30d: float) -> list[float]:
+    """DeFi: Dilution, Buyback Yield, Rev Capture, Fee Momentum, FDV/Fees, TVL Growth, Dev Activity."""
+    dl = get_defillama_info(ticker) or {}
+    dl_proto = get_defillama_protocol_info(ticker) or {}
+
+    # 1. Dilution
+    sig_dilution = _dilution_signal(fdv_mcap)
+
+    # 2. Buyback Yield (annualized holder revenue / mcap)
+    holders_rev = dl.get("revenue_30d", 0)
+    if holders_rev > 0 and mc > 0:
+        bi_pct = (holders_rev * 12) / mc * 100
+        if bi_pct >= VA_BUYBACK_NEUTRAL:
+            sig_buyback = _clamp((bi_pct - VA_BUYBACK_NEUTRAL) / (VA_BUYBACK_MAX - VA_BUYBACK_NEUTRAL))
+        else:
+            sig_buyback = _clamp((bi_pct - VA_BUYBACK_NEUTRAL) / VA_BUYBACK_NEUTRAL)
+    else:
+        sig_buyback = -0.2  # mild penalty for no revenue
+
+    # 3. Rev Capture (revenue / fees)
+    fees_30d = dl.get("fees_30d", 0)
+    if fees_30d > 0 and holders_rev > 0:
+        sig_rev_capture = _clamp(holders_rev / fees_30d)
+    else:
+        sig_rev_capture = -0.2
+
+    # 4. Fee Momentum
+    if "fee_momentum" in dl:
+        sig_fee_mom = _clamp(dl["fee_momentum"] / VA_FEE_MOMENTUM_NORMALIZE)
+    else:
+        sig_fee_mom = 0.0
+
+    # 5. FDV / Fees (P/E)
+    sig_fdv_fees = _fee_revenue_signal_log(fees_30d, fdv)
+
+    # 6. TVL Growth (30d from protocol detail)
+    tvl_growth = dl_proto.get("tvl_growth_30d") or 0
+    sig_tvl_growth = _clamp(tvl_growth / 30)  # 30% growth = max signal
+
+    # 7. Dev Activity
+    sig_dev = _dev_activity_signal(ticker)
+
+    return [sig_dilution, sig_buyback, sig_rev_capture, sig_fee_mom, sig_fdv_fees, sig_tvl_growth, sig_dev]
+
+
+def _compute_ai_signals(ticker: str, mc: float, fdv_mcap: float, vol: float, fdv: float,
+                         c7d: float, c30d: float) -> list[float]:
+    """AI/Compute: Dilution, Dev Activity, Momentum, Volume Intensity, TVL/Usage, Fee Revenue, Funding Rate."""
+    dl = get_defillama_info(ticker) or {}
+    dl_proto = get_defillama_protocol_info(ticker) or {}
+
+    sig_dilution = _dilution_signal(fdv_mcap)
+    sig_dev = _dev_activity_signal(ticker)
+    sig_momentum = _momentum_signal(c7d, c30d)
+    sig_vol = _volume_intensity_signal(vol, mc)
+
+    # TVL/Usage
+    tvl = dl_proto.get("tvl_current") or dl.get("tvl", 0) or 0
+    if tvl > 0 and mc > 0:
+        ratio = tvl / mc
+        sig_tvl = _clamp((math.log(max(ratio, 0.001)) - math.log(0.05)) / (math.log(1) - math.log(0.05)))
+    else:
+        sig_tvl = 0.0
+
+    # Fee Revenue
+    fees_30d = dl.get("fees_30d", 0)
+    sig_fees = _fee_revenue_signal_log(fees_30d, fdv) if fees_30d > 0 else 0.0
+
+    sig_funding = _funding_rate_signal(ticker)
+
+    return [sig_dilution, sig_dev, sig_momentum, sig_vol, sig_tvl, sig_fees, sig_funding]
+
+
+def _compute_pow_signals(ticker: str, mc: float, fdv_mcap: float, vol: float,
+                          c7d: float, c30d: float) -> list[float]:
+    """PoW/Monetary: Scarcity, Txn Activity, Fee Revenue, Adoption, Dev Activity, Volume/MCap, Momentum."""
+    messari = get_messari_info(ticker) or {}
+
+    # 1. Scarcity (same as dilution but framed positively)
+    sig_scarcity = _dilution_signal(fdv_mcap)
+
+    # 2. Txn Activity (Messari)
+    txns = messari.get("txn_count") or 0
+    if txns > 0:
+        sig_txn = _clamp((math.log(max(txns, 1)) - math.log(10_000)) / (math.log(5_000_000) - math.log(10_000)) * 2 - 1)
+    else:
+        sig_txn = 0.0
+
+    # 3. Fee Revenue (Messari)
+    fees_24h = messari.get("fees_24h_usd") or 0
+    if fees_24h > 0:
+        sig_fees = _clamp((math.log(max(fees_24h, 1)) - math.log(1_000)) / (math.log(500_000) - math.log(1_000)) * 2 - 1)
+    else:
+        sig_fees = 0.0
+
+    # 4. Adoption (active addresses)
+    addrs = messari.get("active_addresses") or 0
+    if addrs > 0:
+        sig_adoption = _clamp((math.log(max(addrs, 1)) - math.log(1_000)) / (math.log(500_000) - math.log(1_000)) * 2 - 1)
+    else:
+        sig_adoption = 0.0
+
+    # 5. Dev Activity
+    sig_dev = _dev_activity_signal(ticker)
+
+    # 6. Volume/MCap
+    sig_vol = _volume_intensity_signal(vol, mc)
+
+    # 7. Momentum
+    sig_momentum = _momentum_signal(c7d, c30d)
+
+    return [sig_scarcity, sig_txn, sig_fees, sig_adoption, sig_dev, sig_vol, sig_momentum]
+
+
+def _compute_speculative_signals(ticker: str, mc: float, fdv_mcap: float, vol: float,
+                                  c7d: float, c30d: float) -> list[float]:
+    """Speculative: Dilution, Volume Intensity, Momentum 7d, Momentum 30d, Dev Activity, Liquidity Depth, Funding Rate."""
+    sig_dilution = _dilution_signal(fdv_mcap)
+    sig_vol = _volume_intensity_signal(vol, mc)
+
+    # Separate momentum signals
+    sig_mom_7d = _clamp((c7d or 0) / 15)   # ±15% weekly = max signal
+    sig_mom_30d = _clamp((c30d or 0) / 30)  # ±30% monthly = max signal
+
+    sig_dev = _dev_activity_signal(ticker)
+
+    # Liquidity depth: volume + OI
+    bn = get_binance_info(ticker)
+    oi = bn.get("open_interest_usd", 0) if bn else 0
+    liquidity = vol + oi
+    if liquidity > 0 and mc > 0:
+        ratio = liquidity / mc
+        sig_liquidity = _clamp((ratio - 0.02) / 0.08)
+    else:
+        sig_liquidity = -0.3
+
+    sig_funding = _funding_rate_signal(ticker)
+
+    return [sig_dilution, sig_vol, sig_mom_7d, sig_mom_30d, sig_dev, sig_liquidity, sig_funding]
+
+
+_SECTOR_COMPUTE = {
+    "l1_platform": _compute_l1_signals,
+    "defi": _compute_defi_signals,
+    "ai_compute": _compute_ai_signals,
+    "pow_monetary": _compute_pow_signals,
+    "speculative": _compute_speculative_signals,
+}
+
+
+def compute_live_ten_factor_scores(tickers: list[str]) -> dict[str, dict[str, float]]:
+    """Compute sector-differentiated scores. Each token uses signals appropriate to its sector.
+
+    Returns {ticker: {signal_name: score_0_100, ..., "_sector": str, "_signal_names": [...]}}.
     """
     if not tickers:
         return {}
 
     raw = _get_raw_market_vectors(tickers)
-    factor_names = list(VA_FACTOR_WEIGHTS.keys())
-
-    # Collect fee momentum values across universe to compute median (market-relative)
-    all_fee_moms = []
-    for t in tickers:
-        dl = get_defillama_info(t)
-        if dl and "fee_momentum" in dl:
-            all_fee_moms.append(dl["fee_momentum"])
-    median_fee_mom = sorted(all_fee_moms)[len(all_fee_moms) // 2] if all_fee_moms else 0
-
     result = {}
+
     for i, t in enumerate(tickers):
-        dl = get_defillama_info(t) or {}
         mc = raw["market_caps"][i]
-        fdv = mc * raw["fdv_mcap_ratios"][i] if raw["fdv_mcap_ratios"][i] > 0 else mc
+        vol = raw["volumes"][i]
+        fdv_mcap = raw["fdv_mcap_ratios"][i]
+        fdv = mc * fdv_mcap if fdv_mcap > 0 else mc
+        c7d = raw["change_7d"][i]
+        c30d = raw["change_30d"][i]
 
-        # ── 1. Dilution: (neutral - FDV/MCap) / (neutral - 1) ──
-        fdv_mcap = raw["fdv_mcap_ratios"][i] if raw["fdv_mcap_ratios"][i] > 0 else VA_FDV_MCAP_NEUTRAL
-        dilution_sig = _clamp((VA_FDV_MCAP_NEUTRAL - fdv_mcap) / (VA_FDV_MCAP_NEUTRAL - 1.0))
+        sector = _get_sector(t)
+        signal_names = SECTOR_SIGNAL_NAMES[sector]
 
-        # ── 2. Supply Delta: -delta / normalize ──
-        sd = raw["supply_deltas"][i]
-        supply_sig = _clamp(-sd / VA_SUPPLY_DELTA_NORMALIZE) if sd != 0 else 0.0
+        # Dispatch to sector-specific compute function
+        compute_fn = _SECTOR_COMPUTE[sector]
+        if sector == "l1_platform":
+            signals = compute_fn(t, mc, fdv_mcap, vol, c7d, c30d)
+        elif sector == "defi":
+            signals = compute_fn(t, mc, fdv_mcap, fdv, c7d, c30d)
+        elif sector == "ai_compute":
+            signals = compute_fn(t, mc, fdv_mcap, vol, fdv, c7d, c30d)
+        elif sector == "pow_monetary":
+            signals = compute_fn(t, mc, fdv_mcap, vol, c7d, c30d)
+        else:  # speculative
+            signals = compute_fn(t, mc, fdv_mcap, vol, c7d, c30d)
 
-        # ── 3. Buyback Intensity: annualized holder yield vs neutral/max ──
-        holders_rev = dl.get("revenue_30d", 0)
-        free_float_mc = mc  # approximate (no float data without Messari)
-        if holders_rev > 0 and free_float_mc > 0:
-            bi_pct = (holders_rev * 12) / free_float_mc * 100
-            if bi_pct >= VA_BUYBACK_NEUTRAL:
-                buyback_sig = _clamp((bi_pct - VA_BUYBACK_NEUTRAL) / (VA_BUYBACK_MAX - VA_BUYBACK_NEUTRAL))
-            else:
-                buyback_sig = _clamp((bi_pct - VA_BUYBACK_NEUTRAL) / VA_BUYBACK_NEUTRAL)
-        else:
-            buyback_sig = 0.0  # no data = neutral
+        # Build result dict with sector-specific signal names
+        entry = {}
+        for j, name in enumerate(signal_names):
+            entry[name] = _signal_to_score(signals[j])
+        entry["_sector"] = sector
+        entry["_signal_names"] = signal_names
+        entry["_signals_raw"] = {name: round(signals[j], 3) for j, name in enumerate(signal_names)}
 
-        # ── 4. Rev Capture: holders_revenue / fees ──
-        fees_30d = dl.get("fees_30d", 0)
-        if fees_30d > 0 and holders_rev > 0:
-            rev_capture_sig = _clamp(holders_rev / fees_30d)
-        else:
-            rev_capture_sig = 0.0
+        result[t] = entry
 
-        # ── 5. Fee Momentum: market-relative, normalized ──
-        if dl and "fee_momentum" in dl:
-            relative_mom = dl["fee_momentum"] - median_fee_mom
-            fee_mom_sig = _clamp(relative_mom / VA_FEE_MOMENTUM_NORMALIZE)
-        else:
-            fee_mom_sig = 0.0  # no data = neutral
-
-        # ── 6. FDV / Fees (P/E): log-scaled, neutral=100 ──
-        if fees_30d > 0 and fdv > 0:
-            annual_fees = fees_30d * 12
-            pe = fdv / annual_fees if annual_fees > 0 else 9999
-            if pe > 0:
-                log_pe = math.log(pe)
-                log_neutral = math.log(VA_FDV_FEES_NEUTRAL)
-                fdv_fees_sig = _clamp((log_neutral - log_pe) / log_neutral)
-            else:
-                fdv_fees_sig = 1.0
-        else:
-            fdv_fees_sig = -1.0  # no fees = worst
-
-        # ── 7. FDV / TVL: log-scaled, neutral=10 ──
-        tvl = dl.get("tvl", 0)
-        if tvl > 0 and fdv > 0:
-            ratio = fdv / tvl
-            if ratio > 0:
-                log_ratio = math.log(ratio)
-                log_neutral = math.log(VA_FDV_TVL_NEUTRAL)
-                fdv_tvl_sig = _clamp((log_neutral - log_ratio) / log_neutral)
-            else:
-                fdv_tvl_sig = 1.0
-        else:
-            fdv_tvl_sig = 0.0  # no TVL = neutral
-
-        # ── VA Registry gating (nickel-ls-rv aligned) ──
-        registry = VA_REGISTRY.get(t, {})
-        mechanism = registry.get("mechanism", "unknown")
-        has_accrual_mechanism = mechanism not in ("none", "unknown")
-
-        # Gate: If mechanism is "none" → zero out buyback and rev_capture
-        if mechanism == "none":
-            buyback_sig = 0.0
-            rev_capture_sig = 0.0
-
-        # Gate 1: Extractive protocol — has fees but no holder revenue and no known mechanism
-        has_meaningful_fees = fees_30d >= VA_GATE_MIN_FEES_30D
-        has_holder_revenue = holders_rev > 0
-        if has_meaningful_fees and not has_holder_revenue and not has_accrual_mechanism:
-            dilution_sig = min(dilution_sig, 0.0)
-            supply_sig = min(supply_sig, 0.0)
-            buyback_sig = min(buyback_sig, 0.0)
-            rev_capture_sig = min(rev_capture_sig, 0.0)
-            fee_mom_sig = min(fee_mom_sig, 0.0)
-            fdv_fees_sig = min(fdv_fees_sig, 0.0)
-            fdv_tvl_sig = min(fdv_tvl_sig, 0.0)
-
-        # Gate 2: No-accrual floor for large caps ($1B+)
-        if mechanism == "none" and mc >= VA_NO_ACCRUAL_MCAP_FLOOR:
-            buyback_sig = VA_NO_ACCRUAL_FLOOR
-            rev_capture_sig = VA_NO_ACCRUAL_FLOOR
-            if abs(fee_mom_sig) < 0.05:
-                fee_mom_sig = VA_NO_ACCRUAL_FLOOR
-
-        # Gate 3: Fee momentum haircut if no revenue mechanism
-        if fee_mom_sig > 0 and not has_accrual_mechanism:
-            fee_mom_sig *= 0.2
-
-        # Store as 0-100 scores + raw signals for the data tab
-        result[t] = {
-            factor_names[0]: _signal_to_score(dilution_sig),
-            factor_names[1]: _signal_to_score(supply_sig),
-            factor_names[2]: _signal_to_score(buyback_sig),
-            factor_names[3]: _signal_to_score(rev_capture_sig),
-            factor_names[4]: _signal_to_score(fee_mom_sig),
-            factor_names[5]: _signal_to_score(fdv_fees_sig),
-            factor_names[6]: _signal_to_score(fdv_tvl_sig),
-            "_va_signals": {
-                "dilution": round(dilution_sig, 3),
-                "supply_delta": round(supply_sig, 3),
-                "buyback": round(buyback_sig, 3),
-                "rev_capture": round(rev_capture_sig, 3),
-                "fee_momentum": round(fee_mom_sig, 3),
-                "fdv_fees": round(fdv_fees_sig, 3),
-                "fdv_tvl": round(fdv_tvl_sig, 3),
-            },
-            "_va_raw": {
-                "fdv_mcap": round(fdv_mcap, 2),
-                "supply_delta_pct": round(sd, 3),
-                "buyback_yield_pct": round((holders_rev * 12) / free_float_mc * 100, 2) if holders_rev > 0 and free_float_mc > 0 else 0,
-                "rev_capture_ratio": round(holders_rev / fees_30d, 3) if fees_30d > 0 and holders_rev > 0 else 0,
-                "fee_momentum_pct": round(dl.get("fee_momentum", 0), 1),
-                "pe_ratio": round(fdv / (fees_30d * 12), 1) if fees_30d > 0 else None,
-                "fdv_tvl_ratio": round(fdv / tvl, 2) if tvl > 0 else None,
-                "fees_30d": fees_30d,
-                "holders_revenue_30d": holders_rev,
-                "tvl": tvl,
-                "mechanism": mechanism,
-                "has_accrual": has_accrual_mechanism,
-            },
-        }
     return result
 
 
@@ -398,34 +560,26 @@ def compute_five_factor_scores(profile: str, tickers: list[str]) -> dict[str, fl
 
 
 def _get_va_weights_for_ticker(ticker: str, profile: str) -> dict[str, float]:
-    """Get sector-aware VA weights for a token. Returns {factor_name: weight}."""
-    # Check per-token override first
-    profile_key = VA_PROFILE_OVERRIDES.get(ticker)
-    if not profile_key:
-        # Look up category → sector profile
-        asset = ASSET_BY_TICKER.get(ticker, {})
-        category = asset.get("category", "")
-        profile_key = CATEGORY_TO_VA_PROFILE.get(category)
-
-    if profile_key and profile_key in SECTOR_VA_PROFILES:
-        # Use sector-specific weights (same for all risk profiles)
-        return SECTOR_VA_PROFILES[profile_key]
-    else:
-        # Use default profile-specific weights
-        return {factor: weights.get(profile, 0) for factor, weights in VA_FACTOR_WEIGHTS.items()}
+    """Get sector-aware VA weights for a token. Returns {signal_name: weight}."""
+    sector = _get_sector(ticker)
+    signal_names = SECTOR_SIGNAL_NAMES[sector]
+    weights = SECTOR_WEIGHTS[sector]
+    return dict(zip(signal_names, weights))
 
 
 def compute_ten_factor_scores(profile: str, tickers: list[str]) -> dict[str, float]:
-    """Returns {ticker: composite_score} for allocation weighting. Uses sector-aware VA weights."""
+    """Returns {ticker: composite_score} for allocation weighting. Uses sector-aware signals."""
     individual = compute_live_ten_factor_scores(tickers)
     composites = {}
     for t in tickers:
         scores = individual.get(t, {})
-        weights = _get_va_weights_for_ticker(t, profile)
-        composite = 0
-        for factor, w in weights.items():
-            s = scores.get(factor, 50)
-            composite += w * s
+        sector = _get_sector(t)
+        signal_names = SECTOR_SIGNAL_NAMES[sector]
+        weights = SECTOR_WEIGHTS[sector]
+        composite = sum(
+            scores.get(name, 50) * w
+            for name, w in zip(signal_names, weights)
+        )
         composites[t] = composite
     return composites
 
@@ -458,23 +612,24 @@ def ten_factor_detail(profile: str, tickers: list[str]) -> list[dict]:
     results = []
     for t in tickers:
         scores = individual.get(t, {})
+        sector = scores.get("_sector", _get_sector(t))
+        signal_names = scores.get("_signal_names", SECTOR_SIGNAL_NAMES.get(sector, []))
+        weights_list = SECTOR_WEIGHTS.get(sector, [])
+
         row = {"ticker": t, "name": ASSET_BY_TICKER.get(t, {}).get("name", t)}
-        # Sector-aware VA weights
-        weights = _get_va_weights_for_ticker(t, profile)
         composite = 0
-        for factor, w in weights.items():
-            s = scores.get(factor, 50)
-            row[factor] = round(s, 1)
+        for j, name in enumerate(signal_names):
+            s = scores.get(name, 50)
+            row[name] = round(s, 1)
+            w = weights_list[j] if j < len(weights_list) else 0
             composite += w * s
         row["composite"] = round(composite, 1)
-        # Record which sector profile was used
-        asset = ASSET_BY_TICKER.get(t, {})
-        sector_key = VA_PROFILE_OVERRIDES.get(t) or CATEGORY_TO_VA_PROFILE.get(asset.get("category", ""))
-        row["_va_profile"] = sector_key or "default"
+        row["_sector"] = sector
+        row["_sector_label"] = SECTOR_LABELS.get(sector, sector)
+        row["_signal_names"] = signal_names
         row["_raw"] = five_individual.get(t, {}).get("_raw", {})
         row["_data_missing"] = five_individual.get(t, {}).get("_data_missing", False)
-        row["_va_signals"] = scores.get("_va_signals", {})
-        row["_va_raw"] = scores.get("_va_raw", {})
+        row["_signals_raw"] = scores.get("_signals_raw", {})
         results.append(row)
     results.sort(key=lambda x: -x["composite"])
     return results
@@ -794,7 +949,6 @@ def full_data_breakdown(tickers: list[str], profile: str) -> list[dict]:
     va_scores = compute_live_ten_factor_scores(tickers)
 
     five_factor_names = list(FIVE_FACTOR_WEIGHTS.keys())
-    va_factor_names = list(VA_FACTOR_WEIGHTS.keys())
 
     rows = []
     for i, t in enumerate(tickers):
@@ -802,8 +956,6 @@ def full_data_breakdown(tickers: list[str], profile: str) -> list[dict]:
         bn = get_binance_info(t) or {}
         asset = ASSET_BY_TICKER.get(t, {})
         va = va_scores.get(t, {})
-        va_sigs = va.get("_va_signals", {})
-        va_raw = va.get("_va_raw", {})
 
         # 5-factor composite
         five_composite = sum([
@@ -814,11 +966,15 @@ def full_data_breakdown(tickers: list[str], profile: str) -> list[dict]:
             growth_scores[i] * FIVE_FACTOR_WEIGHTS[five_factor_names[4]].get(profile, 0),
         ])
 
-        # VA composite
+        # VA composite (sector-aware)
+        va_sector = va.get("_sector", _get_sector(t))
+        va_signal_names = va.get("_signal_names", SECTOR_SIGNAL_NAMES.get(va_sector, []))
+        va_weights = SECTOR_WEIGHTS.get(va_sector, [])
         va_composite = sum(
-            va.get(f, 50) * VA_FACTOR_WEIGHTS[f].get(profile, 0)
-            for f in va_factor_names
+            va.get(name, 50) * (va_weights[j] if j < len(va_weights) else 0)
+            for j, name in enumerate(va_signal_names)
         )
+        va_sigs_raw = va.get("_signals_raw", {})
 
         rows.append({
             "ticker": t,
@@ -861,29 +1017,13 @@ def full_data_breakdown(tickers: list[str], profile: str) -> list[dict]:
             "f5_growth_raw": growth_raw[i],
             "f5_growth_score": growth_scores[i],
             "f5_composite": round(five_composite, 1),
-            # ── VA Model: signal [-1,+1] → score [0,100] ──
-            "va_dilution_sig": va_sigs.get("dilution", 0),
-            "va_dilution_score": va.get("Dilution", 50),
-            "va_supply_sig": va_sigs.get("supply_delta", 0),
-            "va_supply_score": va.get("Supply Delta", 50),
-            "va_buyback_sig": va_sigs.get("buyback", 0),
-            "va_buyback_score": va.get("Buyback Intensity", 50),
-            "va_revcap_sig": va_sigs.get("rev_capture", 0),
-            "va_revcap_score": va.get("Rev Capture", 50),
-            "va_feemom_sig": va_sigs.get("fee_momentum", 0),
-            "va_feemom_score": va.get("Fee Momentum", 50),
-            "va_fdvfees_sig": va_sigs.get("fdv_fees", 0),
-            "va_fdvfees_score": va.get("FDV / Fees", 50),
-            "va_fdvtvl_sig": va_sigs.get("fdv_tvl", 0),
-            "va_fdvtvl_score": va.get("FDV / TVL", 50),
+            # ── VA Model: sector-differentiated signals ──
+            "va_sector": va_sector,
+            "va_sector_label": SECTOR_LABELS.get(va_sector, va_sector),
+            "va_signal_names": va_signal_names,
+            "va_signals": {name: va.get(name, 50) for name in va_signal_names},
+            "va_signals_raw": va_sigs_raw,
             "va_composite": round(va_composite, 1),
-            # ── VA raw inputs ──
-            "va_pe_ratio": va_raw.get("pe_ratio"),
-            "va_fdv_tvl_ratio": va_raw.get("fdv_tvl_ratio"),
-            "va_buyback_yield": va_raw.get("buyback_yield_pct", 0),
-            "va_rev_capture_ratio": va_raw.get("rev_capture_ratio", 0),
-            "va_mechanism": va_raw.get("mechanism", "unknown"),
-            "va_has_accrual": va_raw.get("has_accrual", False),
             # ── Developer & Community (CoinGecko) ──
             "dev_info": get_dev_info(t),
             # ── P3 Protocol Performance ──

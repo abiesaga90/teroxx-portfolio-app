@@ -1,4 +1,33 @@
-<!-- Weight Matrix -->
+{% if is_fundamental %}
+<!-- Sector Weight Overview -->
+<div class="card">
+    <div class="card-header">{{ model_label }} — Sector Weights</div>
+    <div class="weight-matrix">
+        <table>
+            <thead>
+                <tr>
+                    <th>Sector</th>
+                    <th colspan="7" class="center">Signals &amp; Weights</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for sector_key, info in sector_info.items() %}
+                <tr>
+                    <td style="font-weight:700;white-space:nowrap;">{{ info.label }}</td>
+                    {% for j in range(7) %}
+                    <td class="center" style="font-size:0.65rem;line-height:1.2;white-space:normal;max-width:75px;">
+                        {{ info.signals[j] }}<br>
+                        <span style="color:var(--electric-sky);font-weight:700;">{{ (info.weights[j] * 100)|round(0)|int }}%</span>
+                    </td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<!-- 5-Factor Weight Matrix -->
 <div class="card">
     <div class="card-header">{{ model_label }} Weight Matrix</div>
     <div class="weight-matrix">
@@ -24,39 +53,74 @@
         </table>
     </div>
 </div>
+{% endif %}
 
 <!-- Charts -->
 <div class="card">
     <div class="card-header">Visual Analysis</div>
     <div class="chart-section">
         <div class="chart-box">
-            <canvas id="radar-chart"></canvas>
-            <div class="chart-label">Top 5 — Factor Profile</div>
-        </div>
-        <div class="chart-box">
             <canvas id="bubble-chart"></canvas>
             <div class="chart-label">Risk vs Return (bubble = market cap)</div>
         </div>
-    </div>
-</div>
-
-<!-- Dilution Analysis -->
-<div class="card">
-    <div class="card-header">Dilution Risk (FDV / Market Cap)</div>
-    <div class="chart-section">
-        <div class="chart-box-wide">
+        <div class="chart-box">
             <canvas id="dilution-chart"></canvas>
-            <div class="chart-label">Green &lt;2x &bull; Yellow 2-4x &bull; Red &gt;4x</div>
+            <div class="chart-label">FDV / Market Cap — Green &lt;2x &bull; Yellow 2-4x &bull; Red &gt;4x</div>
         </div>
     </div>
 </div>
 
 <!-- Chart Data (hidden divs — HTMX strips <script> tags on swap) -->
-<div id="radar-data" style="display:none">{{ radar_data|safe }}</div>
 <div id="bubble-data" style="display:none">{{ bubble_data|safe }}</div>
 <div id="dilution-data" style="display:none">{{ dilution_data|safe }}</div>
 
-<!-- Scores Table -->
+{% if is_fundamental %}
+<!-- Sector-Grouped Scores Tables -->
+{% set sectors_seen = [] %}
+{% for d in detail %}
+    {% if d._sector not in sectors_seen %}
+        {% if sectors_seen|length > 0 %}
+            </tbody></table></div></div>
+        {% endif %}
+        {% if sectors_seen.append(d._sector) %}{% endif %}
+<div class="card">
+    <div class="card-header">{{ d._sector_label }} Scores &amp; Composites</div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Ticker</th>
+                    <th>Name</th>
+                    {% for sig in d._signal_names %}
+                    <th class="center" style="max-width:70px;white-space:normal;font-size:0.6rem;">{{ sig }}</th>
+                    {% endfor %}
+                    <th class="right">Composite</th>
+                </tr>
+            </thead>
+            <tbody>
+    {% endif %}
+                <tr style="cursor:pointer;" onclick="openTokenModal('{{ d.ticker }}')">
+                    <td style="color:var(--text-muted)">{{ loop.index }}</td>
+                    <td class="ticker">
+                        <div class="ticker-cell">
+                            {% set logo = get_logo(d.ticker) %}{% if logo %}<img src="{{ logo }}" class="token-logo token-logo-sm" alt="{{ d.ticker }}">{% endif %}{{ d.ticker }}
+                            {% if d.get('_data_missing') %}<span class="data-warning" title="Missing market data">&#9888;</span>{% endif %}
+                        </div>
+                    </td>
+                    <td>{{ d.name }}</td>
+                    {% for sig in d._signal_names %}
+                    {% set score = d.get(sig, 50) %}
+                    <td class="center {% if score >= 70 %}positive{% elif score <= 30 %}danger{% endif %}">{{ score }}</td>
+                    {% endfor %}
+                    <td class="right" style="font-weight:700;color:var(--electric-sky);">{{ d.composite }}</td>
+                </tr>
+{% endfor %}
+{% if sectors_seen|length > 0 %}
+            </tbody></table></div></div>
+{% endif %}
+{% else %}
+<!-- 5-Factor Scores Table -->
 <div class="card">
     <div class="card-header">{{ model_label }} Scores<sup class="src">1</sup> &amp; Composites ({{ profile }})</div>
     <div class="table-wrap">
@@ -67,7 +131,7 @@
                     <th>Ticker</th>
                     <th>Name</th>
                     {% for factor in weights.keys() %}
-                    <th class="center" style="max-width:{% if is_fundamental %}70{% else %}80{% endif %}px;white-space:normal;font-size:0.6rem;">{{ factor }}</th>
+                    <th class="center" style="max-width:80px;white-space:normal;font-size:0.6rem;">{{ factor }}</th>
                     {% endfor %}
                     <th class="right">Composite</th>
                 </tr>
@@ -92,20 +156,24 @@
             </tbody>
         </table>
     </div>
+</div>
+{% endif %}
 
+<div class="card" style="margin-top:8px;">
     <div class="sources">
         <div class="sources-title">Sources</div>
         {% if is_fundamental %}
-        <sup class="src">1</sup> Value Accrual scores aligned with nickel-ls-rv three-pillar framework. Each signal clamped [-1, +1] then scaled to [0, 100]. Score = 50 is neutral.<br>
-        <sup class="src">2</sup> <strong>Dilution</strong>: (2.0 &minus; FDV/MCap) / 1.0. <strong>Supply Delta</strong>: &minus;supply_growth / 3%. <strong>Buyback</strong>: annualized holder yield vs 5% neutral.<br>
-        <sup class="src">3</sup> <strong>Rev Capture</strong>: holders_revenue / fees. <strong>Fee Momentum</strong>: fee growth vs universe median / 50%. <a href="https://defillama.com" target="_blank">DeFiLlama</a>.<br>
-        <sup class="src">4</sup> <strong>FDV/Fees</strong>: log-scaled P/E, neutral=100. <strong>FDV/TVL</strong>: log-scaled capital efficiency, neutral=10. <a href="https://coinmarketcap.com" target="_blank">CMC</a> + <a href="https://defillama.com" target="_blank">DeFiLlama</a>.<br>
+        <sup class="src">1</sup> Sector-differentiated scoring: each sector uses signals appropriate to its asset class. Scores clamped [-1, +1] then scaled to [0, 100]. Score = 50 is neutral.<br>
+        <sup class="src">2</sup> <strong>L1 Chains</strong>: Network activity, fee revenue, ecosystem TVL, DEX volume from <a href="https://messari.io" target="_blank">Messari</a> + <a href="https://defillama.com" target="_blank">DeFiLlama</a>.<br>
+        <sup class="src">3</sup> <strong>DeFi</strong>: Buyback yield, revenue capture, fee momentum, FDV/Fees, TVL growth from <a href="https://defillama.com" target="_blank">DeFiLlama</a>.<br>
+        <sup class="src">4</sup> <strong>AI/Compute &amp; Speculative</strong>: Volume intensity, momentum, funding rates from <a href="https://coinmarketcap.com" target="_blank">CMC</a> + <a href="https://www.binance.com" target="_blank">Binance</a>.<br>
+        <sup class="src">5</sup> Dev Activity from <a href="https://www.coingecko.com" target="_blank">CoinGecko</a> (GitHub commits, PRs, contributors). Dilution from <a href="https://coinmarketcap.com" target="_blank">CMC</a> FDV/MCap ratio.<br>
         {% else %}
         <sup class="src">1</sup> Factor scores (0-100) computed via percentile ranking across the asset universe using live market data.<br>
         <sup class="src">2</sup> <strong>Market Beta</strong>: inverse 30-day absolute price change. <strong>Size</strong>: inverse market cap. <strong>Value</strong>: volume/mcap ratio.<br>
         <sup class="src">3</sup> <strong>Momentum</strong>: vol-adjusted 7d + 30d price change. <strong>Growth</strong>: 7d acceleration vs 30d trend.<br>
         {% endif %}
-        <sup class="src">{{ '5' if is_fundamental else '4' }}</sup> Composite = weighted sum using profile-specific weights. See <strong>Data</strong> tab for raw inputs and full calculation breakdown. Updated: {{ price_age }}.
+        <sup class="src">{{ '6' if is_fundamental else '4' }}</sup> Composite = weighted sum using sector-specific weights. Updated: {{ price_age }}.
     </div>
 </div>
 

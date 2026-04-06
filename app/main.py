@@ -246,22 +246,36 @@ async def scoring_partial(
     if model == "fundamental":
         detail = ten_factor_detail(profile, tickers)
         weights = TEN_FACTOR_WEIGHTS
-        model_label = "Value Accrual (VA)"
+        model_label = "Sector-Differentiated Scoring"
         is_fundamental = True
     else:
         detail = five_factor_detail(profile, tickers)
         weights = FIVE_FACTOR_WEIGHTS
         model_label = "5-Factor Model"
         is_fundamental = False
+
     # Build chart data from scoring detail
     factor_names = list(weights.keys())
     top5 = detail[:5]
 
-    # Radar chart: top 5 tokens × factors
-    radar_data = json.dumps({
-        "factors": factor_names,
-        "tokens": [{"ticker": d["ticker"], "scores": [d.get(f, 50) for f in factor_names]} for d in top5],
-    })
+    # Radar chart: top 5 tokens (use their sector signal names)
+    if is_fundamental:
+        # For sector-differentiated: use common 7-point radar with each token's own signals
+        radar_labels = [f"Signal {i+1}" for i in range(7)]
+        radar_tokens = []
+        for d in top5:
+            snames = d.get("_signal_names", [])
+            radar_tokens.append({
+                "ticker": d["ticker"],
+                "scores": [d.get(n, 50) for n in snames[:7]],
+                "labels": snames[:7],
+            })
+        radar_data = json.dumps({"factors": radar_labels, "tokens": radar_tokens})
+    else:
+        radar_data = json.dumps({
+            "factors": factor_names,
+            "tokens": [{"ticker": d["ticker"], "scores": [d.get(f, 50) for f in factor_names]} for d in top5],
+        })
 
     # Bubble chart: risk/return scatter (all tokens with raw data)
     bubble_tokens = []
@@ -274,7 +288,7 @@ async def scoring_partial(
                 "vol": abs(raw.get("change_30d", 0)),
                 "mom": (raw.get("change_7d", 0) or 0) + (raw.get("change_30d", 0) or 0),
                 "mcap": raw.get("market_cap", 0),
-                "cat": asset.get("category", "Other"),
+                "cat": d.get("_sector_label") or asset.get("category", "Other"),
             })
     bubble_data = json.dumps({"tokens": bubble_tokens})
 
@@ -291,6 +305,13 @@ async def scoring_partial(
         "values": [round(x[1], 2) for x in dilution_items[:15]],
     })
 
+    # For sector-differentiated: pass sector info to template
+    from app.data import SECTOR_SIGNAL_NAMES, SECTOR_WEIGHTS, SECTOR_LABELS
+    sector_info = {
+        sector: {"label": SECTOR_LABELS[sector], "signals": SECTOR_SIGNAL_NAMES[sector], "weights": SECTOR_WEIGHTS[sector]}
+        for sector in SECTOR_SIGNAL_NAMES
+    }
+
     return templates.TemplateResponse("partials/scoring_results.html", {
         "request": request,
         "detail": detail,
@@ -303,6 +324,7 @@ async def scoring_partial(
         "radar_data": radar_data,
         "bubble_data": bubble_data,
         "dilution_data": dilution_data,
+        "sector_info": sector_info,
     })
 
 

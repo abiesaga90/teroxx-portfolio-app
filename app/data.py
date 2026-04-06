@@ -228,37 +228,39 @@ VA_REGISTRY = {
 # Keep reference to old name for backward compat
 TEN_FACTOR_WEIGHTS = VA_FACTOR_WEIGHTS
 
-# ── Sector-Aware VA Weight Profiles (ported from nickel-ls-rv) ──
-# Maps categories to different VA weight mixes. supply_health from nickel
-# is decomposed to Dilution (60%) + Supply Delta (40%).
-SECTOR_VA_PROFILES = {
-    "l1_platform": {
-        "Dilution": 0.21, "Supply Delta": 0.14,  # supply_health=0.35
-        "Buyback Intensity": 0.10, "Rev Capture": 0.05,
-        "Fee Momentum": 0.15, "FDV / Fees": 0.10, "FDV / TVL": 0.25,
-    },
-    "defi": {
-        "Dilution": 0.15, "Supply Delta": 0.10,  # supply_health=0.25
-        "Buyback Intensity": 0.25, "Rev Capture": 0.15,
-        "Fee Momentum": 0.15, "FDV / Fees": 0.15, "FDV / TVL": 0.05,
-    },
-    "ai_compute": {
-        "Dilution": 0.15, "Supply Delta": 0.10,  # supply_health=0.25
-        "Buyback Intensity": 0.15, "Rev Capture": 0.10,
-        "Fee Momentum": 0.20, "FDV / Fees": 0.15, "FDV / TVL": 0.15,
-    },
-    "pow_monetary": {
-        "Dilution": 0.42, "Supply Delta": 0.28,  # supply_health=0.70
-        "Buyback Intensity": 0.00, "Rev Capture": 0.00,
-        "Fee Momentum": 0.05, "FDV / Fees": 0.00, "FDV / TVL": 0.25,
-    },
+# ── Sector-Differentiated Scoring ──
+# Each sector has its own 7 signals with sector-appropriate data sources.
+# Signal names, weights, and compute functions differ per sector.
+
+SECTOR_SIGNAL_NAMES = {
+    "l1_platform": ["Dilution", "Network Activity", "Fee Revenue", "Ecosystem TVL", "Dev Activity", "DEX Volume", "Momentum"],
+    "defi":        ["Dilution", "Buyback Yield", "Rev Capture", "Fee Momentum", "FDV / Fees", "TVL Growth", "Dev Activity"],
+    "ai_compute":  ["Dilution", "Dev Activity", "Momentum", "Volume Intensity", "TVL / Usage", "Fee Revenue", "Funding Rate"],
+    "pow_monetary": ["Scarcity", "Txn Activity", "Fee Revenue", "Adoption", "Dev Activity", "Volume / MCap", "Momentum"],
+    "speculative": ["Dilution", "Volume Intensity", "Momentum 7d", "Momentum 30d", "Dev Activity", "Liquidity Depth", "Funding Rate"],
 }
 
-# Map teroxx categories → VA profile key
+SECTOR_WEIGHTS = {
+    "l1_platform": [0.15, 0.20, 0.15, 0.20, 0.10, 0.10, 0.10],
+    "defi":        [0.15, 0.20, 0.15, 0.15, 0.15, 0.10, 0.10],
+    "ai_compute":  [0.15, 0.25, 0.15, 0.10, 0.10, 0.10, 0.15],
+    "pow_monetary": [0.25, 0.15, 0.15, 0.15, 0.10, 0.10, 0.10],
+    "speculative": [0.15, 0.15, 0.20, 0.20, 0.10, 0.10, 0.10],
+}
+
+SECTOR_LABELS = {
+    "l1_platform": "Layer 1",
+    "defi": "DeFi",
+    "ai_compute": "AI / Compute",
+    "pow_monetary": "PoW / Monetary",
+    "speculative": "Speculative",
+}
+
+# Map teroxx categories → sector key
 CATEGORY_TO_VA_PROFILE = {
     "Layer 1": "l1_platform",
     "Layer 0": "l1_platform",
-    "Layer 2": None,           # uses default VA_FACTOR_WEIGHTS
+    "Layer 2": "l1_platform",
     "DeFi": "defi",
     "DEX": "defi",
     "Exchange": "defi",
@@ -269,22 +271,29 @@ CATEGORY_TO_VA_PROFILE = {
     "Payment": "pow_monetary",
     "Privacy": "pow_monetary",
     "Legacy": "pow_monetary",
-    "Infrastructure": None,
-    "Gaming": None,
-    "Meme": None,
-    "Meme/NFT": None,
-    "IoT": None,
-    "RWA": None,
-    "CeFi": None,
-    "Enterprise": None,
-    "Sports": None,
-    "Education": None,
-    "Wallet": None,
+    "Infrastructure": "l1_platform",
+    "Gaming": "speculative",
+    "Meme": "speculative",
+    "Meme/NFT": "speculative",
+    "IoT": "speculative",
+    "RWA": "defi",
+    "CeFi": "defi",
+    "Enterprise": "speculative",
+    "Sports": "speculative",
+    "Education": "speculative",
+    "Wallet": "speculative",
 }
 
-# Per-token overrides (takes precedence)
+# Per-token overrides (takes precedence over category mapping)
 VA_PROFILE_OVERRIDES = {
-    "BTC": "pow_monetary",  # Tagged as "Store of Value" but PoW monetary policy
+    "BTC": "pow_monetary",
+    "LINK": "l1_platform",   # Infrastructure/oracle, has Messari data
+}
+
+# Keep old SECTOR_VA_PROFILES for backward compat (used by allocation engine)
+SECTOR_VA_PROFILES = {
+    sector: dict(zip(SECTOR_SIGNAL_NAMES[sector], SECTOR_WEIGHTS[sector]))
+    for sector in SECTOR_SIGNAL_NAMES
 }
 
 # Default factor scores (0-100) — all 50 except noted
