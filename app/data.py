@@ -1,5 +1,5 @@
 """
-Teroxx Portfolio Allocation Model v3.6 — Static data layer.
+Teroxx Portfolio Allocation Model v4.0 — Static data layer.
 All asset universe, allocations, factor weights ported from Excel.
 """
 

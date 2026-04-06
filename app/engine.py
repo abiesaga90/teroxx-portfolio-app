@@ -198,6 +198,7 @@ def compute_live_five_factor_scores(tickers: list[str]) -> dict[str, dict[str, f
                 "change_30d": raw["change_30d"][i],
                 "change_24h": raw["change_24h"][i],
                 "ath_drawdown": raw["ath_drawdowns"][i],
+                "fdv_mcap_ratio": raw["fdv_mcap_ratios"][i],
                 "momentum_raw": momentum_raw[i],
                 "growth_raw": growth_raw[i],
             },

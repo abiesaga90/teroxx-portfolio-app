@@ -1,7 +1,7 @@
 # Teroxx Portfolio Allocation Model — Web App
 
 ## Overview
-Interactive web version of the Teroxx Portfolio Allocation Model v3.6 (Excel).
+Interactive web version of the Teroxx Portfolio Allocation Model v4.0 (Excel).
 Scores 79 crypto tokens on multi-factor models, generates personalized portfolio allocations based on risk profile.
 
 ## Stack
