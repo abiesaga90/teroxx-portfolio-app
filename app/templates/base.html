@@ -133,8 +133,8 @@
         <div class="card">
             <div class="card-header">Scoring Models</div>
             <div class="scoring-toggle">
-                <button class="scoring-toggle-btn active" data-model="factor" onclick="switchScoringModel('factor')">5-Factor Model</button>
-                <button class="scoring-toggle-btn" data-model="fundamental" onclick="switchScoringModel('fundamental')">Sector Scoring</button>
+                <button class="scoring-toggle-btn" data-model="factor" onclick="switchScoringModel('factor')">5-Factor Model</button>
+                <button class="scoring-toggle-btn active" data-model="fundamental" onclick="switchScoringModel('fundamental')">Sector Scoring</button>
             </div>
             <form id="scoring-form" class="controls" style="margin-top:16px;"
                   hx-post="/api/scoring"
@@ -143,7 +143,7 @@
                   hx-include="#global-controls"
                   hx-indicator="#scoring-loading"
                   hx-on::after-settle="requestAnimationFrame(function(){setTimeout(tryRenderAllCharts,50)})">
-                <input type="hidden" name="model" value="factor">
+                <input type="hidden" name="model" value="fundamental">
                 <span id="scoring-loading" class="htmx-indicator"><span class="spinner"></span></span>
             </form>
         </div>
@@ -614,22 +614,29 @@
                             <td><strong><a href="https://coinmarketcap.com/api/" target="_blank" style="color:var(--electric-sky);">CoinMarketCap</a></strong></td>
                             <td>Price, MCap, FDV, Volume, 24h/7d/30d Change, Supply</td>
                             <td>Free</td>
-                            <td>5min (prices), 1hr (market data)</td>
-                            <td>All {{ n_tokens }} tokens (single API call)</td>
-                        </tr>
-                        <tr>
-                            <td><strong><a href="https://www.coingecko.com/en/api" target="_blank" style="color:var(--electric-sky);">CoinGecko</a></strong></td>
-                            <td>Fallback: Price, MCap, ATH, Logos</td>
-                            <td>Free</td>
-                            <td>Fallback only</td>
+                            <td>5min (prices), 1hr (market)</td>
                             <td>All {{ n_tokens }} tokens</td>
                         </tr>
                         <tr>
+                            <td><strong><a href="https://messari.io" target="_blank" style="color:var(--electric-sky);">Messari</a></strong></td>
+                            <td>Active Addresses, Txn Count, Fees, Revenue, TVL, DEX Volume, Dev Commits</td>
+                            <td>Free</td>
+                            <td>1hr</td>
+                            <td>23 L1 chains</td>
+                        </tr>
+                        <tr>
                             <td><strong><a href="https://defillama.com/docs/api" target="_blank" style="color:var(--electric-sky);">DeFiLlama</a></strong></td>
-                            <td>TVL, Fees (30d), Fee Momentum, Revenue Capture, FDV/MCap</td>
+                            <td>TVL, TVL Growth, Fees (30d), Fee Momentum, Revenue, Revenue Capture</td>
                             <td>Free</td>
                             <td>2hr</td>
-                            <td>{{ n_defillama }} protocols mapped</td>
+                            <td>{{ n_defillama }} protocols</td>
+                        </tr>
+                        <tr>
+                            <td><strong><a href="https://www.coingecko.com/en/api" target="_blank" style="color:var(--electric-sky);">CoinGecko</a></strong></td>
+                            <td>Dev Activity (commits, PRs, contributors), Community, Price fallback</td>
+                            <td>Free</td>
+                            <td>24hr</td>
+                            <td>All {{ n_tokens }} tokens</td>
                         </tr>
                         <tr>
                             <td><strong><a href="https://binance-docs.github.io/apidocs/futures/en/" target="_blank" style="color:var(--electric-sky);">Binance Futures</a></strong></td>
@@ -692,31 +699,36 @@
         </div>
 
         <div class="card">
-            <div class="card-header">10-Factor Fundamental Model — Data Mapping</div>
+            <div class="card-header">Sector Scoring — Signal Mapping</div>
             <div class="table-wrap">
                 <table>
                     <thead>
                         <tr>
-                            <th>Factor</th>
+                            <th>Sector</th>
+                            <th>Signal</th>
                             <th>Raw Metric</th>
                             <th>Source</th>
-                            <th>Scoring</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr><td>Value (P/S)</td><td>MCap / Annualized Fees</td><td>DeFiLlama + CoinGecko</td><td>Inverse percentile</td></tr>
-                        <tr><td>Fee Momentum</td><td>Fee trend (% change)</td><td>DeFiLlama</td><td>Percentile</td></tr>
-                        <tr><td>TVL Health</td><td>TVL 7d change %</td><td>DeFiLlama</td><td>Percentile</td></tr>
-                        <tr><td>Revenue Quality</td><td>Holder revenue / Fees ratio</td><td>DeFiLlama</td><td>Percentile</td></tr>
-                        <tr><td>Usage Growth</td><td>7d price change</td><td>CoinGecko</td><td>Percentile</td></tr>
-                        <tr><td>Risk (Low Vol)</td><td>Absolute 30d change</td><td>CoinGecko</td><td>Inverse percentile</td></tr>
-                        <tr><td>Dilution Safety</td><td>FDV / MCap ratio</td><td>CoinGecko</td><td>Inverse percentile</td></tr>
-                        <tr><td>Supply Health</td><td>Circulating supply delta %</td><td>CoinGecko (tracked in-memory)</td><td>Percentile (contracting = high)</td></tr>
-                        <tr><td>Smart Money</td><td>Perp funding rate (bullish conviction)</td><td>Binance Futures</td><td>Percentile (positive = high)</td></tr>
-                        <tr><td>Developer Momentum</td><td>7d acceleration vs 30d</td><td>CoinGecko</td><td>Percentile</td></tr>
+                        <tr><td rowspan="3" style="font-weight:700;">Layer 1</td><td>Network Activity</td><td>Active addresses + txn count (log-scaled)</td><td>Messari</td></tr>
+                        <tr><td>Fee Revenue</td><td>Daily fees (log-scaled vs $10K&ndash;$1M range)</td><td>Messari / DeFiLlama</td></tr>
+                        <tr><td>Ecosystem TVL</td><td>TVL / Market Cap ratio (log-scaled)</td><td>Messari / DeFiLlama</td></tr>
+                        <tr><td rowspan="3" style="font-weight:700;">DeFi</td><td>Buyback Yield</td><td>Annualized holder revenue / MCap (neutral=5%)</td><td>DeFiLlama</td></tr>
+                        <tr><td>Rev Capture</td><td>Holder revenue / Total fees ratio</td><td>DeFiLlama</td></tr>
+                        <tr><td>Fee Momentum</td><td>Fee growth % (normalized by &plusmn;50%)</td><td>DeFiLlama</td></tr>
+                        <tr><td rowspan="2" style="font-weight:700;">PoW / Monetary</td><td>Scarcity</td><td>(2.0 &minus; FDV/MCap) / 1.0</td><td>CMC</td></tr>
+                        <tr><td>Adoption</td><td>Active addresses (log-scaled)</td><td>Messari</td></tr>
+                        <tr><td rowspan="2" style="font-weight:700;">AI / Compute</td><td>Dev Activity</td><td>GitHub commits + PRs + contributors</td><td>CoinGecko</td></tr>
+                        <tr><td>Funding Rate</td><td>Contrarian: &minus;funding_rate / 0.03%</td><td>Binance</td></tr>
+                        <tr><td rowspan="2" style="font-weight:700;">Speculative</td><td>Volume Intensity</td><td>24h Volume / MCap turnover ratio</td><td>CMC</td></tr>
+                        <tr><td>Liquidity Depth</td><td>(Volume + Open Interest) / MCap</td><td>CMC + Binance</td></tr>
                     </tbody>
                 </table>
             </div>
+            <p style="padding:8px 16px;color:var(--text-muted);font-size:0.7rem;">
+                All signals: Dilution (FDV/MCap), Dev Activity (GitHub), and Momentum (price changes) are shared across sectors. Each signal clamped [-1, +1] then scaled to [0, 100].
+            </p>
         </div>
 
         <div class="card">
