@@ -1265,6 +1265,14 @@ def compute_dca_backtest(
         target_ts = buy_date.timestamp()
         month_label = buy_date.strftime("%b %Y")
 
+        # Check if any ticker has price data for this month
+        any_price = any(
+            _find_price(ticker, target_ts) is not None
+            for ticker in dca_weights
+        )
+        if not any_price:
+            continue  # skip months before historical data starts
+
         for ticker, info in dca_weights.items():
             buy_amount = monthly_amount * info["weight"]
             price = _find_price(ticker, target_ts)
@@ -1341,7 +1349,7 @@ def compute_dca_backtest(
             "current_value": round(current_value, 2),
             "pnl": round(pnl, 2),
             "pnl_pct": round(pnl / total_invested * 100, 2) if total_invested > 0 else 0,
-            "months": months_back,
+            "months": len(monthly_snapshots),
             "monthly_amount": monthly_amount,
         },
         "positions": position_results,

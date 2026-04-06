@@ -688,7 +688,8 @@ async def fetch_binance_perp_data() -> dict[str, dict]:
 
 # ── CoinGecko Historical Prices (for DCA backtest) ───────────────────
 
-_historical_cache: dict[str, list[tuple[float, float]]] = {}  # {cg_id: [(ts, price), ...]}
+_historical_cache: dict[str, list[tuple[float, float]]] = {}  # {ticker: [(ts, price), ...]}
+_historical_cache_days: dict[str, int] = {}  # {ticker: days_fetched}
 _historical_cache_ts: float = 0
 HISTORICAL_TTL = 86400  # 24h — historical data doesn't change
 
@@ -704,14 +705,16 @@ async def fetch_historical_prices(tickers: list[str], days: int = 365) -> dict[s
     Returns {ticker: [(unix_ts, price_usd), ...]} sorted ascending by date.
     Cached 24h.
     """
-    global _historical_cache, _historical_cache_ts
+    global _historical_cache, _historical_cache_days, _historical_cache_ts
 
     days = min(days, 1900)  # CryptoCompare supports up to 2000
     fetch_tickers = [t for t in tickers if t not in _SKIP_HISTORICAL]
 
     now = time.time()
+    expired = now - _historical_cache_ts > HISTORICAL_TTL
     missing = [t for t in fetch_tickers if t not in _historical_cache
-               or now - _historical_cache_ts > HISTORICAL_TTL]
+               or expired
+               or _historical_cache_days.get(t, 0) < days]
 
     if not missing:
         return {t: _historical_cache[t] for t in fetch_tickers if t in _historical_cache}
@@ -738,6 +741,7 @@ async def fetch_historical_prices(tickers: list[str], days: int = 365) -> dict[s
                         daily.append((float(ts), float(close)))
                 if daily:
                     _historical_cache[t] = daily
+                    _historical_cache_days[t] = days
                     logger.info(f"  {t}: {len(daily)} daily prices")
                 else:
                     logger.warning(f"  {t}: no data from CryptoCompare")
