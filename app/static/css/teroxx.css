@@ -739,12 +739,13 @@ sup.src {
 }
 .chart-box-wide {
     flex: 1 1 600px;
-    max-width: 800px;
+    max-width: 100%;
+    width: 100%;
 }
 .chart-box-wide canvas {
     width: 100% !important;
-    height: 350px !important;
-    max-height: 400px;
+    height: 400px !important;
+    max-height: 500px;
 }
 .chart-label {
     font-size: 0.7rem;

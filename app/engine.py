@@ -1230,7 +1230,13 @@ def compute_dca_backtest(
     now = datetime.now(timezone.utc)
     buy_dates = []
     for m in range(months_back, 0, -1):
-        dt = now - timedelta(days=m * 30)
+        # Step back m months from current month to land on the 1st
+        year = now.year
+        month = now.month - m
+        while month <= 0:
+            month += 12
+            year -= 1
+        dt = datetime(year, month, 1, tzinfo=timezone.utc)
         buy_dates.append(dt)
 
     # Helper: find price closest to a target date

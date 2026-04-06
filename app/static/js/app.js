@@ -357,6 +357,10 @@ function tryRenderBacktest() {
     try {
         const data = JSON.parse(el.textContent);
         const tc = getChartColors();
+        const nPoints = data.months.length;
+        // Scale down point sizes for longer timeframes
+        const ptRadius = nPoints > 36 ? 2 : nPoints > 24 ? 3 : 4;
+        const btcPtRadius = nPoints > 36 ? 3 : nPoints > 24 ? 4 : 5;
 
         // ── Single Chart: Portfolio Value + Invested + BTC Price (dual axis) ──
         const ctx1 = document.getElementById('backtest-value-chart');
@@ -370,7 +374,7 @@ function tryRenderBacktest() {
                     backgroundColor: '#0b688c20',
                     fill: true,
                     tension: 0.3,
-                    pointRadius: 4,
+                    pointRadius: ptRadius,
                     pointBackgroundColor: '#0b688c',
                     borderWidth: 2,
                     yAxisID: 'y',
@@ -383,7 +387,7 @@ function tryRenderBacktest() {
                     borderDash: [5, 5],
                     fill: false,
                     tension: 0,
-                    pointRadius: 2,
+                    pointRadius: Math.max(1, ptRadius - 1),
                     borderWidth: 2,
                     yAxisID: 'y',
                 },
@@ -397,11 +401,11 @@ function tryRenderBacktest() {
                     backgroundColor: '#d0664320',
                     fill: false,
                     tension: 0.3,
-                    pointRadius: 5,
+                    pointRadius: btcPtRadius,
                     pointStyle: 'circle',
                     pointBackgroundColor: '#d06643',
                     pointBorderColor: '#fff',
-                    pointBorderWidth: 2,
+                    pointBorderWidth: nPoints > 36 ? 1 : 2,
                     borderWidth: 2.5,
                     yAxisID: 'y1',
                 });
@@ -411,6 +415,7 @@ function tryRenderBacktest() {
                 data: { labels: data.months, datasets: datasets },
                 options: {
                     responsive: true,
+                    maintainAspectRatio: false,
                     interaction: { mode: 'index', intersect: false },
                     plugins: {
                         legend: { position: 'bottom', labels: { color: tc.text, font: { size: 11 }, padding: 12 } },
@@ -432,7 +437,7 @@ function tryRenderBacktest() {
                         },
                     },
                     scales: {
-                        x: { grid: { color: tc.grid }, ticks: { color: tc.muted, font: { size: 10 } } },
+                        x: { grid: { color: tc.grid }, ticks: { color: tc.muted, font: { size: 10 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 24 } },
                         y: {
                             position: 'left',
                             title: { display: true, text: 'Portfolio ($)', color: '#0b688c', font: { size: 10 } },
@@ -511,6 +516,7 @@ function tryRenderSector() {
             data: { labels: data.profiles, datasets },
             options: {
                 responsive: true,
+                maintainAspectRatio: false,
                 plugins: {
                     legend: { position: 'bottom', labels: { color: tc.text, font: { size: 9 }, padding: 8 } },
                     tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${(ctx.raw * 100).toFixed(1)}%` } },

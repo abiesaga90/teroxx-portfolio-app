@@ -132,7 +132,7 @@ def _position_chart_data(positions: list[dict]) -> str:
 async def index(request: Request):
     profile = "Balanced"
     universe = "Full (24)"
-    mode = "Standard"
+    mode = "Fundamental"
     portfolio_value = 100000
     positions = compute_portfolio(profile, universe, mode, portfolio_value)
     defensive_pct = sum(p["alloc_pct"] for p in positions if p["ticker"] in ("USDC", "EURC", "PAXG"))
