@@ -10,6 +10,14 @@ USERS = {
         "name": "Jannick Broering",
         "password_hash": "bddd2fc909fa210bfa62d3748e918f5e:dfffd955c8d495fc19c093b969a542a4a495a88bfc2e61f0d050b7877d9fade6",
     },
+    "leonardo.larieira@teroxx.com": {
+        "name": "Leonardo Larieira",
+        "password_hash": "a42b73188fb85e19e59e581a2d6419e6:7c032627befa28a8961a8e143e9a5530c87e859c8e2f1ec47c4a794b9209f68b",
+    },
+    "aleksander.biesaga@teroxx.com": {
+        "name": "Aleksander Biesaga",
+        "password_hash": "1517ba6d225fda811e2d05800c73beae:6fb03efcd764b4b4c293f6824ee0176ecb70cf609ab77bcb0333651d0f2fe8fb",
+    },
 }
 
 SESSION_SECRET = os.environ.get("SESSION_SECRET", "teroxx-dev-secret-change-in-prod")
