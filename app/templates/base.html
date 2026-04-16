@@ -67,7 +67,7 @@
     <input type="hidden" name="profile" value="{{ profile }}">
     <input type="hidden" name="universe" value="{{ universe }}">
     <input type="hidden" name="mode" value="{{ mode }}">
-    <input type="hidden" name="portfolio_value" value="100000">
+    <input type="hidden" name="portfolio_value" value="{{ portfolio_value }}">
 </form>
 
 <!-- Tab Navigation -->
@@ -120,7 +120,7 @@
                 </div>
                 <div class="control-group">
                     <span class="control-label">Portfolio Value ($)</span>
-                    <input type="number" name="portfolio_value" value="100000" min="0" step="1000"
+                    <input type="number" name="portfolio_value" value="{{ portfolio_value }}" min="0" step="1000"
                            onchange="syncGlobal('portfolio_value', this.value)">
                 </div>
                 <span id="portfolio-loading" class="htmx-indicator"><span class="spinner"></span></span>
@@ -795,6 +795,13 @@ function syncGlobal(name, value) {
             inp.value = value;
         });
     }
+
+    // Persist preference to server session
+    fetch('/api/save-prefs', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({[name]: name === 'portfolio_value' ? parseFloat(value) : value}),
+    }).catch(() => {});
 }
 
 // ── Scoring model toggle ──

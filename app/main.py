@@ -162,6 +162,29 @@ async def health():
     return {"status": "ok"}
 
 
+# ── User Preferences ───────────────────────────────────────────────
+
+PREF_DEFAULTS = {
+    "profile": "Balanced",
+    "universe": "Full (24)",
+    "mode": "Fundamental",
+    "portfolio_value": 100000,
+}
+
+PREF_KEYS = set(PREF_DEFAULTS.keys())
+
+
+@app.post("/api/save-prefs")
+async def save_prefs(request: Request):
+    body = await request.json()
+    prefs = request.session.get("prefs", {})
+    for k, v in body.items():
+        if k in PREF_KEYS:
+            prefs[k] = v
+    request.session["prefs"] = prefs
+    return {"ok": True}
+
+
 # ── Authentication Routes ────────────────────────────────────────────
 
 @app.get("/login", response_class=HTMLResponse)
@@ -197,10 +220,11 @@ def _position_chart_data(positions: list[dict]) -> str:
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     user = get_current_user(request)
-    profile = "Balanced"
-    universe = "Full (24)"
-    mode = "Fundamental"
-    portfolio_value = 100000
+    prefs = request.session.get("prefs", {})
+    profile = prefs.get("profile", PREF_DEFAULTS["profile"])
+    universe = prefs.get("universe", PREF_DEFAULTS["universe"])
+    mode = prefs.get("mode", PREF_DEFAULTS["mode"])
+    portfolio_value = prefs.get("portfolio_value", PREF_DEFAULTS["portfolio_value"])
     positions = compute_portfolio(profile, universe, mode, portfolio_value)
     defensive_pct = sum(p["alloc_pct"] for p in positions if p["ticker"] in ("USDC", "EURC", "PAXG"))
     crypto_pct = 1 - defensive_pct
