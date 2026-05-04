@@ -59,7 +59,7 @@
 </div>
 
 <div class="modal-section">
-    <div class="modal-section-title">Factor Profile (5-Factor, vs Universe Median)</div>
+    <div class="modal-section-title">VA Signal Profile ({{ d.sector_label }} sector, vs sector median)</div>
     <div style="max-width:280px;margin:0 auto 16px;">
         <canvas id="token-radar-chart"></canvas>
     </div>
@@ -67,18 +67,18 @@
 </div>
 
 <div class="modal-section">
-    <div class="modal-section-title">Factor Scores</div>
-    {% for f in d.factor_names_5 %}
+    <div class="modal-section-title">VA Signal Scores</div>
+    {% for n in d.signal_names %}
     <div class="factor-bar-row">
-        <span class="factor-bar-label">{{ f }}</span>
+        <span class="factor-bar-label">{{ n }}</span>
         <div class="factor-bar-track">
-            <div class="factor-bar-fill" style="width:{{ d.five_factor[f] }}%;background:{{ 'var(--electric-sky)' if d.five_factor[f] >= 50 else 'var(--sunset-ember)' }};"></div>
-            <div class="factor-bar-median" style="left:{{ d.five_medians[f] }}%;"></div>
+            <div class="factor-bar-fill" style="width:{{ d.va_signals[n] }}%;background:{{ 'var(--electric-sky)' if d.va_signals[n] >= 50 else 'var(--sunset-ember)' }};"></div>
+            <div class="factor-bar-median" style="left:{{ d.va_medians[n] }}%;"></div>
         </div>
-        <span class="factor-bar-score">{{ d.five_factor[f] }}</span>
+        <span class="factor-bar-score">{{ d.va_signals[n] }}</span>
     </div>
     {% endfor %}
     <div class="factor-composite">
-        Composite: <strong style="color:var(--electric-sky);">{{ d.composite_5 }}</strong>
+        Composite: <strong style="color:var(--electric-sky);">{{ d.va_composite }}</strong>
     </div>
 </div>

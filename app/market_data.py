@@ -693,6 +693,13 @@ _historical_cache_days: dict[str, int] = {}  # {ticker: days_fetched}
 _historical_cache_ts: float = 0
 HISTORICAL_TTL = 86400  # 24h — historical data doesn't change
 
+# ── BTC Volatility Indicators ────────────────────────────────────────
+# Annualized realized vol (computed from CryptoCompare daily closes)
+# Annualized implied vol (Deribit BTC DVOL index, free public API)
+_btc_vol_cache: dict = {"realized_30d": None, "realized_90d": None, "implied_dvol": None, "ts": 0}
+BTC_VOL_TTL = 1800  # 30 min — vol moves slowly, but DVOL updates intraday
+DERIBIT_BASE = "https://www.deribit.com/api/v2"
+
 
 CRYPTOCOMPARE_BASE = "https://min-api.cryptocompare.com"
 _SKIP_HISTORICAL = {"USDC", "EURC"}  # stablecoins — constant $1
@@ -752,12 +759,94 @@ async def fetch_historical_prices(tickers: list[str], days: int = 365) -> dict[s
     _historical_cache_ts = now
     return {t: _historical_cache[t] for t in fetch_tickers if t in _historical_cache}
 
-    result = {}
-    for t in tickers:
-        cg_id = TOKEN_MAP.get(t)
-        if cg_id and cg_id in _historical_cache:
-            result[t] = _historical_cache[cg_id]
-    return result
+
+# ── BTC Volatility — realized (from daily closes) + implied (Deribit DVOL) ──
+
+def _annualized_realized_vol(closes: list[float]) -> Optional[float]:
+    """Sample-stdev of daily log returns × √365, returned as % (e.g. 60.0 = 60%)."""
+    import math
+    if len(closes) < 5:
+        return None
+    rets = []
+    for i in range(1, len(closes)):
+        if closes[i - 1] > 0 and closes[i] > 0:
+            rets.append(math.log(closes[i] / closes[i - 1]))
+    n = len(rets)
+    if n < 4:
+        return None
+    mean = sum(rets) / n
+    var = sum((r - mean) ** 2 for r in rets) / (n - 1)
+    return math.sqrt(var) * math.sqrt(365) * 100
+
+
+async def fetch_btc_volatility() -> dict:
+    """Refresh BTC realized vol (30d, 90d) + implied vol (Deribit DVOL).
+
+    Realized: stdev of log-returns over the last N daily closes × √365.
+    Implied: Deribit BTC DVOL index — free public endpoint, no auth.
+    """
+    global _btc_vol_cache
+    now = time.time()
+    if now - _btc_vol_cache["ts"] < BTC_VOL_TTL and _btc_vol_cache["realized_30d"] is not None:
+        return _btc_vol_cache
+
+    # Realized vol — pull 91 daily closes (need 90 returns for 90d, 30 for 30d)
+    realized_30d = realized_90d = None
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await _fetch_with_retry(
+                client, "GET",
+                f"{CRYPTOCOMPARE_BASE}/data/v2/histoday",
+                params={"fsym": "BTC", "tsym": "USD", "limit": "91"},
+                timeout=15,
+            )
+            entries = resp.json().get("Data", {}).get("Data", [])
+            closes = [float(e.get("close", 0)) for e in entries if float(e.get("close", 0)) > 0]
+            if len(closes) >= 31:
+                realized_30d = _annualized_realized_vol(closes[-31:])
+            if len(closes) >= 91:
+                realized_90d = _annualized_realized_vol(closes[-91:])
+            elif len(closes) >= 31:
+                realized_90d = _annualized_realized_vol(closes)  # best-effort
+    except Exception as e:
+        logger.warning(f"BTC realized vol fetch failed: {e}")
+
+    # Implied vol — Deribit BTC DVOL (volatility index time series, take latest close)
+    implied = None
+    try:
+        end_ms = int(now * 1000)
+        start_ms = end_ms - 24 * 3600 * 1000  # last 24h, hourly
+        async with httpx.AsyncClient() as client:
+            resp = await _fetch_with_retry(
+                client, "GET",
+                f"{DERIBIT_BASE}/public/get_volatility_index_data",
+                params={
+                    "currency": "BTC",
+                    "start_timestamp": str(start_ms),
+                    "end_timestamp": str(end_ms),
+                    "resolution": "3600",  # 1h candles
+                },
+                timeout=10,
+            )
+            data = (resp.json().get("result") or {}).get("data") or []
+            if data:
+                # Each point: [ts_ms, open, high, low, close]
+                implied = float(data[-1][4])
+    except Exception as e:
+        logger.warning(f"Deribit DVOL fetch failed: {e}")
+
+    _btc_vol_cache = {
+        "realized_30d": round(realized_30d, 1) if realized_30d is not None else None,
+        "realized_90d": round(realized_90d, 1) if realized_90d is not None else None,
+        "implied_dvol": round(implied, 1) if implied is not None else None,
+        "ts": now,
+    }
+    return _btc_vol_cache
+
+
+def get_btc_volatility() -> dict:
+    """Synchronous accessor for the cached BTC vol bundle."""
+    return dict(_btc_vol_cache)
 
 
 # ── CoinGecko Developer & Community Data ──────────────────────────────
@@ -993,4 +1082,11 @@ async def background_refresh():
         except Exception as e:
             _mark_source_fail("defillama_protocol")
             logger.error(f"DefiLlama protocol detail refresh error: {e}")
+        try:
+            if time.time() - _btc_vol_cache["ts"] >= BTC_VOL_TTL:
+                await fetch_btc_volatility()
+                _mark_source_ok("btc_vol")
+        except Exception as e:
+            _mark_source_fail("btc_vol")
+            logger.error(f"BTC volatility refresh error: {e}")
         await asyncio.sleep(PRICE_TTL)

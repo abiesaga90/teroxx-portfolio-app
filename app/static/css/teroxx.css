@@ -808,6 +808,36 @@ sup.src {
 [data-theme="dark"] .tag-core { background: rgba(11,104,140,0.2); color: #67c8e8; }
 [data-theme="dark"] .tag-growth { background: rgba(208,102,67,0.2); color: #f0a080; }
 [data-theme="dark"] .tag-speculative { background: rgba(192,67,42,0.2); color: #f08070; }
+.tag-conservative { background: #e8f5e9; color: #1a8a4a; }
+.tag-balanced { background: #e3f2fd; color: #0b688c; }
+.tag-aggressive { background: #fce4ec; color: #c0432a; }
+[data-theme="dark"] .tag-conservative { background: rgba(26,138,74,0.2); color: #4ade80; }
+[data-theme="dark"] .tag-balanced { background: rgba(11,104,140,0.2); color: #67c8e8; }
+[data-theme="dark"] .tag-aggressive { background: rgba(192,67,42,0.2); color: #f08070; }
+
+/* KPI tiles (Client Portfolio summary row) */
+.kpi {
+    background: var(--bg-card-alt);
+    border-radius: 6px;
+    padding: 10px 12px;
+    border-left: 2px solid var(--electric-sky);
+}
+.kpi-label { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 4px; }
+.kpi-value { font-size: 1.25rem; font-weight: 700; font-family: 'SometimesTimes', serif; color: var(--text-body); }
+
+/* Client cards (picker) */
+.client-card {
+    flex: 1 1 200px; min-width: 200px; max-width: 280px;
+    text-align: left; cursor: pointer;
+    background: var(--bg-card-alt); border: 1px solid var(--border); border-radius: 6px;
+    padding: 12px 14px; transition: all 0.15s;
+    font-family: inherit; color: var(--text-body);
+}
+.client-card:hover { border-color: var(--electric-sky); transform: translateY(-1px); }
+.client-card.selected { border-color: var(--electric-sky); border-left-width: 3px; background: rgba(11,104,140,0.06); }
+.client-card-name { font-family: 'SometimesTimes', serif; font-size: 0.95rem; font-weight: 600; margin-bottom: 6px; }
+.client-card-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.client-card-tagline { font-size: 0.65rem; color: var(--text-muted); line-height: 1.4; }
 
 /* Factor bars */
 .factor-bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }

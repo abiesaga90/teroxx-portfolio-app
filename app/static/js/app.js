@@ -150,7 +150,7 @@ function _destroyChart(id) {
     if (_charts[id]) { _charts[id].destroy(); delete _charts[id]; }
 }
 
-// ── Radar Chart (5-Factor Top Tokens) ──
+// ── Radar Chart (Top Tokens — sector-aware signals) ──
 function tryRenderRadar() {
     const el = document.getElementById('radar-data');
     if (!el) return;

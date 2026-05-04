@@ -1,8 +1,8 @@
 """
-Allocation engine — factor scoring, DCA planner, rebalancer, P&L calculator.
+Allocation engine — VA + P3 scoring, DCA planner, rebalancer, P&L calculator.
 
-5-Factor model: percentile-ranked market factors (beta, size, value, momentum, growth).
 VA model: nickel-ls-rv aligned value accrual signals, clamped [-1,+1] then scaled to [0,100].
+P3 model: protocol performance pillar (TVL/borrowed/fee growth, network activity).
 """
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import math
 from app.data import (
     ASSET_UNIVERSE, ASSET_BY_TICKER, ASSET_UNIVERSES,
     FIXED_STRATEGIC, TIER_ALLOCATIONS,
-    FIVE_FACTOR_WEIGHTS, TEN_FACTOR_WEIGHTS, VA_FACTOR_WEIGHTS,
+    TEN_FACTOR_WEIGHTS, VA_FACTOR_WEIGHTS,
     VA_FDV_MCAP_NEUTRAL, VA_SUPPLY_DELTA_NORMALIZE,
     VA_BUYBACK_NEUTRAL, VA_BUYBACK_MAX,
     VA_FEE_MOMENTUM_NORMALIZE, VA_FDV_FEES_NEUTRAL, VA_FDV_TVL_NEUTRAL,
@@ -21,7 +21,7 @@ from app.data import (
 )
 from app.market_data import (
     get_price, get_market_info, get_defillama_info, get_binance_info, get_supply_delta_pct,
-    get_defillama_protocol_info, get_messari_info, get_dev_info,
+    get_defillama_protocol_info, get_messari_info, get_dev_info, get_btc_volatility,
 )
 
 
@@ -69,7 +69,7 @@ def _inverse_percentile_rank(values: list[float]) -> list[float]:
     return [round(100 - r, 1) for r in ranks]
 
 
-# ── 5-Factor scoring from live market data ─────────────────────────────
+# ── Raw market vectors (shared by VA / P3 / data views) ────────────────
 
 def _get_raw_market_vectors(tickers: list[str]) -> dict:
     """Extract raw market data vectors for scoring."""
@@ -133,64 +133,15 @@ def _get_raw_market_vectors(tickers: list[str]) -> dict:
     }
 
 
-def compute_live_five_factor_scores(tickers: list[str]) -> dict[str, dict[str, float]]:
-    """
-    Compute 5-factor scores from CoinGecko data:
-      Market Beta (Low B)  — lower 30d absolute change = lower beta = higher score
-      Size - SMB           — smaller market cap = higher score
-      Value (MC/Fees)      — higher volume/mcap ratio = better value
-      Momentum (Vol-Adj)   — vol-adjusted momentum (combined change / ATH drawdown)
-      Growth (Fee+DAU D)   — 7d acceleration relative to monthly pace
-    """
+def _raw_market_view(tickers: list[str]) -> dict[str, dict]:
+    """Per-token raw market data (for charts and the data tab)."""
     if not tickers:
         return {}
-
     raw = _get_raw_market_vectors(tickers)
-
-    # Compute raw factor values
-    beta_raw = [abs(c) for c in raw["change_30d"]]  # absolute 30d move as beta proxy
-    size_raw = raw["market_caps"]
-    value_raw = raw["vol_mcap_ratios"]
-
-    # Momentum: vol-adjusted — total return scaled by how far from ATH
-    # Tokens near ATH with positive momentum score highest
-    momentum_raw = []
-    for c7, c30, ath_dd in zip(raw["change_7d"], raw["change_30d"], raw["ath_drawdowns"]):
-        total_return = c7 + c30
-        vol_adj = max(ath_dd, 1.0)  # ATH drawdown as volatility proxy
-        momentum_raw.append(total_return / vol_adj * 100)
-
-    # Growth: 7d acceleration vs monthly pace (ratio, not difference)
-    # High growth = weekly pace >> monthly pace (recent acceleration)
-    growth_raw = []
-    for c7, c30 in zip(raw["change_7d"], raw["change_30d"]):
-        weekly_pace = c7
-        monthly_weekly_pace = c30 / 4.0 if c30 != 0 else 0.01
-        if abs(monthly_weekly_pace) > 0.1:
-            # Ratio: how much faster is this week vs average week in the month
-            growth_raw.append(weekly_pace / monthly_weekly_pace)
-        else:
-            # Monthly change is near zero — use raw 7d as acceleration
-            growth_raw.append(weekly_pace)
-
-    # Score each factor 0-100 via percentile ranking
-    beta_scores = _inverse_percentile_rank(beta_raw)        # Low beta = high score
-    size_scores = _inverse_percentile_rank(size_raw)         # Small cap = high score
-    value_scores = _percentile_rank(value_raw)               # High turnover = high score
-    momentum_scores = _percentile_rank(momentum_raw)         # High momentum = high score
-    growth_scores = _percentile_rank(growth_raw)             # High growth = high score
-
-    factor_names = list(FIVE_FACTOR_WEIGHTS.keys())
-    result = {}
+    out = {}
     for i, t in enumerate(tickers):
         mc = raw["market_caps"][i]
-        has_data = mc > 0 and raw["volumes"][i] > 0
-        result[t] = {
-            factor_names[0]: beta_scores[i],
-            factor_names[1]: size_scores[i],
-            factor_names[2]: value_scores[i],
-            factor_names[3]: momentum_scores[i],
-            factor_names[4]: growth_scores[i],
+        out[t] = {
             "_raw": {
                 "market_cap": raw["market_caps"][i],
                 "volume_24h": raw["volumes"][i],
@@ -200,12 +151,10 @@ def compute_live_five_factor_scores(tickers: list[str]) -> dict[str, dict[str, f
                 "change_24h": raw["change_24h"][i],
                 "ath_drawdown": raw["ath_drawdowns"][i],
                 "fdv_mcap_ratio": raw["fdv_mcap_ratios"][i],
-                "momentum_raw": momentum_raw[i],
-                "growth_raw": growth_raw[i],
             },
-            "_data_missing": not has_data,
+            "_data_missing": not (mc > 0 and raw["volumes"][i] > 0),
         }
-    return result
+    return out
 
 
 def _clamp(v: float, lo: float = -1.0, hi: float = 1.0) -> float:
@@ -487,6 +436,7 @@ def _compute_speculative_signals(ticker: str, mc: float, fdv_mcap: float, vol: f
 
 _SECTOR_COMPUTE = {
     "l1_platform": _compute_l1_signals,
+    "l2_platform": _compute_l1_signals,
     "defi": _compute_defi_signals,
     "ai_compute": _compute_ai_signals,
     "pow_monetary": _compute_pow_signals,
@@ -518,7 +468,7 @@ def compute_live_ten_factor_scores(tickers: list[str]) -> dict[str, dict[str, fl
 
         # Dispatch to sector-specific compute function
         compute_fn = _SECTOR_COMPUTE[sector]
-        if sector == "l1_platform":
+        if sector in ("l1_platform", "l2_platform"):
             signals = compute_fn(t, mc, fdv_mcap, vol, c7d, c30d)
         elif sector == "defi":
             signals = compute_fn(t, mc, fdv_mcap, fdv, c7d, c30d)
@@ -543,21 +493,6 @@ def compute_live_ten_factor_scores(tickers: list[str]) -> dict[str, dict[str, fl
 
 
 # ── Composite score computation ────────────────────────────────────────
-
-def compute_five_factor_scores(profile: str, tickers: list[str]) -> dict[str, float]:
-    """Returns {ticker: composite_score} for allocation weighting."""
-    individual = compute_live_five_factor_scores(tickers)
-    composites = {}
-    for t in tickers:
-        scores = individual.get(t, {})
-        composite = 0
-        for factor, weights in FIVE_FACTOR_WEIGHTS.items():
-            w = weights.get(profile, 0)
-            s = scores.get(factor, 50)
-            composite += w * s
-        composites[t] = composite
-    return composites
-
 
 def _get_va_weights_for_ticker(ticker: str, profile: str) -> dict[str, float]:
     """Get sector-aware VA weights for a token. Returns {signal_name: weight}."""
@@ -584,31 +519,11 @@ def compute_ten_factor_scores(profile: str, tickers: list[str]) -> dict[str, flo
     return composites
 
 
-# ── Detail views for Factor Scores / Fundamentals tabs ─────────────────
-
-def five_factor_detail(profile: str, tickers: list[str]) -> list[dict]:
-    individual = compute_live_five_factor_scores(tickers)
-    results = []
-    for t in tickers:
-        scores = individual.get(t, {})
-        row = {"ticker": t, "name": ASSET_BY_TICKER.get(t, {}).get("name", t)}
-        composite = 0
-        for factor, weights in FIVE_FACTOR_WEIGHTS.items():
-            s = scores.get(factor, 50)
-            row[factor] = round(s, 1)
-            composite += weights.get(profile, 0) * s
-        row["composite"] = round(composite, 1)
-        row["_raw"] = scores.get("_raw", {})
-        row["_data_missing"] = scores.get("_data_missing", False)
-        results.append(row)
-    results.sort(key=lambda x: -x["composite"])
-    return results
-
+# ── Detail view for Sector Scoring tab ─────────────────────────────────
 
 def ten_factor_detail(profile: str, tickers: list[str]) -> list[dict]:
     individual = compute_live_ten_factor_scores(tickers)
-    # Also get raw market data for charts/underlying data view
-    five_individual = compute_live_five_factor_scores(tickers)
+    raw_view = _raw_market_view(tickers)
     results = []
     for t in tickers:
         scores = individual.get(t, {})
@@ -627,12 +542,12 @@ def ten_factor_detail(profile: str, tickers: list[str]) -> list[dict]:
         row["_sector"] = sector
         row["_sector_label"] = SECTOR_LABELS.get(sector, sector)
         row["_signal_names"] = signal_names
-        row["_raw"] = five_individual.get(t, {}).get("_raw", {})
-        row["_data_missing"] = five_individual.get(t, {}).get("_data_missing", False)
+        row["_raw"] = raw_view.get(t, {}).get("_raw", {})
+        row["_data_missing"] = raw_view.get(t, {}).get("_data_missing", False)
         row["_signals_raw"] = scores.get("_signals_raw", {})
         results.append(row)
     # Sort by sector first (for grouped display), then by composite within sector
-    sector_order = ["pow_monetary", "l1_platform", "defi", "ai_compute", "speculative"]
+    sector_order = ["pow_monetary", "l1_platform", "l2_platform", "defi", "ai_compute", "speculative"]
     results.sort(key=lambda x: (sector_order.index(x["_sector"]) if x["_sector"] in sector_order else 99, -x["composite"]))
     return results
 
@@ -871,7 +786,7 @@ def token_scorecard(ticker: str, profile: str, universe_tickers: list[str] = Non
         "open_interest_usd": bn.get("open_interest_usd"),
     }
 
-    # Factor scores (5-factor)
+    # VA scores (sector-aware)
     if not universe_tickers:
         universe_tickers = [a["ticker"] for a in ASSET_UNIVERSE if a["tier"] not in ("Fixed",)]
     # Filter to exclude stablecoins
@@ -879,20 +794,23 @@ def token_scorecard(ticker: str, profile: str, universe_tickers: list[str] = Non
     if ticker not in score_tickers:
         score_tickers.append(ticker)
 
-    five_scores = compute_live_five_factor_scores(score_tickers)
     ten_scores = compute_live_ten_factor_scores(score_tickers)
-    token_five = five_scores.get(ticker, {})
     token_ten = ten_scores.get(ticker, {})
+    sector = token_ten.get("_sector", _get_sector(ticker))
+    signal_names = token_ten.get("_signal_names", SECTOR_SIGNAL_NAMES.get(sector, []))
+    weights_list = SECTOR_WEIGHTS.get(sector, [])
 
-    # Compute medians for radar comparison
-    factor_names_5 = list(FIVE_FACTOR_WEIGHTS.keys())
-    medians_5 = {}
-    for f in factor_names_5:
-        vals = [five_scores[t].get(f, 50) for t in score_tickers if t in five_scores]
-        medians_5[f] = sorted(vals)[len(vals) // 2] if vals else 50
+    # Sector-relative medians for radar comparison
+    medians = {}
+    same_sector_tickers = [t for t in score_tickers if ten_scores.get(t, {}).get("_sector") == sector]
+    for name in signal_names:
+        vals = [ten_scores[t].get(name, 50) for t in same_sector_tickers if t in ten_scores]
+        medians[name] = sorted(vals)[len(vals) // 2] if vals else 50
 
-    # Composite
-    composite_5 = sum(token_five.get(f, 50) * FIVE_FACTOR_WEIGHTS[f].get(profile, 0) for f in factor_names_5)
+    composite_va = sum(
+        token_ten.get(name, 50) * (weights_list[j] if j < len(weights_list) else 0)
+        for j, name in enumerate(signal_names)
+    )
 
     return {
         "ticker": ticker,
@@ -901,10 +819,12 @@ def token_scorecard(ticker: str, profile: str, universe_tickers: list[str] = Non
         "tier": asset.get("tier", ""),
         "risk_tier": asset.get("risk_tier", ""),
         "market": market,
-        "five_factor": {f: round(token_five.get(f, 50), 1) for f in factor_names_5},
-        "five_medians": {f: round(medians_5[f], 1) for f in factor_names_5},
-        "composite_5": round(composite_5, 1),
-        "factor_names_5": factor_names_5,
+        "sector": sector,
+        "sector_label": SECTOR_LABELS.get(sector, sector),
+        "signal_names": signal_names,
+        "va_signals": {name: round(token_ten.get(name, 50), 1) for name in signal_names},
+        "va_medians": {name: round(medians[name], 1) for name in signal_names},
+        "va_composite": round(composite_va, 1),
     }
 
 
@@ -923,34 +843,8 @@ def full_data_breakdown(tickers: list[str], profile: str) -> list[dict]:
     # ── P3 scores (pre-compute for all tickers) ──
     p3_all = compute_p3_scores(tickers)
 
-    # ── 5-Factor intermediates ──
-    beta_raw = [abs(c) for c in raw["change_30d"]]
-    size_raw = raw["market_caps"]
-    value_raw = raw["vol_mcap_ratios"]
-    momentum_raw = []
-    growth_raw = []
-    for i in range(len(tickers)):
-        c7, c30, ath_dd = raw["change_7d"][i], raw["change_30d"][i], raw["ath_drawdowns"][i]
-        total_return = c7 + c30
-        vol_adj = max(ath_dd, 1.0)
-        momentum_raw.append(total_return / vol_adj * 100)
-        weekly_pace = c7
-        monthly_weekly_pace = c30 / 4.0 if c30 != 0 else 0.01
-        if abs(monthly_weekly_pace) > 0.1:
-            growth_raw.append(weekly_pace / monthly_weekly_pace)
-        else:
-            growth_raw.append(weekly_pace)
-
-    beta_scores = _inverse_percentile_rank(beta_raw)
-    size_scores = _inverse_percentile_rank(size_raw)
-    value_scores = _percentile_rank(value_raw)
-    momentum_scores = _percentile_rank(momentum_raw)
-    growth_scores = _percentile_rank(growth_raw)
-
     # ── VA model scores (uses nickel-ls-rv aligned signals) ──
     va_scores = compute_live_ten_factor_scores(tickers)
-
-    five_factor_names = list(FIVE_FACTOR_WEIGHTS.keys())
 
     rows = []
     for i, t in enumerate(tickers):
@@ -958,15 +852,6 @@ def full_data_breakdown(tickers: list[str], profile: str) -> list[dict]:
         bn = get_binance_info(t) or {}
         asset = ASSET_BY_TICKER.get(t, {})
         va = va_scores.get(t, {})
-
-        # 5-factor composite
-        five_composite = sum([
-            beta_scores[i] * FIVE_FACTOR_WEIGHTS[five_factor_names[0]].get(profile, 0),
-            size_scores[i] * FIVE_FACTOR_WEIGHTS[five_factor_names[1]].get(profile, 0),
-            value_scores[i] * FIVE_FACTOR_WEIGHTS[five_factor_names[2]].get(profile, 0),
-            momentum_scores[i] * FIVE_FACTOR_WEIGHTS[five_factor_names[3]].get(profile, 0),
-            growth_scores[i] * FIVE_FACTOR_WEIGHTS[five_factor_names[4]].get(profile, 0),
-        ])
 
         # VA composite (sector-aware)
         va_sector = va.get("_sector", _get_sector(t))
@@ -1007,18 +892,6 @@ def full_data_breakdown(tickers: list[str], profile: str) -> list[dict]:
             "has_perp": bool(bn),
             # ── Supply ──
             "supply_delta": raw["supply_deltas"][i],
-            # ── 5-Factor: raw input → score ──
-            "f5_beta_raw": beta_raw[i],
-            "f5_beta_score": beta_scores[i],
-            "f5_size_raw": size_raw[i],
-            "f5_size_score": size_scores[i],
-            "f5_value_raw": value_raw[i],
-            "f5_value_score": value_scores[i],
-            "f5_momentum_raw": momentum_raw[i],
-            "f5_momentum_score": momentum_scores[i],
-            "f5_growth_raw": growth_raw[i],
-            "f5_growth_score": growth_scores[i],
-            "f5_composite": round(five_composite, 1),
             # ── VA Model: sector-differentiated signals ──
             "va_sector": va_sector,
             "va_sector_label": SECTOR_LABELS.get(va_sector, va_sector),
@@ -1043,34 +916,49 @@ def full_data_breakdown(tickers: list[str], profile: str) -> list[dict]:
 
 
 # ── Volatility Regime Detection ──────────────────────────────────────
-
-_VOL_REGIME_LOW = 10.0    # BTC |30d change| < 10% = low vol
-_VOL_REGIME_HIGH = 20.0   # BTC |30d change| > 20% = high vol
-_VOL_HYSTERESIS = 3.0     # 3% buffer
+# Annualized realized vol thresholds (long-run BTC realized ~60%):
+#   LOW < 40%, NORMAL 40-75%, HIGH > 75%. 5pp hysteresis to avoid flapping.
+_VOL_REGIME_LOW = 40.0
+_VOL_REGIME_HIGH = 75.0
+_VOL_HYSTERESIS = 5.0
 _prev_vol_regime = "NORMAL"
 
 
 def detect_vol_regime() -> dict:
-    """Detect market vol regime from BTC 30d price change."""
-    global _prev_vol_regime
-    info = get_market_info("BTC") or {}
-    change_30d = abs(info.get("price_change_30d") or 0)
+    """BTC vol regime from annualized realized vol, with implied vol (DVOL) for context.
 
-    # With hysteresis
+    Realized: stdev of last-30d daily log-returns × √365.
+    Implied:  Deribit BTC DVOL index (annualized).
+    Falls back to absolute 30d change if realized vol isn't cached yet.
+    """
+    global _prev_vol_regime
+    vol = get_btc_volatility()
+    realized_30d = vol.get("realized_30d")
+    realized_90d = vol.get("realized_90d")
+    implied = vol.get("implied_dvol")
+
+    # Fallback: if realized vol hasn't loaded yet, scale 30d absolute change
+    # roughly into vol units (rough heuristic; replaced as soon as cache fills).
+    metric = realized_30d
+    if metric is None:
+        info = get_market_info("BTC") or {}
+        change_30d = abs(info.get("price_change_30d") or 0)
+        metric = change_30d * 3.5  # ~scaling so 17% 30d move ≈ 60% annualized vol
+
     if _prev_vol_regime == "LOW_VOL":
-        if change_30d > _VOL_REGIME_LOW + _VOL_HYSTERESIS:
-            regime = "HIGH_VOL" if change_30d > _VOL_REGIME_HIGH else "NORMAL"
+        if metric > _VOL_REGIME_LOW + _VOL_HYSTERESIS:
+            regime = "HIGH_VOL" if metric > _VOL_REGIME_HIGH else "NORMAL"
         else:
             regime = "LOW_VOL"
     elif _prev_vol_regime == "HIGH_VOL":
-        if change_30d < _VOL_REGIME_HIGH - _VOL_HYSTERESIS:
-            regime = "LOW_VOL" if change_30d < _VOL_REGIME_LOW else "NORMAL"
+        if metric < _VOL_REGIME_HIGH - _VOL_HYSTERESIS:
+            regime = "LOW_VOL" if metric < _VOL_REGIME_LOW else "NORMAL"
         else:
             regime = "HIGH_VOL"
     else:
-        if change_30d < _VOL_REGIME_LOW:
+        if metric < _VOL_REGIME_LOW:
             regime = "LOW_VOL"
-        elif change_30d > _VOL_REGIME_HIGH:
+        elif metric > _VOL_REGIME_HIGH:
             regime = "HIGH_VOL"
         else:
             regime = "NORMAL"
@@ -1083,9 +971,17 @@ def detect_vol_regime() -> dict:
         "HIGH_VOL": "High volatility — consider increasing stablecoin allocation",
     }
 
+    # IV-RV spread (implied richness): positive = options pricing more vol than realized
+    iv_rv_spread = None
+    if implied is not None and realized_30d is not None:
+        iv_rv_spread = round(implied - realized_30d, 1)
+
     return {
         "regime": regime,
-        "btc_30d_change": round(change_30d, 1),
+        "realized_vol_30d": realized_30d,
+        "realized_vol_90d": realized_90d,
+        "implied_vol": implied,
+        "iv_rv_spread": iv_rv_spread,
         "suggestion": suggestions[regime],
     }
 
@@ -1232,9 +1128,7 @@ def compute_allocations(profile: str, universe: str, mode: str = "Standard") -> 
         tier_groups.setdefault(atier, []).append(t)
 
     scores = {}
-    if mode in ("Factor", "Factor Model"):
-        scores = compute_five_factor_scores(profile, crypto_tickers)
-    elif mode in ("Fundamental", "VA Model", "Enhanced Model"):
+    if mode in ("Fundamental", "VA Model", "Enhanced Model"):
         scores = compute_enhanced_scores(profile, crypto_tickers)
 
     for tier_name, tier_tickers in tier_groups.items():
@@ -1556,6 +1450,126 @@ def compute_pnl(positions: list[dict]) -> list[dict]:
             "pnl_pct": pnl_pct,
         })
     return results
+
+
+def compute_client_portfolio_pnl(client: dict) -> dict:
+    """Per-position + aggregate P&L for a demo client portfolio.
+
+    Multiple lots in the same ticker are kept as separate rows (different entry
+    dates / prices) so the advisor can see lot-level performance, but the
+    aggregate row at the top sums across lots.
+    """
+    from datetime import date, datetime
+    today = date.today()
+    rows = []
+    total_cost = 0.0
+    total_value = 0.0
+    earliest_entry: date | None = None
+    by_ticker: dict[str, dict] = {}
+
+    for pos in client.get("positions", []):
+        ticker = pos.get("ticker", "")
+        qty = float(pos.get("quantity", 0) or 0)
+        entry_price = float(pos.get("entry_price", 0) or 0)
+        current_price = get_price(ticker) or 0.0
+        cost = qty * entry_price
+        value = qty * current_price
+        pnl = value - cost
+        pnl_pct = (pnl / cost * 100) if cost > 0 else 0.0
+
+        try:
+            entry_dt = datetime.strptime(pos.get("entry_date", ""), "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            entry_dt = today
+        days_held = (today - entry_dt).days
+        if earliest_entry is None or entry_dt < earliest_entry:
+            earliest_entry = entry_dt
+
+        asset = ASSET_BY_TICKER.get(ticker, {})
+        rows.append({
+            "ticker": ticker,
+            "name": asset.get("name", ticker),
+            "category": asset.get("category", ""),
+            "quantity": qty,
+            "entry_price": entry_price,
+            "entry_date": pos.get("entry_date", ""),
+            "days_held": days_held,
+            "current_price": current_price,
+            "cost_basis": cost,
+            "current_value": value,
+            "pnl": pnl,
+            "pnl_pct": pnl_pct,
+            "weight": 0.0,  # filled below
+            "notes": pos.get("notes", ""),
+        })
+        total_cost += cost
+        total_value += value
+
+        agg = by_ticker.setdefault(ticker, {
+            "ticker": ticker, "name": asset.get("name", ticker),
+            "quantity": 0.0, "cost_basis": 0.0, "current_value": 0.0,
+            "current_price": current_price,
+        })
+        agg["quantity"] += qty
+        agg["cost_basis"] += cost
+        agg["current_value"] += value
+
+    # Per-row weights (% of current portfolio value)
+    if total_value > 0:
+        for r in rows:
+            r["weight"] = r["current_value"] / total_value * 100
+
+    # Roll up by ticker
+    ticker_summary = []
+    for t, agg in by_ticker.items():
+        cost = agg["cost_basis"]
+        value = agg["current_value"]
+        pnl = value - cost
+        pnl_pct = (pnl / cost * 100) if cost > 0 else 0.0
+        avg_entry = (cost / agg["quantity"]) if agg["quantity"] > 0 else 0.0
+        ticker_summary.append({
+            "ticker": t,
+            "name": agg["name"],
+            "quantity": agg["quantity"],
+            "avg_entry_price": avg_entry,
+            "current_price": agg["current_price"],
+            "cost_basis": cost,
+            "current_value": value,
+            "pnl": pnl,
+            "pnl_pct": pnl_pct,
+            "weight": (value / total_value * 100) if total_value > 0 else 0.0,
+        })
+    ticker_summary.sort(key=lambda x: -x["current_value"])
+    rows.sort(key=lambda x: (x["ticker"], x["entry_date"]))
+
+    total_pnl = total_value - total_cost
+    total_pnl_pct = (total_pnl / total_cost * 100) if total_cost > 0 else 0.0
+    days_since_entry = (today - earliest_entry).days if earliest_entry else 0
+
+    # Best / worst position
+    best = max(ticker_summary, key=lambda x: x["pnl"], default=None)
+    worst = min(ticker_summary, key=lambda x: x["pnl"], default=None)
+
+    return {
+        "client": {k: client.get(k) for k in ("id", "name", "profile", "domicile", "tagline", "inception_date", "currency")},
+        "summary": {
+            "total_cost": round(total_cost, 2),
+            "total_value": round(total_value, 2),
+            "total_pnl": round(total_pnl, 2),
+            "total_pnl_pct": round(total_pnl_pct, 2),
+            "days_since_entry": days_since_entry,
+            "n_positions": len(rows),
+            "n_unique_tickers": len(ticker_summary),
+            "best_ticker": best["ticker"] if best else None,
+            "best_pnl": round(best["pnl"], 2) if best else 0,
+            "best_pnl_pct": round(best["pnl_pct"], 2) if best else 0,
+            "worst_ticker": worst["ticker"] if worst else None,
+            "worst_pnl": round(worst["pnl"], 2) if worst else 0,
+            "worst_pnl_pct": round(worst["pnl_pct"], 2) if worst else 0,
+        },
+        "ticker_summary": ticker_summary,
+        "lots": rows,
+    }
 
 
 def compute_rebalance_pnl(

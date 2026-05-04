@@ -40,8 +40,12 @@
     </div>
     <div style="display:flex;align-items:center;gap:1rem;">
         {% if vol_regime %}
-        <span class="header-meta vol-{{ vol_regime.regime|lower }}" title="{{ vol_regime.suggestion }}">
-            Vol: {{ vol_regime.regime|replace('_', ' ') }} (BTC {{ vol_regime.btc_30d_change }}% 30d)
+        {% set _rv = vol_regime.realized_vol_30d %}
+        {% set _iv = vol_regime.implied_vol %}
+        {% set _spread = vol_regime.iv_rv_spread %}
+        <span class="header-meta vol-{{ vol_regime.regime|lower }}" title="{{ vol_regime.suggestion }}{% if _spread is not none %} · IV-RV spread: {{ '%+.1f' % _spread }}pp{% endif %}{% if vol_regime.realized_vol_90d %} · 90d RV: {{ vol_regime.realized_vol_90d }}%{% endif %}">
+            Vol: {{ vol_regime.regime|replace('_', ' ') }}
+            (BTC RV {{ '%.1f' % _rv if _rv is not none else '—' }}%{% if _iv is not none %} · IV {{ '%.1f' % _iv }}%{% endif %})
         </span>
         {% endif %}
         <span class="header-meta">Prices: {{ price_age }}</span>
@@ -77,6 +81,7 @@
     <button class="tab-btn" data-tab="tab-data" onclick="switchTab('tab-data')">Data</button>
     <button class="tab-btn" data-tab="tab-dca" onclick="switchTab('tab-dca')">DCA Planner</button>
     <button class="tab-btn" data-tab="tab-rebalance-pnl" onclick="switchTab('tab-rebalance-pnl')">Rebalancing &amp; P&L</button>
+    <button class="tab-btn" data-tab="tab-clients" onclick="switchTab('tab-clients')">Client Portfolios</button>
     <button class="tab-btn" data-tab="tab-defi-macro" onclick="switchTab('tab-defi-macro')">DeFi Macro</button>
     <button class="tab-btn" data-tab="tab-methodology" onclick="switchTab('tab-methodology')">Methodology</button>
     <button class="tab-btn" data-tab="tab-apis" onclick="switchTab('tab-apis')">APIs</button>
@@ -135,19 +140,14 @@
     <!-- ═══ Tab 2: Scoring ═══ -->
     <div id="tab-scoring" class="tab-panel">
         <div class="card">
-            <div class="card-header">Scoring Models</div>
-            <div class="scoring-toggle">
-                <button class="scoring-toggle-btn" data-model="factor" onclick="switchScoringModel('factor')">5-Factor Model</button>
-                <button class="scoring-toggle-btn active" data-model="fundamental" onclick="switchScoringModel('fundamental')">Sector Scoring</button>
-            </div>
-            <form id="scoring-form" class="controls" style="margin-top:16px;"
+            <div class="card-header">Sector-Differentiated Scoring</div>
+            <form id="scoring-form" class="controls"
                   hx-post="/api/scoring"
                   hx-target="#scoring-results"
-                  hx-trigger="change"
+                  hx-trigger="load, change"
                   hx-include="#global-controls"
                   hx-indicator="#scoring-loading"
                   hx-on::after-settle="requestAnimationFrame(function(){setTimeout(tryRenderAllCharts,50)})">
-                <input type="hidden" name="model" value="fundamental">
                 <span id="scoring-loading" class="htmx-indicator"><span class="spinner"></span></span>
             </form>
         </div>
@@ -288,6 +288,20 @@
         <div id="rebalance-pnl-results"></div>
     </div>
 
+    <!-- ═══ Tab: Client Portfolios ═══ -->
+    <div id="tab-clients" class="tab-panel">
+        <div id="client-portfolio-results"
+             hx-get="/api/client-portfolio"
+             hx-trigger="load once"
+             hx-indicator="#clients-loading">
+            <div class="card"><div class="card-header">Client Portfolios</div>
+                <p style="padding:12px 32px;color:var(--text-muted);font-size:0.8rem;">
+                    <span id="clients-loading"><span class="spinner"></span> Loading…</span>
+                </p>
+            </div>
+        </div>
+    </div>
+
     <!-- ═══ Tab: DeFi Macro ═══ -->
     <div id="tab-defi-macro" class="tab-panel">
         {% if defi_health %}
@@ -367,8 +381,8 @@
         <div class="card">
             <div class="card-header">Allocation Methodology</div>
             <div class="methodology-content">
-                <p>The Teroxx Portfolio Allocation Model assigns weights to crypto assets through a structured, multi-step process. Three allocation modes are available, each suited to different investment approaches.</p>
-                <p>All modes share the same <strong>tier structure</strong>: assets are grouped into tiers (Store of Value, Large Cap, Mid Cap, Small Cap) and each risk profile allocates a fixed budget per tier. The modes differ in <em>how weights are distributed within each tier</em>.</p>
+                <p>The Teroxx Portfolio Allocation Model assigns weights to crypto assets through a structured, multi-step process. Two allocation modes are available, each suited to different investment approaches.</p>
+                <p>Both modes share the same <strong>tier structure</strong>: assets are grouped into tiers (Store of Value, Large Cap, Mid Cap, Small Cap) and each risk profile allocates a fixed budget per tier. The modes differ in <em>how weights are distributed within each tier</em>.</p>
             </div>
         </div>
 
@@ -383,58 +397,9 @@
             </div>
         </div>
 
-        <!-- Mode 2: Factor -->
+        <!-- Mode 2: Fundamental -->
         <div class="card">
-            <div class="card-header">2. Factor Mode</div>
-            <div class="methodology-content">
-                <p><strong>Approach:</strong> 5-factor quantitative scoring model. Assets within each tier are weighted proportionally to their composite factor score.</p>
-
-                <table class="data-table" style="margin:1rem 0;">
-                    <thead>
-                        <tr><th>Factor</th><th>What It Measures</th><th>Raw Metric</th><th>Scoring</th></tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td><strong>Market Beta</strong></td>
-                            <td>Volatility / systematic risk</td>
-                            <td>Absolute 30d price change</td>
-                            <td>Inverse percentile &mdash; lower volatility = higher score</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Size (SMB)</strong></td>
-                            <td>Market capitalization</td>
-                            <td>Market cap (USD)</td>
-                            <td>Inverse percentile &mdash; smaller cap = higher score</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Value</strong></td>
-                            <td>Trading activity relative to size</td>
-                            <td>24h Volume / Market Cap</td>
-                            <td>Percentile &mdash; higher turnover = higher score</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Momentum</strong></td>
-                            <td>Vol-adjusted price trend</td>
-                            <td>(7d + 30d change) / ATH drawdown</td>
-                            <td>Percentile &mdash; tokens near ATH with positive returns score highest</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Growth</strong></td>
-                            <td>Recent acceleration</td>
-                            <td>7d pace / monthly average pace</td>
-                            <td>Percentile &mdash; faster recent growth = higher score</td>
-                        </tr>
-                    </tbody>
-                </table>
-
-                <p><strong>Composite:</strong> Weighted sum of 5 factor scores. Weights vary by risk profile &mdash; Conservative tilts toward Beta (safety), Aggressive tilts toward Momentum and Growth.</p>
-                <p><strong>Best for:</strong> Investors who want a systematic, quantitative tilt without fundamental analysis. Captures market-structure alpha (low-vol, momentum, size premia).</p>
-            </div>
-        </div>
-
-        <!-- Mode 3: Fundamental -->
-        <div class="card">
-            <div class="card-header">3. Fundamental Mode</div>
+            <div class="card-header">2. Fundamental Mode</div>
             <div class="methodology-content">
                 <p><strong>Approach:</strong> Two-pillar composite model aligned with the Teroxx Research Team&rsquo;s live trading strategy. Combines Value Accrual (VA) analysis with Protocol Performance (P3) metrics.</p>
 
@@ -501,7 +466,12 @@
                         <tr>
                             <td><strong>L1 Platform</strong></td>
                             <td>Layer 1, Layer 0</td>
-                            <td>FDV/TVL (25%), Dilution (21%), Fee Momentum (15%)</td>
+                            <td>Network Activity (20%), Ecosystem TVL (20%), Dilution (15%), Fee Revenue (15%)</td>
+                        </tr>
+                        <tr>
+                            <td><strong>L2 Platform</strong></td>
+                            <td>Layer 2 (Polygon, Mantle, Arbitrum, Optimism, Immutable)</td>
+                            <td>Ecosystem TVL (25%), Network Activity (15%), Dilution (15%), Sequencer Fees (15%)</td>
                         </tr>
                         <tr>
                             <td><strong>DeFi</strong></td>
@@ -583,7 +553,7 @@
                     </thead>
                     <tbody>
                         <tr><td><strong>CoinMarketCap</strong></td><td>Prices, MCap, FDV, Volume, Supply</td><td>All modes</td><td>5 min</td></tr>
-                        <tr><td><strong>CoinGecko</strong></td><td>Fallback prices, ATH, Developer activity</td><td>Factor, Fundamental</td><td>Fallback / 24h</td></tr>
+                        <tr><td><strong>CoinGecko</strong></td><td>Fallback prices, ATH, Developer activity</td><td>Fundamental</td><td>Fallback / 24h</td></tr>
                         <tr><td><strong>DeFiLlama</strong></td><td>TVL, Fees, Revenue, Protocol metrics</td><td>Fundamental (VA + P3)</td><td>2h</td></tr>
                         <tr><td><strong>Binance Futures</strong></td><td>Funding rates, Open interest</td><td>Data display</td><td>5 min</td></tr>
                         <tr><td><strong>Messari</strong></td><td>Active addresses, Txn count, Network fees</td><td>Fundamental (P3)</td><td>1h</td></tr>
@@ -648,54 +618,6 @@
                             <td>Free (public)</td>
                             <td>5min</td>
                             <td>All USDT perps</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <div class="card">
-            <div class="card-header">5-Factor Model — Data Mapping</div>
-            <div class="table-wrap">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Factor</th>
-                            <th>Raw Metric</th>
-                            <th>Source</th>
-                            <th>Scoring</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td>Market Beta (Low B)</td>
-                            <td>Absolute 30d price change</td>
-                            <td>CoinGecko</td>
-                            <td>Inverse percentile (low change = high score)</td>
-                        </tr>
-                        <tr>
-                            <td>Size - SMB</td>
-                            <td>Market capitalization</td>
-                            <td>CoinGecko</td>
-                            <td>Inverse percentile (small cap = high score)</td>
-                        </tr>
-                        <tr>
-                            <td>Value (MC/Fees)</td>
-                            <td>24h Volume / Market Cap ratio</td>
-                            <td>CoinGecko</td>
-                            <td>Percentile (high turnover = high score)</td>
-                        </tr>
-                        <tr>
-                            <td>Momentum (Vol-Adj)</td>
-                            <td>(7d + 30d change) / ATH drawdown</td>
-                            <td>CoinGecko</td>
-                            <td>Percentile (high vol-adjusted return = high score)</td>
-                        </tr>
-                        <tr>
-                            <td>Growth (Fee+DAU D)</td>
-                            <td>7d pace / monthly average pace (acceleration ratio)</td>
-                            <td>CoinGecko</td>
-                            <td>Percentile (recent acceleration = high score)</td>
                         </tr>
                     </tbody>
                 </table>
@@ -802,14 +724,6 @@ function syncGlobal(name, value) {
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({[name]: name === 'portfolio_value' ? parseFloat(value) : value}),
     }).catch(() => {});
-}
-
-// ── Scoring model toggle ──
-function switchScoringModel(model) {
-    document.querySelectorAll('.scoring-toggle-btn').forEach(b => b.classList.remove('active'));
-    document.querySelector(`.scoring-toggle-btn[data-model="${model}"]`)?.classList.add('active');
-    document.querySelector('#scoring-form [name=model]').value = model;
-    htmx.trigger(document.getElementById('scoring-form'), 'change');
 }
 
 // ── DCA mode toggle (Planner vs Backtest) ──

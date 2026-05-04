@@ -4,7 +4,6 @@
         <button class="scoring-toggle-btn active" data-dview="market" onclick="switchDataView('market')">Market Data</button>
         <button class="scoring-toggle-btn" data-dview="defi" onclick="switchDataView('defi')">DeFiLlama</button>
         <button class="scoring-toggle-btn" data-dview="perps" onclick="switchDataView('perps')">Perp Futures</button>
-        <button class="scoring-toggle-btn" data-dview="f5" onclick="switchDataView('f5')">5-Factor Calc</button>
         <button class="scoring-toggle-btn" data-dview="f10" onclick="switchDataView('f10')">VA Calc</button>
         <button class="scoring-toggle-btn" data-dview="dev" onclick="switchDataView('dev')">Developer</button>
         <button class="scoring-toggle-btn" data-dview="p3" onclick="switchDataView('p3')">P3 Protocol</button>
@@ -153,62 +152,6 @@
         </table>
     </div>
     <div class="sources"><div class="sources-title">Notes</div>Funding rate is per-8h fractional. Positive = longs pay shorts (bullish conviction). OI/MCap = open interest as % of market cap (leverage intensity). Updated every 5min.</div>
-</div>
-</div>
-
-<!-- ═══ 5-FACTOR CALCULATION ═══ -->
-<div id="dview-f5" class="data-view-panel" style="display:none;">
-<div class="card">
-    <div class="card-header">5-Factor Model &mdash; Raw Input &rarr; Percentile Score ({{ profile }})</div>
-    <p style="padding:0 0 12px;font-size:0.7rem;color:var(--text-muted);">Each factor: raw metric is percentile-ranked (0-100) across the universe. Tied values share the same rank. Composite = weighted sum using {{ profile }} profile weights.</p>
-    <div class="table-wrap">
-        <table>
-            <thead>
-                <tr>
-                    <th>#</th>
-                    <th>Ticker</th>
-                    <th class="right" style="white-space:normal;max-width:65px;font-size:0.55rem;">Beta Raw<br><span style="font-weight:400;">|30d chg|</span></th>
-                    <th class="right" style="font-size:0.55rem;">Score</th>
-                    <th class="right" style="white-space:normal;max-width:65px;font-size:0.55rem;">Size Raw<br><span style="font-weight:400;">MCap</span></th>
-                    <th class="right" style="font-size:0.55rem;">Score</th>
-                    <th class="right" style="white-space:normal;max-width:65px;font-size:0.55rem;">Value Raw<br><span style="font-weight:400;">Vol/MCap</span></th>
-                    <th class="right" style="font-size:0.55rem;">Score</th>
-                    <th class="right" style="white-space:normal;max-width:65px;font-size:0.55rem;">Mom Raw<br><span style="font-weight:400;">(7d+30d)/vol</span></th>
-                    <th class="right" style="font-size:0.55rem;">Score</th>
-                    <th class="right" style="white-space:normal;max-width:65px;font-size:0.55rem;">Growth Raw<br><span style="font-weight:400;">7d/30d pace</span></th>
-                    <th class="right" style="font-size:0.55rem;">Score</th>
-                    <th class="right" style="font-size:0.6rem;color:var(--electric-sky);">Comp.</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for r in rows|sort(attribute='f5_composite', reverse=true) %}
-                <tr>
-                    <td style="color:var(--text-muted)">{{ loop.index }}</td>
-                    <td class="ticker"><div class="ticker-cell">{% set logo = get_logo(r.ticker) %}{% if logo %}<img src="{{ logo }}" class="token-logo token-logo-sm" alt="{{ r.ticker }}">{% endif %}{{ r.ticker }}</div></td>
-                    <td class="right" style="font-size:0.7rem;">{{ "{:.1f}".format(r.f5_beta_raw) }}%</td>
-                    <td class="right" style="font-size:0.7rem;font-weight:600;">{{ r.f5_beta_score }}</td>
-                    <td class="right" style="font-size:0.7rem;">{{ "${:,.0f}".format(r.f5_size_raw) if r.f5_size_raw > 1e6 else "${:,.0f}".format(r.f5_size_raw) }}</td>
-                    <td class="right" style="font-size:0.7rem;font-weight:600;">{{ r.f5_size_score }}</td>
-                    <td class="right" style="font-size:0.7rem;">{{ "{:.4f}".format(r.f5_value_raw) }}</td>
-                    <td class="right" style="font-size:0.7rem;font-weight:600;">{{ r.f5_value_score }}</td>
-                    <td class="right" style="font-size:0.7rem;">{{ "{:.1f}".format(r.f5_momentum_raw) }}</td>
-                    <td class="right" style="font-size:0.7rem;font-weight:600;">{{ r.f5_momentum_score }}</td>
-                    <td class="right" style="font-size:0.7rem;">{{ "{:.2f}".format(r.f5_growth_raw) }}</td>
-                    <td class="right" style="font-size:0.7rem;font-weight:600;">{{ r.f5_growth_score }}</td>
-                    <td class="right" style="font-weight:700;color:var(--electric-sky);">{{ r.f5_composite }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-    <div class="sources">
-        <div class="sources-title">Factor Formulas</div>
-        <strong>Market Beta</strong>: |30d price change|%. Inverse rank (low change = stable = high score).<br>
-        <strong>Size (SMB)</strong>: Market cap. Inverse rank (small cap = high score).<br>
-        <strong>Value</strong>: 24h Volume / Market Cap ratio. Rank (high turnover = high score).<br>
-        <strong>Momentum</strong>: (7d% + 30d%) / max(ATH drawdown, 1) &times; 100. Rank (high = good).<br>
-        <strong>Growth</strong>: 7d% / (30d% / 4). Rank (weekly acceleration vs monthly average).<br>
-    </div>
 </div>
 </div>
 

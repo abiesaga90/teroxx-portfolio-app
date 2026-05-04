@@ -14,7 +14,7 @@ from fastapi.templating import Jinja2Templates
 
 from app.data import (
     RISK_PROFILES, ALLOCATION_MODES,
-    DRAWDOWN_IMPACT, FIVE_FACTOR_WEIGHTS, TEN_FACTOR_WEIGHTS,
+    DRAWDOWN_IMPACT, TEN_FACTOR_WEIGHTS,
     TIER_ALLOCATIONS, FIXED_STRATEGIC,
     ASSET_UNIVERSE, ASSET_BY_TICKER,
     TOKEN_MAP, DEFILLAMA_MAP, DEFILLAMA_FEES_MAP,
@@ -22,16 +22,18 @@ from app.data import (
 from app.engine import (
     compute_allocations, compute_portfolio, compute_dca,
     compute_rebalance, compute_pnl, compute_rebalance_pnl,
-    get_universe_tickers, five_factor_detail, ten_factor_detail, token_scorecard,
+    get_universe_tickers, ten_factor_detail, token_scorecard,
     full_data_breakdown, compute_p3_scores, compute_red_flag_scores,
     detect_vol_regime, compute_stress_scenarios, compute_diversification_score,
-    compute_dca_backtest,
+    compute_dca_backtest, compute_client_portfolio_pnl,
 )
+from app.demo_clients import list_clients, get_client
 from app.market_data import (
     fetch_prices, fetch_market_data, price_age_str, background_refresh,
     get_logo_url, get_source_health, fetch_historical_prices,
     fetch_defillama_data, fetch_defillama_protocol_detail,
     fetch_messari_networks, fetch_coingecko_dev_data, fetch_binance_perp_data,
+    fetch_btc_volatility,
 )
 from app.defi_health import refresh_defi_health, get_defi_health
 
@@ -58,12 +60,13 @@ async def lifespan(app: FastAPI):
         logger.info("Initial market data loaded")
     except Exception as e:
         logger.warning(f"Initial fetch failed (will retry in background): {e}")
-    # Fetch fast scoring data on startup (DeFiLlama, Messari, Binance)
+    # Fetch fast scoring data on startup (DeFiLlama, Messari, Binance, BTC vol)
     for name, fn in [
         ("DeFiLlama", fetch_defillama_data),
         ("DeFiLlama protocols", fetch_defillama_protocol_detail),
         ("Messari networks", fetch_messari_networks),
         ("Binance perps", fetch_binance_perp_data),
+        ("BTC volatility", fetch_btc_volatility),
     ]:
         try:
             await fn()
@@ -332,42 +335,25 @@ async def scoring_partial(
     request: Request,
     profile: str = Form("Balanced"),
     universe: str = Form("Full (24)"),
-    model: str = Form("factor"),
 ):
     tickers = [t for t in get_universe_tickers(universe) if t not in ("USDC", "EURC", "PAXG")]
-    if model == "fundamental":
-        detail = ten_factor_detail(profile, tickers)
-        weights = TEN_FACTOR_WEIGHTS
-        model_label = "Sector-Differentiated Scoring"
-        is_fundamental = True
-    else:
-        detail = five_factor_detail(profile, tickers)
-        weights = FIVE_FACTOR_WEIGHTS
-        model_label = "5-Factor Model"
-        is_fundamental = False
+    detail = ten_factor_detail(profile, tickers)
+    weights = TEN_FACTOR_WEIGHTS
+    model_label = "Sector-Differentiated Scoring"
 
-    # Build chart data from scoring detail
-    factor_names = list(weights.keys())
     top5 = detail[:5]
 
     # Radar chart: top 5 tokens (use their sector signal names)
-    if is_fundamental:
-        # For sector-differentiated: use common 7-point radar with each token's own signals
-        radar_labels = [f"Signal {i+1}" for i in range(7)]
-        radar_tokens = []
-        for d in top5:
-            snames = d.get("_signal_names", [])
-            radar_tokens.append({
-                "ticker": d["ticker"],
-                "scores": [d.get(n, 50) for n in snames[:7]],
-                "labels": snames[:7],
-            })
-        radar_data = json.dumps({"factors": radar_labels, "tokens": radar_tokens})
-    else:
-        radar_data = json.dumps({
-            "factors": factor_names,
-            "tokens": [{"ticker": d["ticker"], "scores": [d.get(f, 50) for f in factor_names]} for d in top5],
+    radar_labels = [f"Signal {i+1}" for i in range(7)]
+    radar_tokens = []
+    for d in top5:
+        snames = d.get("_signal_names", [])
+        radar_tokens.append({
+            "ticker": d["ticker"],
+            "scores": [d.get(n, 50) for n in snames[:7]],
+            "labels": snames[:7],
         })
+    radar_data = json.dumps({"factors": radar_labels, "tokens": radar_tokens})
 
     # Bubble chart: risk/return scatter (all tokens with raw data)
     bubble_tokens = []
@@ -411,7 +397,6 @@ async def scoring_partial(
         "profile": profile,
         "profiles": RISK_PROFILES,
         "model_label": model_label,
-        "is_fundamental": is_fundamental,
         "price_age": price_age_str(),
         "radar_data": radar_data,
         "bubble_data": bubble_data,
@@ -569,9 +554,9 @@ async def rebalance_pnl_partial(
 async def token_detail(request: Request, ticker: str, profile: str = "Balanced"):
     data = token_scorecard(ticker, profile)
     radar_data = json.dumps({
-        "factors": data["factor_names_5"],
-        "token_scores": [data["five_factor"][f] for f in data["factor_names_5"]],
-        "median_scores": [data["five_medians"][f] for f in data["factor_names_5"]],
+        "factors": data["signal_names"],
+        "token_scores": [data["va_signals"][n] for n in data["signal_names"]],
+        "median_scores": [data["va_medians"][n] for n in data["signal_names"]],
         "token_label": data["ticker"],
     })
     return templates.TemplateResponse("partials/token_modal.html", {
@@ -594,5 +579,24 @@ async def data_partial(
         "rows": rows,
         "profile": profile,
         "profiles": RISK_PROFILES,
+        "price_age": price_age_str(),
+    })
+
+
+@app.get("/api/client-portfolio", response_class=HTMLResponse)
+async def client_portfolio_partial(request: Request, client_id: str = ""):
+    clients = list_clients()
+    selected = None
+    pnl = None
+    if client_id:
+        c = get_client(client_id)
+        if c:
+            selected = client_id
+            pnl = compute_client_portfolio_pnl(c)
+    return templates.TemplateResponse("partials/client_portfolio_results.html", {
+        "request": request,
+        "clients": clients,
+        "selected": selected,
+        "pnl": pnl,
         "price_age": price_age_str(),
     })

@@ -1,6 +1,6 @@
 """
 Teroxx Portfolio Allocation Model v4.0 — Static data layer.
-All asset universe, allocations, factor weights ported from Excel.
+Asset universe, tier allocations, and VA / sector signal config aligned with nickel-ls-rv.
 """
 
 RISK_PROFILES = ["Conservative", "Balanced", "Growth", "Aggressive"]
@@ -19,7 +19,7 @@ DRAWDOWN_IMPACT = {
     "Crypto -30%": {"Conservative": -0.135, "Balanced": -0.231, "Growth": -0.276, "Aggressive": -0.297},
 }
 
-ALLOCATION_MODES = ["Standard", "Factor", "Fundamental"]
+ALLOCATION_MODES = ["Standard", "Fundamental"]
 
 ASSET_UNIVERSES = {
     "Teroxx Core (9)": ["USDC", "EURC", "PAXG", "BTC", "ETH", "BNB", "XRP", "ADA", "POL"],
@@ -41,7 +41,7 @@ ASSET_UNIVERSE = [
     {"ticker": "BNB",     "name": "BNB",               "category": "Exchange",     "tier": "Core",              "risk_tier": "Core"},
     {"ticker": "XRP",     "name": "XRP",               "category": "Layer 1",      "tier": "Core",              "risk_tier": "Core"},
     {"ticker": "ADA",     "name": "Cardano",           "category": "Layer 1",      "tier": "Core",              "risk_tier": "Core"},
-    {"ticker": "POL",     "name": "Polygon",           "category": "Infrastructure","tier": "Core",             "risk_tier": "Core"},
+    {"ticker": "POL",     "name": "Polygon",           "category": "Layer 2",      "tier": "Core",              "risk_tier": "Core"},
     {"ticker": "LTC",     "name": "Litecoin",          "category": "Payment",      "tier": "Additional",        "risk_tier": "Growth"},
     {"ticker": "LINK",    "name": "Chainlink",         "category": "Infrastructure","tier": "Additional",       "risk_tier": "Growth"},
     {"ticker": "BCH",     "name": "Bitcoin Cash",      "category": "Payment",      "tier": "Additional",        "risk_tier": "Growth"},
@@ -142,15 +142,6 @@ TIER_ALLOCATIONS = {
 }
 
 
-# 5-Factor model weights
-FIVE_FACTOR_WEIGHTS = {
-    "Market Beta (Low B)":    {"Conservative": 0.35, "Balanced": 0.25, "Growth": 0.10, "Aggressive": 0.10},
-    "Size - SMB (Small Cap)": {"Conservative": 0.00, "Balanced": 0.05, "Growth": 0.15, "Aggressive": 0.20},
-    "Value (MC/Fees)":        {"Conservative": 0.30, "Balanced": 0.25, "Growth": 0.25, "Aggressive": 0.20},
-    "Momentum (Vol-Adj)":     {"Conservative": 0.15, "Balanced": 0.20, "Growth": 0.25, "Aggressive": 0.25},
-    "Growth (Fee+DAU D)":     {"Conservative": 0.20, "Balanced": 0.25, "Growth": 0.25, "Aggressive": 0.25},
-}
-
 # Value Accrual (VA) model weights — aligned with nickel-ls-rv three-pillar framework.
 # 7 signals (unlock excluded — no Messari data). Weights sum to 1.0 per profile.
 # Conservative tilts toward valuation safety; Aggressive tilts toward accrual/growth.
@@ -234,14 +225,18 @@ TEN_FACTOR_WEIGHTS = VA_FACTOR_WEIGHTS
 
 SECTOR_SIGNAL_NAMES = {
     "l1_platform": ["Dilution", "Network Activity", "Fee Revenue", "Ecosystem TVL", "Dev Activity", "DEX Volume", "Momentum"],
+    "l2_platform": ["Dilution", "Network Activity", "Sequencer Fees", "Ecosystem TVL", "Dev Activity", "DEX Volume", "Momentum"],
     "defi":        ["Dilution", "Buyback Yield", "Rev Capture", "Fee Momentum", "FDV / Fees", "TVL Growth", "Dev Activity"],
     "ai_compute":  ["Dilution", "Dev Activity", "Momentum", "Volume Intensity", "TVL / Usage", "Fee Revenue", "Funding Rate"],
     "pow_monetary": ["Scarcity", "Txn Activity", "Fee Revenue", "Adoption", "Dev Activity", "Volume / MCap", "Momentum"],
     "speculative": ["Dilution", "Volume Intensity", "Momentum 7d", "Momentum 30d", "Dev Activity", "Liquidity Depth", "Funding Rate"],
 }
 
+# L2s differ from L1s in fee economics (sequencer fees vs gas, TVL bridged from L1):
+# weight TVL more heavily and momentum less, since L2 narrative-rotation is noisier.
 SECTOR_WEIGHTS = {
     "l1_platform": [0.15, 0.20, 0.15, 0.20, 0.10, 0.10, 0.10],
+    "l2_platform": [0.15, 0.15, 0.15, 0.25, 0.10, 0.10, 0.10],
     "defi":        [0.15, 0.20, 0.15, 0.15, 0.15, 0.10, 0.10],
     "ai_compute":  [0.15, 0.25, 0.15, 0.10, 0.10, 0.10, 0.15],
     "pow_monetary": [0.25, 0.15, 0.15, 0.15, 0.10, 0.10, 0.10],
@@ -250,6 +245,7 @@ SECTOR_WEIGHTS = {
 
 SECTOR_LABELS = {
     "l1_platform": "Layer 1",
+    "l2_platform": "Layer 2",
     "defi": "DeFi",
     "ai_compute": "AI / Compute",
     "pow_monetary": "PoW / Monetary",
@@ -260,7 +256,7 @@ SECTOR_LABELS = {
 CATEGORY_TO_VA_PROFILE = {
     "Layer 1": "l1_platform",
     "Layer 0": "l1_platform",
-    "Layer 2": "l1_platform",
+    "Layer 2": "l2_platform",
     "DeFi": "defi",
     "DEX": "defi",
     "Exchange": "defi",
@@ -294,15 +290,6 @@ VA_PROFILE_OVERRIDES = {
 SECTOR_VA_PROFILES = {
     sector: dict(zip(SECTOR_SIGNAL_NAMES[sector], SECTOR_WEIGHTS[sector]))
     for sector in SECTOR_SIGNAL_NAMES
-}
-
-# Default factor scores (0-100) — all 50 except noted
-DEFAULT_FIVE_FACTOR_SCORES = {
-    "Market Beta (Low B)": 100,  # BTC benchmark = 100
-    "Size - SMB (Small Cap)": 50,
-    "Value (MC/Fees)": 50,
-    "Momentum (Vol-Adj)": 50,
-    "Growth (Fee+DAU D)": 50,
 }
 
 # CoinGecko ID mapping

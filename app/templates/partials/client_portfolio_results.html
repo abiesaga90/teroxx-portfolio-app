@@ -1,0 +1,178 @@
+<!-- Client Portfolio: picker + P&L view -->
+<div class="card">
+    <div class="card-header">Client Portfolios</div>
+    <p style="padding:0 32px 8px;font-size:0.7rem;color:var(--text-muted);">
+        Demo portfolios for advisory review. Entry prices and dates are illustrative. Mark-to-market uses live prices (updated {{ price_age }}).
+    </p>
+    <div style="display:flex;flex-wrap:wrap;gap:12px;padding:12px 32px 20px;">
+        {% for c in clients %}
+        <button
+            class="client-card{% if selected == c.id %} selected{% endif %}"
+            hx-get="/api/client-portfolio?client_id={{ c.id }}"
+            hx-target="#client-portfolio-results"
+            hx-swap="innerHTML">
+            <div class="client-card-name">{{ c.name }}</div>
+            <div class="client-card-meta">
+                <span class="tag tag-{{ c.profile|lower }}">{{ c.profile }}</span>
+                <span style="color:var(--text-muted);font-size:0.65rem;">{{ c.domicile }}</span>
+            </div>
+            <div class="client-card-tagline">{{ c.tagline }}</div>
+        </button>
+        {% endfor %}
+    </div>
+</div>
+
+{% if pnl %}
+{% set s = pnl.summary %}
+{% set c = pnl.client %}
+{% set is_up = s.total_pnl >= 0 %}
+<div class="card">
+    <div class="card-header">
+        {{ c.name }}
+        <span style="font-size:0.7rem;color:var(--text-muted);font-family:'Sohne',sans-serif;font-weight:400;margin-left:8px;">
+            {{ c.profile }} · {{ c.domicile }} · since {{ c.inception_date }} · {{ s.days_since_entry }} days
+        </span>
+    </div>
+
+    <!-- Summary stat row -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;padding:16px 32px;">
+        <div class="kpi">
+            <div class="kpi-label">Total Invested</div>
+            <div class="kpi-value">${{ "{:,.0f}".format(s.total_cost) }}</div>
+        </div>
+        <div class="kpi">
+            <div class="kpi-label">Current Value</div>
+            <div class="kpi-value">${{ "{:,.0f}".format(s.total_value) }}</div>
+        </div>
+        <div class="kpi">
+            <div class="kpi-label">Total P&L (USD)</div>
+            <div class="kpi-value" style="color:{{ 'var(--success)' if is_up else 'var(--danger)' }};">
+                {{ '+' if is_up else '' }}${{ "{:,.0f}".format(s.total_pnl) }}
+            </div>
+        </div>
+        <div class="kpi">
+            <div class="kpi-label">Total Return</div>
+            <div class="kpi-value" style="color:{{ 'var(--success)' if is_up else 'var(--danger)' }};">
+                {{ '+' if is_up else '' }}{{ "{:.1f}".format(s.total_pnl_pct) }}%
+            </div>
+        </div>
+        <div class="kpi">
+            <div class="kpi-label">Best Position</div>
+            <div class="kpi-value" style="color:var(--success);font-size:1.1rem;">
+                {{ s.best_ticker or '—' }} {{ '+' if s.best_pnl_pct > 0 else '' }}{{ "{:.1f}".format(s.best_pnl_pct) }}%
+            </div>
+        </div>
+        <div class="kpi">
+            <div class="kpi-label">Worst Position</div>
+            <div class="kpi-value" style="color:var(--danger);font-size:1.1rem;">
+                {{ s.worst_ticker or '—' }} {{ "{:+.1f}".format(s.worst_pnl_pct) }}%
+            </div>
+        </div>
+    </div>
+
+    <!-- Status banner -->
+    <div style="margin:0 32px 16px;padding:10px 14px;border-left:3px solid {{ 'var(--success)' if is_up else 'var(--danger)' }};background:{{ 'rgba(26,138,74,0.06)' if is_up else 'rgba(192,67,42,0.06)' }};font-size:0.75rem;line-height:1.5;">
+        {% if is_up %}
+        Portfolio is <strong>up {{ "{:.1f}".format(s.total_pnl_pct) }}%</strong> since inception ({{ s.days_since_entry }} days).
+        {% else %}
+        Portfolio is <strong>down {{ "{:.1f}".format(s.total_pnl_pct|abs) }}%</strong> since inception ({{ s.days_since_entry }} days).
+        {% endif %}
+        {{ s.n_unique_tickers }} unique tickers across {{ s.n_positions }} lots.
+    </div>
+</div>
+
+<!-- Per-ticker rollup -->
+<div class="card">
+    <div class="card-header">Position Summary <span style="font-size:0.7rem;color:var(--text-muted);font-family:'Sohne',sans-serif;font-weight:400;">— rolled up across lots</span></div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Ticker</th>
+                    <th>Name</th>
+                    <th class="right">Qty</th>
+                    <th class="right">Avg Entry</th>
+                    <th class="right">Mark</th>
+                    <th class="right">Cost Basis</th>
+                    <th class="right">Market Value</th>
+                    <th class="right">Weight</th>
+                    <th class="right">P&L (USD)</th>
+                    <th class="right">Return</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in pnl.ticker_summary %}
+                <tr>
+                    <td style="color:var(--text-muted)">{{ loop.index }}</td>
+                    <td class="ticker"><div class="ticker-cell">{% set logo = get_logo(p.ticker) %}{% if logo %}<img src="{{ logo }}" class="token-logo token-logo-sm" alt="{{ p.ticker }}">{% endif %}{{ p.ticker }}</div></td>
+                    <td>{{ p.name }}</td>
+                    <td class="right">{{ "{:,.4f}".format(p.quantity) if p.quantity < 100 else "{:,.2f}".format(p.quantity) }}</td>
+                    <td class="right">${{ "{:,.4f}".format(p.avg_entry_price) if p.avg_entry_price < 10 else "{:,.2f}".format(p.avg_entry_price) }}</td>
+                    <td class="right">${{ "{:,.4f}".format(p.current_price) if p.current_price < 10 else "{:,.2f}".format(p.current_price) }}</td>
+                    <td class="right">${{ "{:,.0f}".format(p.cost_basis) }}</td>
+                    <td class="right">${{ "{:,.0f}".format(p.current_value) }}</td>
+                    <td class="right">{{ "{:.1f}".format(p.weight) }}%</td>
+                    <td class="right" style="color:{{ 'var(--success)' if p.pnl >= 0 else 'var(--danger)' }};font-weight:600;">{{ '+' if p.pnl >= 0 else '' }}${{ "{:,.0f}".format(p.pnl) }}</td>
+                    <td class="right" style="color:{{ 'var(--success)' if p.pnl_pct >= 0 else 'var(--danger)' }};font-weight:700;">{{ "{:+.1f}".format(p.pnl_pct) }}%</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Per-lot detail -->
+<div class="card">
+    <div class="card-header">Lot Detail <span style="font-size:0.7rem;color:var(--text-muted);font-family:'Sohne',sans-serif;font-weight:400;">— each entry kept as a separate lot</span></div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Ticker</th>
+                    <th class="right">Qty</th>
+                    <th class="right">Entry Price</th>
+                    <th class="right">Entry Date</th>
+                    <th class="right">Days Held</th>
+                    <th class="right">Mark</th>
+                    <th class="right">Cost Basis</th>
+                    <th class="right">Market Value</th>
+                    <th class="right">P&L (USD)</th>
+                    <th class="right">Return</th>
+                    <th>Notes</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in pnl.lots %}
+                <tr>
+                    <td style="color:var(--text-muted)">{{ loop.index }}</td>
+                    <td class="ticker"><div class="ticker-cell">{% set logo = get_logo(r.ticker) %}{% if logo %}<img src="{{ logo }}" class="token-logo token-logo-sm" alt="{{ r.ticker }}">{% endif %}{{ r.ticker }}</div></td>
+                    <td class="right">{{ "{:,.4f}".format(r.quantity) if r.quantity < 100 else "{:,.2f}".format(r.quantity) }}</td>
+                    <td class="right">${{ "{:,.4f}".format(r.entry_price) if r.entry_price < 10 else "{:,.2f}".format(r.entry_price) }}</td>
+                    <td class="right" style="color:var(--text-muted);font-size:0.7rem;">{{ r.entry_date }}</td>
+                    <td class="right">{{ r.days_held }}d</td>
+                    <td class="right">${{ "{:,.4f}".format(r.current_price) if r.current_price < 10 else "{:,.2f}".format(r.current_price) }}</td>
+                    <td class="right">${{ "{:,.0f}".format(r.cost_basis) }}</td>
+                    <td class="right">${{ "{:,.0f}".format(r.current_value) }}</td>
+                    <td class="right" style="color:{{ 'var(--success)' if r.pnl >= 0 else 'var(--danger)' }};">{{ '+' if r.pnl >= 0 else '' }}${{ "{:,.0f}".format(r.pnl) }}</td>
+                    <td class="right" style="color:{{ 'var(--success)' if r.pnl_pct >= 0 else 'var(--danger)' }};font-weight:600;">{{ "{:+.1f}".format(r.pnl_pct) }}%</td>
+                    <td style="font-size:0.65rem;color:var(--text-muted);">{{ r.notes }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="sources" style="padding:8px 32px 16px;">
+        <div class="sources-title">Notes</div>
+        Demo data — not real client positions. Mark-to-market uses CoinMarketCap prices (refreshed every 5 min). Cost basis = qty × entry price. P&L = market value − cost basis.
+    </div>
+</div>
+{% else %}
+<div class="card">
+    <div class="card-header">Select a client</div>
+    <p style="padding:24px 32px;color:var(--text-muted);font-size:0.8rem;">
+        Pick a client above to view their portfolio P&L, total return since inception, and per-position breakdown.
+    </p>
+</div>
+{% endif %}
