@@ -1,0 +1,202 @@
+<!-- Market Context: composite regime + BTC cycle + 22 indicators -->
+{% set r = state.result %}
+{% set c = state.cycle %}
+{% if not r %}
+<div class="card"><div class="card-header">Market Context</div>
+    <p style="padding:12px 32px;color:var(--text-muted);font-size:0.8rem;">No data yet — first refresh in progress.</p>
+</div>
+{% else %}
+
+<!-- Composite + Regime band -->
+<div class="card">
+    <div class="card-header">
+        Macro Regime
+        <span style="font-size:0.7rem;color:var(--text-muted);font-family:'Sohne',sans-serif;font-weight:400;margin-left:8px;">
+            {{ r.sources_available }}/{{ r.sources_total }} sources · refreshed {{ price_age }}
+        </span>
+    </div>
+    <div style="display:flex;align-items:center;gap:24px;padding:20px 32px;">
+        <div style="text-align:center;min-width:160px;">
+            <div style="font-family:'SometimesTimes',serif;font-size:3rem;font-weight:700;color:{{ r.regime_color }};line-height:1;">{{ r.composite_score }}</div>
+            <div style="font-size:0.65rem;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);margin-top:4px;">Composite Score</div>
+            <div style="margin-top:6px;display:inline-block;padding:3px 10px;border-radius:3px;background:{{ r.regime_color }}22;color:{{ r.regime_color }};font-size:0.75rem;font-weight:700;">
+                {{ r.regime_label }}
+            </div>
+        </div>
+        <!-- Horizontal regime bar -->
+        <div style="flex:1;">
+            <div style="display:flex;height:24px;border-radius:4px;overflow:hidden;border:1px solid var(--border);">
+                {% for k, reg in r.regimes.items() %}
+                {% set lo, hi = reg.range %}
+                <div style="flex:{{ hi - lo }};background:{{ reg.color }};opacity:{{ '1.0' if k == r.regime else '0.25' }};display:flex;align-items:center;justify-content:center;font-size:0.6rem;color:#fff;font-weight:600;">
+                    {{ reg.label }}
+                </div>
+                {% endfor %}
+            </div>
+            <div style="position:relative;height:14px;margin-top:2px;">
+                <div style="position:absolute;left:{{ r.composite_score }}%;transform:translateX(-50%);font-size:0.6rem;color:var(--text-body);font-weight:700;">▲ {{ r.composite_score }}</div>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:0.55rem;color:var(--text-muted);margin-top:2px;">
+                <span>0 (Bear)</span><span>50</span><span>100 (Bull)</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- BTC Cycle indicators -->
+{% if c %}
+<div class="card">
+    <div class="card-header">BTC Cycle</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;padding:16px 32px;">
+        <div class="kpi"><div class="kpi-label">BTC Price</div><div class="kpi-value">${{ "{:,.0f}".format(c.btc_price) if c.btc_price else "—" }}</div></div>
+        <div class="kpi"><div class="kpi-label">ATH Peak</div><div class="kpi-value">${{ "{:,.0f}".format(c.ath_peak) if c.ath_peak else "—" }}</div></div>
+        <div class="kpi"><div class="kpi-label">From Peak</div>
+            <div class="kpi-value" style="color:{{ c.drawdown_zone.color if c.drawdown_zone else 'var(--text-body)' }};">
+                {{ "{:.2f}".format(c.from_peak_pct) if c.from_peak_pct is not none else "—" }}%
+            </div>
+            <div style="font-size:0.6rem;color:var(--text-muted);margin-top:2px;">{{ c.drawdown_zone.label if c.drawdown_zone else "" }}</div>
+        </div>
+        <div class="kpi"><div class="kpi-label">MVRV Ratio</div>
+            <div class="kpi-value" style="color:{{ c.mvrv_zone.color if c.mvrv_zone else 'var(--text-body)' }};">{{ c.mvrv if c.mvrv else "—" }}</div>
+            <div style="font-size:0.6rem;color:var(--text-muted);margin-top:2px;">{{ c.mvrv_zone.label if c.mvrv_zone else "" }}{% if c.mvrv_z is not none %} · z={{ c.mvrv_z }}{% endif %}</div>
+        </div>
+        <div class="kpi"><div class="kpi-label">200 WMA Ratio</div>
+            <div class="kpi-value" style="color:{{ c.wma200_ratio_zone.color if c.wma200_ratio_zone else 'var(--text-body)' }};">{{ c.wma200_ratio if c.wma200_ratio else "—" }}</div>
+            <div style="font-size:0.6rem;color:var(--text-muted);margin-top:2px;">{{ c.wma200_ratio_zone.label if c.wma200_ratio_zone else "" }}</div>
+        </div>
+        <div class="kpi"><div class="kpi-label">Mayer Multiple</div>
+            <div class="kpi-value" style="color:{{ c.mayer_zone.color if c.mayer_zone else 'var(--text-body)' }};">{{ c.mayer_multiple if c.mayer_multiple else "—" }}</div>
+            <div style="font-size:0.6rem;color:var(--text-muted);margin-top:2px;">{{ c.mayer_zone.label if c.mayer_zone else "" }}</div>
+        </div>
+        <div class="kpi"><div class="kpi-label">200 WMA</div><div class="kpi-value">${{ "{:,.0f}".format(c.wma200) if c.wma200 else "—" }}</div></div>
+        <div class="kpi"><div class="kpi-label">200 SMA</div><div class="kpi-value">${{ "{:,.0f}".format(c.sma200) if c.sma200 else "—" }}</div></div>
+    </div>
+</div>
+{% endif %}
+
+<!-- 30d composite history chart -->
+{% if state.history and state.history|length >= 2 %}
+<div class="card">
+    <div class="card-header">Composite Score (30d)</div>
+    <div style="padding:12px 32px 20px;">
+        <div style="height:160px;position:relative;">
+            <canvas id="macro-history-chart"></canvas>
+        </div>
+    </div>
+    <div id="macro-history-data" style="display:none">{{ state.history|tojson }}</div>
+</div>
+{% endif %}
+
+<!-- 22 Indicators table -->
+<div class="card">
+    <div class="card-header">Indicators ({{ r.indicators|length }})</div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Indicator</th>
+                    <th>Category</th>
+                    <th class="right">Raw</th>
+                    <th class="right">Score</th>
+                    <th class="right">Weight</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ind in r.indicators %}
+                {% set s = r.scores.get(ind.key) %}
+                {% set rv = r.raw.get(ind.key) %}
+                <tr{% if s is none %} style="opacity:0.45"{% endif %}>
+                    <td><strong>{{ ind.label }}</strong></td>
+                    <td><span class="tag">{{ ind.category }}</span></td>
+                    <td class="right" style="font-size:0.75rem;color:var(--text-muted);">
+                        {% if rv is none %}—
+                        {% elif rv is mapping %}{{ rv }}
+                        {% elif rv is number and (rv|abs) < 0.01 %}{{ "{:.4f}".format(rv) }}
+                        {% elif rv is number and (rv|abs) < 1 %}{{ "{:.4f}".format(rv) }}
+                        {% elif rv is number %}{{ "{:,.2f}".format(rv) }}
+                        {% else %}{{ rv }}
+                        {% endif %}
+                    </td>
+                    <td class="right" style="font-weight:700;color:{% if s is none %}var(--text-muted){% elif s >= 60 %}var(--success){% elif s <= 40 %}var(--danger){% else %}var(--text-body){% endif %};">
+                        {{ "{:.1f}".format(s) if s is not none else "—" }}
+                    </td>
+                    <td class="right" style="color:var(--text-muted);font-size:0.75rem;">{{ ind.weight }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="sources" style="padding:8px 32px 16px;">
+        <div class="sources-title">Sources (free only)</div>
+        <strong>Sentiment:</strong> alternative.me (Fear &amp; Greed), Binance public fapi (funding).<br>
+        <strong>TradFi:</strong> Yahoo Finance v8 chart API (VIX, DXY, ^TNX, ^GSPC, ^MOVE, CL=F, ^IRX, ^FVX, ^NDX).<br>
+        <strong>On-chain:</strong> CoinGecko /global (BTC dominance), blockchain.info (hash rate, miner revenue), Binance fapi (open interest).<br>
+        <strong>Matrix:</strong> CryptoCompare (BTC daily/weekly closes for trend, RSI, MACD).<br>
+        <strong>BTC Cycle:</strong> CoinMetrics community API (MVRV ratio &amp; Z-score), CryptoCompare (200 WMA, 200 SMA, Mayer Multiple).<br>
+        Composite renormalizes when sources are unavailable. Hysteresis prevents regime flipping at thresholds.
+    </div>
+</div>
+
+<!-- Cycle Zone Thresholds reference -->
+<div class="card">
+    <div class="card-header">Cycle Zone Thresholds</div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr><th>Metric</th><th>Zone</th><th class="right">Range</th></tr>
+            </thead>
+            <tbody>
+                {% for metric, zones in state.cycle_zones.items() %}
+                {% for threshold, label, color in zones %}
+                <tr>
+                    {% if loop.first %}<td rowspan="{{ zones|length }}" style="font-weight:700;">{{ metric }}</td>{% endif %}
+                    <td><span style="display:inline-block;width:10px;height:10px;background:{{ color }};border-radius:2px;margin-right:6px;"></span>{{ label }}</td>
+                    <td class="right" style="font-size:0.75rem;color:var(--text-muted);">≤ {{ threshold }}</td>
+                </tr>
+                {% endfor %}
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+(function() {
+    var el = document.getElementById('macro-history-data');
+    var canvas = document.getElementById('macro-history-chart');
+    if (!el || !canvas || typeof Chart === 'undefined') return;
+    var data;
+    try { data = JSON.parse(el.textContent); } catch(e) { return; }
+    if (!data || data.length < 2) return;
+    if (window._macroChart) { window._macroChart.destroy(); }
+    var labels = data.map(function(d){ var t = new Date(d.ts * 1000); return (t.getMonth()+1)+'/'+t.getDate(); });
+    var values = data.map(function(d){ return d.score; });
+    window._macroChart = new Chart(canvas, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Composite',
+                data: values,
+                borderColor: '#0b688c',
+                backgroundColor: 'rgba(11,104,140,0.10)',
+                fill: true,
+                tension: 0.3,
+                pointRadius: 0,
+                borderWidth: 2,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { min: 0, max: 100, ticks: { stepSize: 25 } },
+                x: { ticks: { maxTicksLimit: 8 } },
+            },
+        },
+    });
+})();
+</script>
+
+{% endif %}

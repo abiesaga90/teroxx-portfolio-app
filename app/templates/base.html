@@ -82,6 +82,7 @@
     <button class="tab-btn" data-tab="tab-dca" onclick="switchTab('tab-dca')">DCA Planner</button>
     <button class="tab-btn" data-tab="tab-rebalance-pnl" onclick="switchTab('tab-rebalance-pnl')">Rebalancing &amp; P&L</button>
     <button class="tab-btn" data-tab="tab-clients" onclick="switchTab('tab-clients')">Client Portfolios</button>
+    <button class="tab-btn" data-tab="tab-market-context" onclick="switchTab('tab-market-context')">Market Context</button>
     <button class="tab-btn" data-tab="tab-defi-macro" onclick="switchTab('tab-defi-macro')">DeFi Macro</button>
     <button class="tab-btn" data-tab="tab-methodology" onclick="switchTab('tab-methodology')">Methodology</button>
     <button class="tab-btn" data-tab="tab-apis" onclick="switchTab('tab-apis')">APIs</button>
@@ -297,6 +298,20 @@
             <div class="card"><div class="card-header">Client Portfolios</div>
                 <p style="padding:12px 32px;color:var(--text-muted);font-size:0.8rem;">
                     <span id="clients-loading"><span class="spinner"></span> Loading…</span>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ Tab: Market Context ═══ -->
+    <div id="tab-market-context" class="tab-panel">
+        <div id="market-context-results"
+             hx-get="/api/market-context"
+             hx-trigger="load once"
+             hx-indicator="#mctx-loading">
+            <div class="card"><div class="card-header">Market Context</div>
+                <p style="padding:12px 32px;color:var(--text-muted);font-size:0.8rem;">
+                    <span id="mctx-loading"><span class="spinner"></span> Loading 22 indicators across sentiment, TradFi, on-chain, and BTC technicals…</span>
                 </p>
             </div>
         </div>

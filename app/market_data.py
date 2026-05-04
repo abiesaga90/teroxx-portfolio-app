@@ -1089,4 +1089,12 @@ async def background_refresh():
         except Exception as e:
             _mark_source_fail("btc_vol")
             logger.error(f"BTC volatility refresh error: {e}")
+        try:
+            from app.macro_regime import refresh_macro_regime, MACRO_TTL, _cache as _macro_cache
+            if time.time() - _macro_cache["ts"] >= MACRO_TTL:
+                await refresh_macro_regime()
+                _mark_source_ok("macro_regime")
+        except Exception as e:
+            _mark_source_fail("macro_regime")
+            logger.error(f"Macro regime refresh error: {e}")
         await asyncio.sleep(PRICE_TTL)

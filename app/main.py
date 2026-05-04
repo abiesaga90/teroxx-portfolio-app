@@ -28,6 +28,7 @@ from app.engine import (
     compute_dca_backtest, compute_client_portfolio_pnl,
 )
 from app.demo_clients import list_clients, get_client
+from app.macro_regime import get_macro_regime, refresh_macro_regime
 from app.market_data import (
     fetch_prices, fetch_market_data, price_age_str, background_refresh,
     get_logo_url, get_source_health, fetch_historical_prices,
@@ -60,13 +61,15 @@ async def lifespan(app: FastAPI):
         logger.info("Initial market data loaded")
     except Exception as e:
         logger.warning(f"Initial fetch failed (will retry in background): {e}")
-    # Fetch fast scoring data on startup (DeFiLlama, Messari, Binance, BTC vol)
+    # Fetch fast scoring data on startup (DeFiLlama, Messari, Binance, BTC vol, Macro)
+    from app.macro_regime import refresh_macro_regime
     for name, fn in [
         ("DeFiLlama", fetch_defillama_data),
         ("DeFiLlama protocols", fetch_defillama_protocol_detail),
         ("Messari networks", fetch_messari_networks),
         ("Binance perps", fetch_binance_perp_data),
         ("BTC volatility", fetch_btc_volatility),
+        ("Macro regime", refresh_macro_regime),
     ]:
         try:
             await fn()
@@ -579,6 +582,23 @@ async def data_partial(
         "rows": rows,
         "profile": profile,
         "profiles": RISK_PROFILES,
+        "price_age": price_age_str(),
+    })
+
+
+@app.get("/api/market-context", response_class=HTMLResponse)
+async def market_context_partial(request: Request):
+    state = get_macro_regime()
+    if state.get("result") is None:
+        # First load — refresh inline so we don't render an empty page
+        try:
+            await refresh_macro_regime()
+            state = get_macro_regime()
+        except Exception as e:
+            logger.warning(f"Macro regime inline refresh failed: {e}")
+    return templates.TemplateResponse("partials/market_context_results.html", {
+        "request": request,
+        "state": state,
         "price_age": price_age_str(),
     })
 
