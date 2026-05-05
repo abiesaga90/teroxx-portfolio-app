@@ -18,6 +18,10 @@ USERS = {
         "name": "Aleksander Biesaga",
         "password_hash": "1517ba6d225fda811e2d05800c73beae:6fb03efcd764b4b4c293f6824ee0176ecb70cf609ab77bcb0333651d0f2fe8fb",
     },
+    "christopher.stanley@teroxx.com": {
+        "name": "Christopher Stanley",
+        "password_hash": "673aff66ff1412d5ec95df0d9a11e6ef:250f938672ad27a2a54c89abcb7054a2754c74518dc562b3acafdf383906ce15",
+    },
 }
 
 SESSION_SECRET = os.environ.get("SESSION_SECRET", "teroxx-dev-secret-change-in-prod")

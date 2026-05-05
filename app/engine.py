@@ -1103,22 +1103,21 @@ def compute_diversification_score(allocations: list[dict]) -> dict:
 # ── Allocation engine (unchanged) ──────────────────────────────────────
 
 def compute_allocations(profile: str, universe: str, mode: str = "Standard") -> list[dict]:
+    # Defensive sleeve (USDC/EURC/PAXG) is profile-driven and always included,
+    # regardless of universe selection. The universe scopes only the crypto sleeve.
     tickers = get_universe_tickers(universe)
     results = []
-    fixed_total = 0
-    for ticker in tickers:
-        if ticker in FIXED_STRATEGIC:
-            alloc = FIXED_STRATEGIC[ticker].get(profile, 0)
-            fixed_total += alloc
-            asset = ASSET_BY_TICKER.get(ticker, {})
-            results.append({
-                "ticker": ticker,
-                "name": asset.get("name", ticker),
-                "tier": "Fixed",
-                "risk_tier": asset.get("risk_tier", ""),
-                "category": asset.get("category", ""),
-                "alloc_pct": alloc,
-            })
+    for ticker, profile_weights in FIXED_STRATEGIC.items():
+        alloc = profile_weights.get(profile, 0)
+        asset = ASSET_BY_TICKER.get(ticker, {})
+        results.append({
+            "ticker": ticker,
+            "name": asset.get("name", ticker),
+            "tier": "Fixed",
+            "risk_tier": asset.get("risk_tier", ""),
+            "category": asset.get("category", ""),
+            "alloc_pct": alloc,
+        })
 
     crypto_tickers = [t for t in tickers if t not in FIXED_STRATEGIC]
 
@@ -1173,8 +1172,30 @@ def compute_allocations(profile: str, universe: str, mode: str = "Standard") -> 
                     "alloc_pct": tier_budget * weight,
                 })
 
+    # Renormalize the crypto sleeve so the portfolio sums to 100%.
+    # If the universe lacks tokens in some tier (e.g., no Mid Cap names),
+    # the orphaned tier budget is redistributed pro-rata across the
+    # crypto positions that DO exist — keeping defensive at the profile
+    # floor and the rest invested rather than silently leaving cash.
+    defensive_total = sum(a["alloc_pct"] for a in results if a["tier"] == "Fixed")
+    crypto_target = max(0.0, 1.0 - defensive_total)
+    crypto_assigned = sum(a["alloc_pct"] for a in results if a["tier"] != "Fixed")
+    if crypto_assigned > 0 and abs(crypto_assigned - crypto_target) > 1e-6:
+        scale = crypto_target / crypto_assigned
+        for a in results:
+            if a["tier"] != "Fixed":
+                a["alloc_pct"] *= scale
+
     tier_order = {"Fixed": 0, "Store of Value": 1, "Large Cap": 2, "Mid Cap": 3, "Small Cap": 4}
     results.sort(key=lambda x: (tier_order.get(x["tier"], 5), -x["alloc_pct"]))
+
+    total = sum(a["alloc_pct"] for a in results)
+    if total > 0 and abs(total - 1.0) > 0.01:
+        import logging
+        logging.getLogger(__name__).warning(
+            "Allocation sum %.4f != 1.0 (profile=%s universe=%s mode=%s)",
+            total, profile, universe, mode,
+        )
     return results
 
 

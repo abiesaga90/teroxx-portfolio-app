@@ -22,6 +22,9 @@ DRAWDOWN_IMPACT = {
 ALLOCATION_MODES = ["Standard", "Fundamental"]
 
 ASSET_UNIVERSES = {
+    # Universe lists scope only the CRYPTO sleeve. The defensive trio
+    # (USDC/EURC/PAXG) is always injected by the engine per profile,
+    # so it does NOT need to appear in these lists.
     "Teroxx Core (9)": ["USDC", "EURC", "PAXG", "BTC", "ETH", "BNB", "XRP", "ADA", "POL"],
     "Teroxx Core+Additional (15)": ["USDC", "EURC", "PAXG", "BTC", "ETH", "BNB", "XRP", "ADA", "POL", "LTC", "LINK", "BCH", "TRX", "SOL", "XLM"],
     "Pre-Kraken Embed (22)": ["USDC", "EURC", "PAXG", "BTC", "ETH", "BNB", "XRP", "ADA", "POL", "LTC", "LINK", "BCH", "TRX", "SOL", "XLM", "DOT", "AVAX", "AAVE", "UNI", "TON", "MNT", "ASTER"],

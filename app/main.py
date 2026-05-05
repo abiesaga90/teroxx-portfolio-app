@@ -233,7 +233,7 @@ async def index(request: Request):
     portfolio_value = prefs.get("portfolio_value", PREF_DEFAULTS["portfolio_value"])
     positions = compute_portfolio(profile, universe, mode, portfolio_value)
     defensive_pct = sum(p["alloc_pct"] for p in positions if p["ticker"] in ("USDC", "EURC", "PAXG"))
-    crypto_pct = 1 - defensive_pct
+    crypto_pct = sum(p["alloc_pct"] for p in positions if p["ticker"] not in ("USDC", "EURC", "PAXG"))
     dd_50 = DRAWDOWN_IMPACT["Crypto -50%"].get(profile, 0)
     return templates.TemplateResponse("base.html", {
         "request": request,
@@ -275,7 +275,7 @@ async def portfolio_partial(
 ):
     positions = compute_portfolio(profile, universe, mode, portfolio_value)
     defensive_pct = sum(p["alloc_pct"] for p in positions if p["ticker"] in ("USDC", "EURC", "PAXG"))
-    crypto_pct = 1 - defensive_pct
+    crypto_pct = sum(p["alloc_pct"] for p in positions if p["ticker"] not in ("USDC", "EURC", "PAXG"))
     dd_50 = DRAWDOWN_IMPACT["Crypto -50%"].get(profile, 0)
     # Risk heatmap: category × risk_tier allocation matrix
     risk_tiers = ["Defensive", "Core", "Growth", "Speculative"]
