@@ -1,5 +1,5 @@
 """
-Teroxx Portfolio Allocation Model v4.0 — Static data layer.
+Teroxx Portfolio Allocation Model v4.1 — Static data layer.
 Asset universe, tier allocations, and VA / sector signal config aligned with nickel-ls-rv.
 """
 
