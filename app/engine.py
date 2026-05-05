@@ -601,7 +601,7 @@ def compute_p3_scores(tickers: list[str]) -> dict[str, dict]:
             signals["borrowed_growth_7d"] = 0.0
 
         # 3. Fee Growth 7d — from DeFiLlama fee momentum
-        fee_mom = dl.get("fee_momentum", 0)
+        fee_mom = dl.get("fee_momentum") or 0
         if fee_mom != 0:
             signals["fee_growth_7d"] = _clamp(fee_mom / 50.0)  # ±50% = max signal
             n_signals += 1
@@ -609,8 +609,8 @@ def compute_p3_scores(tickers: list[str]) -> dict[str, dict]:
             signals["fee_growth_7d"] = 0.0
 
         # 4. Network Activity — from Messari
-        active_addrs = messari.get("active_addresses", 0)
-        txn_count = messari.get("txn_count", 0)
+        active_addrs = messari.get("active_addresses") or 0
+        txn_count = messari.get("txn_count") or 0
         if active_addrs > 0 or txn_count > 0:
             # Normalize: 100K active addresses = max signal
             addr_sig = _clamp(active_addrs / 100_000) if active_addrs else 0
