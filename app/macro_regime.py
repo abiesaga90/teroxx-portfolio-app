@@ -54,13 +54,15 @@ INDICATORS = [
     {"key": "hash_rate_trend",   "label": "BTC Hash Rate Trend",    "category": "onchain",   "weight": 5},
     {"key": "open_interest_ctx", "label": "Open Interest Context",  "category": "onchain",   "weight": 7},
     {"key": "miner_revenue",     "label": "Miner Revenue Trend",    "category": "onchain",   "weight": 5},
-    # Matrix (30%)
-    {"key": "btc_trend",         "label": "BTC Trend (EMAs)",       "category": "matrix",    "weight": 10},
-    {"key": "altcoin_breadth",   "label": "Altcoin Breadth",        "category": "matrix",    "weight": 8},
-    {"key": "cross_correlation", "label": "Cross-Correlation",      "category": "matrix",    "weight": 7},
-    {"key": "return_dispersion", "label": "Return Dispersion",      "category": "matrix",    "weight": 5},
-    {"key": "btc_rsi_weekly",    "label": "BTC RSI (Weekly)",       "category": "matrix",    "weight": 6},
-    {"key": "btc_ppo_daily",     "label": "BTC MACD (Daily PPO)",   "category": "matrix",    "weight": 5},
+    # Technical — BTC trend & momentum from CryptoCompare daily/weekly closes
+    {"key": "btc_trend",         "label": "BTC Trend (EMAs)",       "category": "technical", "weight": 10},
+    {"key": "btc_rsi_weekly",    "label": "BTC RSI (Weekly)",       "category": "technical", "weight": 6},
+    {"key": "btc_ppo_daily",     "label": "BTC MACD (Daily PPO)",   "category": "technical", "weight": 5},
+    # NOTE: Altcoin Breadth, Cross-Correlation and Return Dispersion previously
+    # lived here under a misleading "matrix" category. They require an hourly
+    # multi-token price matrix that we don't yet maintain. Removed from the
+    # active indicator list until that data layer exists; will be re-added
+    # under a "market_structure" category at that point.
 ]
 
 
@@ -323,13 +325,24 @@ async def fetch_avg_funding(client: httpx.AsyncClient) -> Optional[float]:
 
 
 async def fetch_btc_dominance(client: httpx.AsyncClient) -> Optional[float]:
-    try:
-        r = await client.get(f"{COINGECKO}/global", timeout=10)
-        r.raise_for_status()
-        return float(r.json()["data"]["market_cap_percentage"]["btc"])
-    except Exception as e:
-        logger.warning(f"BTC dominance fetch failed: {e}")
-        return None
+    # CoinGecko /global is shared with the dev-data fetch and gets 429'd on
+    # cold start. Retry with backoff so a single 429 doesn't drop the
+    # indicator for the next ~hour until macro_regime refreshes again.
+    delays = [0, 5, 15, 30]
+    for i, delay in enumerate(delays):
+        if delay:
+            await asyncio.sleep(delay)
+        try:
+            r = await client.get(f"{COINGECKO}/global", timeout=10)
+            if r.status_code == 429 and i < len(delays) - 1:
+                continue
+            r.raise_for_status()
+            return float(r.json()["data"]["market_cap_percentage"]["btc"])
+        except Exception as e:
+            if i == len(delays) - 1:
+                logger.warning(f"BTC dominance fetch failed after retries: {e}")
+                return None
+    return None
 
 
 async def fetch_hash_rate_change_30d(client: httpx.AsyncClient) -> Optional[float]:
@@ -551,7 +564,8 @@ def score_all(inputs: dict, prev_regime: Optional[str] = None) -> dict:
     if fvx and len(fvx) >= 31:
         change_bps = (fvx[-1] - fvx[-31]) * 10
         scores["treasury_2y"] = score_treasury_2y(change_bps)
-        # No clean raw value — leave None for the table
+        # Raw is the 30-day change in basis points (proxy from ^FVX)
+        raw["treasury_2y"] = round(change_bps, 1)
     # Equity weekly RSI (avg SPX + NDX) + daily PPO
     ndx = inputs.get("ndx_closes")
     if spx and ndx and len(spx) >= 100 and len(ndx) >= 100:
