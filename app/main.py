@@ -52,16 +52,16 @@ UNIVERSE_OPTIONS = [
 ]
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Fetch data before accepting requests so "Prices: No data" never shows
+async def _initial_warmup():
+    # Run all initial data fetches in background so the port binds fast
+    # enough for Render's health check. Endpoints handle missing data
+    # gracefully ("No data" placeholders) until the warmup completes.
     try:
         await fetch_prices()
         await fetch_market_data()
         logger.info("Initial market data loaded")
     except Exception as e:
         logger.warning(f"Initial fetch failed (will retry in background): {e}")
-    # Fetch fast scoring data on startup (DeFiLlama, Messari, Binance, BTC vol, Macro)
     from app.macro_regime import refresh_macro_regime
     for name, fn in [
         ("DeFiLlama", fetch_defillama_data),
@@ -76,25 +76,30 @@ async def lifespan(app: FastAPI):
             logger.info(f"Initial {name} data loaded")
         except Exception as e:
             logger.warning(f"Initial {name} fetch failed: {e}")
-    # CoinGecko dev data is slow (87 tokens × 2s + rate limits) — load in background
     asyncio.create_task(fetch_coingecko_dev_data())
-    # DeFi health (non-blocking — ok if it fails on first load)
     try:
         await refresh_defi_health()
     except Exception as e:
         logger.warning(f"Initial DeFi health fetch failed: {e}")
-    task = asyncio.create_task(background_refresh())
 
-    async def _defi_health_loop():
-        while True:
-            await asyncio.sleep(7200)  # 2 hours
-            try:
-                await refresh_defi_health()
-            except Exception as e:
-                logger.warning(f"DeFi health refresh failed: {e}")
+
+async def _defi_health_loop():
+    while True:
+        await asyncio.sleep(7200)  # 2 hours
+        try:
+            await refresh_defi_health()
+        except Exception as e:
+            logger.warning(f"DeFi health refresh failed: {e}")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    warmup_task = asyncio.create_task(_initial_warmup())
+    refresh_task = asyncio.create_task(background_refresh())
     defi_task = asyncio.create_task(_defi_health_loop())
     yield
-    task.cancel()
+    warmup_task.cancel()
+    refresh_task.cancel()
     defi_task.cancel()
 
 
