@@ -75,17 +75,30 @@
 {% endif %}
 
 <!-- 30d composite history chart -->
-{% if state.history and state.history|length >= 2 %}
 <div class="card">
-    <div class="card-header">Composite Score (30d)</div>
+    <div class="card-header">
+        Composite Score (30d)
+        <span style="font-size:0.7rem;color:var(--text-muted);font-family:'Sohne',sans-serif;font-weight:400;margin-left:8px;">
+            {{ state.history|length if state.history else 0 }} samples · hourly
+        </span>
+    </div>
     <div style="padding:12px 32px 20px;">
-        <div style="height:160px;position:relative;">
+        {% if state.history and state.history|length >= 2 %}
+        <div style="height:200px;position:relative;">
             <canvas id="macro-history-chart"></canvas>
         </div>
+        {% elif state.history and state.history|length == 1 %}
+        <p style="color:var(--text-muted);font-size:0.8rem;margin:0;">
+            Collecting history — only one sample so far ({{ "{:.1f}".format(state.history[0].score) }}). Chart appears after the next refresh (~30 min).
+        </p>
+        {% else %}
+        <p style="color:var(--text-muted);font-size:0.8rem;margin:0;">
+            No history yet — first refresh in progress.
+        </p>
+        {% endif %}
     </div>
-    <div id="macro-history-data" style="display:none">{{ state.history|tojson }}</div>
+    {% if state.history %}<div id="macro-history-data" style="display:none">{{ state.history|tojson }}</div>{% endif %}
 </div>
-{% endif %}
 
 <!-- 22 Indicators table -->
 <div class="card">
@@ -105,7 +118,8 @@
                 {% for ind in r.indicators %}
                 {% set s = r.scores.get(ind.key) %}
                 {% set rv = r.raw.get(ind.key) %}
-                <tr{% if s is none %} style="opacity:0.45"{% endif %}>
+                {% set reason = r.unavailable_reasons.get(ind.key) if r.unavailable_reasons else None %}
+                <tr{% if s is none %} style="opacity:0.55"{% endif %}>
                     <td><strong>{{ ind.label }}</strong></td>
                     <td><span class="tag">{{ ind.category }}</span></td>
                     <td class="right" style="font-size:0.75rem;color:var(--text-muted);">
@@ -118,7 +132,8 @@
                         {% endif %}
                     </td>
                     <td class="right" style="font-weight:700;color:{% if s is none %}var(--text-muted){% elif s >= 60 %}var(--success){% elif s <= 40 %}var(--danger){% else %}var(--text-body){% endif %};">
-                        {{ "{:.1f}".format(s) if s is not none else "—" }}
+                        {% if s is not none %}{{ "{:.1f}".format(s) }}{% else %}—{% endif %}
+                        {% if reason %}<div style="font-weight:400;font-size:0.65rem;color:var(--text-muted);font-style:italic;margin-top:2px;text-align:right;line-height:1.2;max-width:220px;margin-left:auto;">{{ reason }}</div>{% endif %}
                     </td>
                     <td class="right" style="color:var(--text-muted);font-size:0.75rem;">{{ ind.weight }}</td>
                 </tr>
@@ -169,8 +184,24 @@
     try { data = JSON.parse(el.textContent); } catch(e) { return; }
     if (!data || data.length < 2) return;
     if (window._macroChart) { window._macroChart.destroy(); }
-    var labels = data.map(function(d){ var t = new Date(d.ts * 1000); return (t.getMonth()+1)+'/'+t.getDate(); });
+    var labels = data.map(function(d){
+        var t = new Date(d.ts * 1000);
+        var hh = String(t.getHours()).padStart(2,'0');
+        var mm = String(t.getMinutes()).padStart(2,'0');
+        return (t.getMonth()+1)+'/'+t.getDate()+' '+hh+':'+mm;
+    });
     var values = data.map(function(d){ return d.score; });
+    // Auto-scale y with a minimum span so small fluctuations are visible.
+    var lo = Math.min.apply(null, values);
+    var hi = Math.max.apply(null, values);
+    var pad = Math.max(2, (hi - lo) * 0.25);
+    var yMin = Math.max(0, Math.floor(lo - pad));
+    var yMax = Math.min(100, Math.ceil(hi + pad));
+    if (yMax - yMin < 10) { // ensure a sensible minimum band
+        var mid = (yMax + yMin) / 2;
+        yMin = Math.max(0, Math.floor(mid - 5));
+        yMax = Math.min(100, Math.ceil(mid + 5));
+    }
     window._macroChart = new Chart(canvas, {
         type: 'line',
         data: {
@@ -189,10 +220,18 @@
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function(ctx){ return 'Composite: ' + ctx.parsed.y.toFixed(1); }
+                    }
+                }
+            },
             scales: {
-                y: { min: 0, max: 100, ticks: { stepSize: 25 } },
-                x: { ticks: { maxTicksLimit: 8 } },
+                y: { min: yMin, max: yMax, ticks: { stepSize: Math.max(1, Math.round((yMax - yMin) / 4)) } },
+                x: { ticks: { maxTicksLimit: 8, autoSkip: true } },
             },
         },
     });

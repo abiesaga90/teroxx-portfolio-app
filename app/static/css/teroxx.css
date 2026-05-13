@@ -747,6 +747,15 @@ sup.src {
     height: 400px !important;
     max-height: 500px;
 }
+/* Visual Analysis — bubble chart deserves the full canvas for easy navigation */
+.chart-box-bubble canvas {
+    height: 620px !important;
+    max-height: 720px;
+}
+.chart-box-dilution canvas {
+    height: 520px !important;
+    max-height: 620px;
+}
 .chart-label {
     font-size: 0.7rem;
     color: var(--text-muted);

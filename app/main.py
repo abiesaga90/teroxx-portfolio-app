@@ -26,6 +26,7 @@ from app.engine import (
     full_data_breakdown, compute_p3_scores, compute_red_flag_scores,
     detect_vol_regime, compute_stress_scenarios, compute_diversification_score,
     compute_dca_backtest, compute_client_portfolio_pnl,
+    compute_client_portfolio_history,
 )
 from app.demo_clients import list_clients, get_client
 from app.macro_regime import get_macro_regime, refresh_macro_regime
@@ -386,9 +387,12 @@ async def scoring_partial(
         if fdv_ratio and fdv_ratio > 0:
             dilution_items.append((d["ticker"], fdv_ratio))
     dilution_items.sort(key=lambda x: -x[1])
+    top_dilutive = dilution_items[:15]
+    # Reverse so the bar chart (top→bottom of the y-axis) puts most-dilutive at the BOTTOM.
+    top_dilutive.reverse()
     dilution_data = json.dumps({
-        "labels": [x[0] for x in dilution_items[:15]],
-        "values": [round(x[1], 2) for x in dilution_items[:15]],
+        "labels": [x[0] for x in top_dilutive],
+        "values": [round(x[1], 2) for x in top_dilutive],
     })
 
     # For sector-differentiated: pass sector info to template
@@ -613,15 +617,34 @@ async def client_portfolio_partial(request: Request, client_id: str = ""):
     clients = list_clients()
     selected = None
     pnl = None
+    history = None
     if client_id:
         c = get_client(client_id)
         if c:
             selected = client_id
             pnl = compute_client_portfolio_pnl(c)
+            try:
+                from datetime import date, datetime
+                positions = c.get("positions", []) or []
+                tickers = sorted({p.get("ticker", "") for p in positions if p.get("ticker")})
+                earliest_str = min((p.get("entry_date", "") for p in positions if p.get("entry_date")), default="")
+                days_needed = 365
+                if earliest_str:
+                    try:
+                        edt = datetime.strptime(earliest_str, "%Y-%m-%d").date()
+                        days_needed = max(30, (date.today() - edt).days + 7)
+                    except ValueError:
+                        pass
+                hist_prices = await fetch_historical_prices(tickers, days=min(days_needed, 1900))
+                history = compute_client_portfolio_history(c, hist_prices)
+            except Exception as e:
+                logger.warning(f"Client portfolio history failed for {client_id}: {e}")
+                history = None
     return templates.TemplateResponse("partials/client_portfolio_results.html", {
         "request": request,
         "clients": clients,
         "selected": selected,
         "pnl": pnl,
+        "history": history,
         "price_age": price_age_str(),
     })

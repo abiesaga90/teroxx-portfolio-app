@@ -1593,6 +1593,115 @@ def compute_client_portfolio_pnl(client: dict) -> dict:
     }
 
 
+def compute_client_portfolio_history(
+    client: dict,
+    historical_prices: dict[str, list[tuple[float, float]]],
+) -> list[dict]:
+    """Build a daily portfolio-value time series for a client.
+
+    `historical_prices` is keyed by ticker -> [(unix_ts_seconds, close_usd), ...]
+    sorted ascending (as returned by market_data.fetch_historical_prices). Stable
+    pegs (USDC, EURC) are assumed to be $1 across the whole window.
+
+    For each day from the earliest lot entry to today, sum qty*price for all lots
+    whose entry_date is on or before that day; cost basis is the sum of qty*entry
+    for the same active lots.
+    """
+    from datetime import date, datetime, timedelta
+
+    positions = client.get("positions", []) or []
+    if not positions:
+        return []
+
+    parsed: list[dict] = []
+    earliest: date | None = None
+    today = date.today()
+    for pos in positions:
+        try:
+            edt = datetime.strptime(pos.get("entry_date", ""), "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            edt = today
+        qty = float(pos.get("quantity", 0) or 0)
+        ep = float(pos.get("entry_price", 0) or 0)
+        parsed.append({"ticker": pos.get("ticker", ""), "qty": qty, "entry_price": ep, "entry_date": edt})
+        if earliest is None or edt < earliest:
+            earliest = edt
+
+    if earliest is None:
+        return []
+
+    # Bucket prices by date (UTC date of the unix timestamp) per ticker.
+    STABLES = {"USDC", "EURC", "USDT", "DAI", "FDUSD"}
+    by_ticker_by_date: dict[str, dict[date, float]] = {}
+    for ticker, series in (historical_prices or {}).items():
+        bucket: dict[date, float] = {}
+        for ts, px in series:
+            try:
+                d = datetime.utcfromtimestamp(ts).date()
+            except (OSError, ValueError, OverflowError):
+                continue
+            bucket[d] = px
+        if bucket:
+            by_ticker_by_date[ticker] = bucket
+
+    # Forward-fill price lookup so weekends/gaps don't break the curve.
+    last_known: dict[str, float] = {}
+
+    def price_on(ticker: str, d: date) -> float:
+        if ticker in STABLES:
+            return 1.0
+        bucket = by_ticker_by_date.get(ticker)
+        if bucket and d in bucket:
+            last_known[ticker] = bucket[d]
+            return bucket[d]
+        return last_known.get(ticker, 0.0)
+
+    # Build the daily series.
+    out: list[dict] = []
+    d = earliest
+    one_day = timedelta(days=1)
+    while d <= today:
+        value = 0.0
+        cost = 0.0
+        for lot in parsed:
+            if lot["entry_date"] > d:
+                continue
+            px = price_on(lot["ticker"], d)
+            if px <= 0 and d == lot["entry_date"]:
+                px = lot["entry_price"]  # seed first day with entry price if history gap
+            value += lot["qty"] * px
+            cost += lot["qty"] * lot["entry_price"]
+        pnl = value - cost
+        pnl_pct = (pnl / cost * 100) if cost > 0 else 0.0
+        out.append({
+            "ts": int(datetime(d.year, d.month, d.day).timestamp()),
+            "date": d.isoformat(),
+            "value": round(value, 2),
+            "cost": round(cost, 2),
+            "pnl": round(pnl, 2),
+            "pnl_pct": round(pnl_pct, 2),
+        })
+        d += one_day
+
+    # Anchor the last point to live mark-to-market so it agrees with the summary card.
+    if out:
+        live_value = 0.0
+        live_cost = 0.0
+        for lot in parsed:
+            px = 1.0 if lot["ticker"] in STABLES else (get_price(lot["ticker"]) or 0.0)
+            if px <= 0:
+                # fall back to last historical close
+                px = last_known.get(lot["ticker"], lot["entry_price"])
+            live_value += lot["qty"] * px
+            live_cost += lot["qty"] * lot["entry_price"]
+        out[-1]["value"] = round(live_value, 2)
+        out[-1]["cost"] = round(live_cost, 2)
+        out[-1]["pnl"] = round(live_value - live_cost, 2)
+        out[-1]["pnl_pct"] = round((live_value - live_cost) / live_cost * 100, 2) if live_cost > 0 else 0.0
+
+    return out
+
+
 def compute_rebalance_pnl(
     profile: str, universe: str, mode: str,
     portfolio_value: float, positions: dict,

@@ -13,11 +13,14 @@ with hysteresis to prevent flipping at thresholds.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import math
+import os
 import statistics
 import time
 from collections import deque
+from pathlib import Path
 from typing import Any, Optional
 
 import httpx
@@ -68,6 +71,19 @@ INDICATORS = [
 
 def _clamp(v: float, lo: float = 0.0, hi: float = 100.0) -> float:
     return max(lo, min(hi, v))
+
+
+# Per-indicator failure messages, populated by fetchers and surfaced in the
+# Indicators table so users see WHY a row is missing instead of a bare "—".
+_FETCH_ERRORS: dict[str, str] = {}
+
+
+def _record_err(key: str, msg: str) -> None:
+    _FETCH_ERRORS[key] = msg
+
+
+def _clear_err(key: str) -> None:
+    _FETCH_ERRORS.pop(key, None)
 
 
 # ── Pure scoring functions (ported from nickel-ls-rv) ─────────────────
@@ -317,9 +333,22 @@ async def fetch_avg_funding(client: httpx.AsyncClient) -> Optional[float]:
                     rates.append(float(row["lastFundingRate"]))
                 except (KeyError, ValueError):
                     pass
-        if not rates: return None
+        if not rates:
+            _record_err("funding_rate", "Binance returned no rows")
+            return None
+        _clear_err("funding_rate")
         return sum(rates) / len(rates)
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 451:
+            _record_err("funding_rate", "Binance fapi geo-blocked from server region (HTTP 451)")
+        elif e.response.status_code == 429:
+            _record_err("funding_rate", "Binance rate-limited (HTTP 429)")
+        else:
+            _record_err("funding_rate", f"Binance returned HTTP {e.response.status_code}")
+        logger.warning(f"Funding rate fetch failed: {e}")
+        return None
     except Exception as e:
+        _record_err("funding_rate", "Binance unreachable")
         logger.warning(f"Funding rate fetch failed: {e}")
         return None
 
@@ -329,17 +358,24 @@ async def fetch_btc_dominance(client: httpx.AsyncClient) -> Optional[float]:
     # cold start. Retry with backoff so a single 429 doesn't drop the
     # indicator for the next ~hour until macro_regime refreshes again.
     delays = [0, 5, 15, 30]
+    last_status: Optional[int] = None
     for i, delay in enumerate(delays):
         if delay:
             await asyncio.sleep(delay)
         try:
             r = await client.get(f"{COINGECKO}/global", timeout=10)
+            last_status = r.status_code
             if r.status_code == 429 and i < len(delays) - 1:
                 continue
             r.raise_for_status()
+            _clear_err("btc_dominance")
             return float(r.json()["data"]["market_cap_percentage"]["btc"])
         except Exception as e:
             if i == len(delays) - 1:
+                if last_status == 429:
+                    _record_err("btc_dominance", "CoinGecko rate-limited after 4 retries")
+                else:
+                    _record_err("btc_dominance", "CoinGecko unreachable")
                 logger.warning(f"BTC dominance fetch failed after retries: {e}")
                 return None
     return None
@@ -390,11 +426,24 @@ async def fetch_open_interest_change_7d(client: httpx.AsyncClient) -> Optional[f
         )
         r.raise_for_status()
         rows = r.json()
-        if len(rows) < 8: return None
+        if len(rows) < 8:
+            _record_err("open_interest_ctx", "Binance returned <8 rows of OI history")
+            return None
         first = float(rows[0]["sumOpenInterestValue"])
         last = float(rows[-1]["sumOpenInterestValue"])
+        _clear_err("open_interest_ctx")
         return (last / first - 1) * 100 if first > 0 else None
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 451:
+            _record_err("open_interest_ctx", "Binance fapi geo-blocked from server region (HTTP 451)")
+        elif e.response.status_code == 429:
+            _record_err("open_interest_ctx", "Binance rate-limited (HTTP 429)")
+        else:
+            _record_err("open_interest_ctx", f"Binance returned HTTP {e.response.status_code}")
+        logger.warning(f"OI fetch failed: {e}")
+        return None
     except Exception as e:
+        _record_err("open_interest_ctx", "Binance unreachable")
         logger.warning(f"OI fetch failed: {e}")
         return None
 
@@ -635,6 +684,16 @@ def score_all(inputs: dict, prev_regime: Optional[str] = None) -> dict:
 
     composite, n_avail, n_total = compute_composite(scores)
     regime = classify_regime(composite, prev_regime)
+
+    # For every indicator that didn't score, attach a human-readable reason.
+    # Prefer specific fetch-time errors; fall back to a generic "Insufficient
+    # data from source" so the UI never shows an unexplained "—".
+    unavailable_reasons: dict[str, str] = {}
+    for ind in INDICATORS:
+        k = ind["key"]
+        if scores.get(k) is None:
+            unavailable_reasons[k] = _FETCH_ERRORS.get(k, "Insufficient data from source")
+
     return {
         "composite_score": composite,
         "regime": regime,
@@ -647,6 +706,7 @@ def score_all(inputs: dict, prev_regime: Optional[str] = None) -> dict:
         "raw": raw,
         "indicators": INDICATORS,
         "regimes": REGIMES,
+        "unavailable_reasons": unavailable_reasons,
     }
 
 
@@ -773,12 +833,48 @@ def compute_btc_cycle(inputs: dict) -> dict:
 # ── Module-level cache + 30d composite history ────────────────────────
 
 _cache: dict = {"ts": 0, "result": None, "cycle": None, "regime": None}
-_history: deque = deque(maxlen=30 * 24)  # one entry per refresh, ~30d at hourly cadence
+# Hourly cadence keeps the chart readable; cap at 30d.
+_HISTORY_MAXLEN = 30 * 24
+_HISTORY_MIN_GAP_S = 3300  # ~55 min — keep one sample per hour even if refresh fires more often
+_history: deque = deque(maxlen=_HISTORY_MAXLEN)
+_HISTORY_PATH = Path(os.getenv("MACRO_HISTORY_PATH", "/tmp/teroxx_macro_history.json"))
+_history_loaded = False
 MACRO_TTL = 1800  # 30 min
+
+
+def _load_history() -> None:
+    """Hydrate _history from disk on first use. Tolerates missing/corrupt file."""
+    global _history_loaded
+    if _history_loaded:
+        return
+    _history_loaded = True
+    try:
+        if _HISTORY_PATH.exists():
+            with _HISTORY_PATH.open("r") as f:
+                rows = json.load(f)
+            cutoff = time.time() - 30 * 86400
+            for row in rows:
+                if isinstance(row, dict) and "ts" in row and "score" in row and row["ts"] >= cutoff:
+                    _history.append(row)
+            logger.info(f"Loaded {len(_history)} macro history points from {_HISTORY_PATH}")
+    except Exception as e:
+        logger.warning(f"Failed to load macro history from {_HISTORY_PATH}: {e}")
+
+
+def _save_history() -> None:
+    try:
+        _HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
+        tmp = _HISTORY_PATH.with_suffix(".tmp")
+        with tmp.open("w") as f:
+            json.dump(list(_history), f)
+        tmp.replace(_HISTORY_PATH)
+    except Exception as e:
+        logger.warning(f"Failed to save macro history to {_HISTORY_PATH}: {e}")
 
 
 async def refresh_macro_regime() -> dict:
     """Refresh inputs + recompute scores; persist to cache + history."""
+    _load_history()
     inputs = await fetch_macro_inputs()
     result = score_all(inputs, prev_regime=_cache.get("regime"))
     cycle = compute_btc_cycle(inputs)
@@ -787,13 +883,17 @@ async def refresh_macro_regime() -> dict:
     _cache["result"] = result
     _cache["cycle"] = cycle
     _cache["regime"] = result["regime"]
-    _history.append({"ts": now, "score": result["composite_score"], "regime": result["regime"]})
+    last_ts = _history[-1]["ts"] if _history else 0
+    if now - last_ts >= _HISTORY_MIN_GAP_S:
+        _history.append({"ts": now, "score": result["composite_score"], "regime": result["regime"]})
+        _save_history()
     return result
 
 
 def get_macro_regime() -> dict:
     """Return the last cached snapshot + cycle + history. Returns empty defaults
     if not yet refreshed."""
+    _load_history()
     return {
         "result": _cache.get("result"),
         "cycle": _cache.get("cycle"),

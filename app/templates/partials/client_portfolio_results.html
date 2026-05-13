@@ -81,6 +81,36 @@
     </div>
 </div>
 
+<!-- P&L over time -->
+{% if history and history|length >= 2 %}
+<div class="card">
+    <div class="card-header">
+        P&L Over Time
+        <span style="font-size:0.7rem;color:var(--text-muted);font-family:'Sohne',sans-serif;font-weight:400;margin-left:8px;">
+            daily mark-to-market · {{ history|length }} days · CryptoCompare closes, live mark today
+        </span>
+    </div>
+    <div style="display:flex;gap:8px;padding:8px 32px 0;font-size:0.7rem;">
+        <button type="button" data-pnl-mode="usd" class="pnl-mode-btn pnl-mode-active" onclick="setPnlMode(this,'usd')">$ Value vs Cost</button>
+        <button type="button" data-pnl-mode="pnl" class="pnl-mode-btn" onclick="setPnlMode(this,'pnl')">P&L ($)</button>
+        <button type="button" data-pnl-mode="pct" class="pnl-mode-btn" onclick="setPnlMode(this,'pct')">Return (%)</button>
+    </div>
+    <div style="padding:12px 32px 20px;">
+        <div style="height:260px;position:relative;">
+            <canvas id="client-pnl-chart"></canvas>
+        </div>
+    </div>
+    <div id="client-pnl-data" style="display:none">{{ history|tojson }}</div>
+</div>
+{% elif selected %}
+<div class="card">
+    <div class="card-header">P&L Over Time</div>
+    <p style="padding:16px 32px;color:var(--text-muted);font-size:0.8rem;">
+        Historical price data is still loading. Try clicking the client again in a moment.
+    </p>
+</div>
+{% endif %}
+
 <!-- Per-ticker rollup -->
 <div class="card">
     <div class="card-header">Position Summary <span style="font-size:0.7rem;color:var(--text-muted);font-family:'Sohne',sans-serif;font-weight:400;">— rolled up across lots</span></div>
@@ -176,3 +206,86 @@
     </p>
 </div>
 {% endif %}
+
+<style>
+.pnl-mode-btn { padding:4px 10px; border:1px solid var(--border); background:transparent; color:var(--text-muted); cursor:pointer; border-radius:3px; font-family:'Sohne',sans-serif; font-size:0.7rem; }
+.pnl-mode-btn:hover { color:var(--text-body); border-color:var(--text-muted); }
+.pnl-mode-active { background:var(--accent, #0b688c); color:#fff; border-color:var(--accent, #0b688c); }
+</style>
+
+<script>
+(function() {
+    var dataEl = document.getElementById('client-pnl-data');
+    var canvas = document.getElementById('client-pnl-chart');
+    if (!dataEl || !canvas || typeof Chart === 'undefined') return;
+    var rows;
+    try { rows = JSON.parse(dataEl.textContent); } catch(e) { return; }
+    if (!rows || rows.length < 2) return;
+    if (window._clientPnlChart) { window._clientPnlChart.destroy(); }
+
+    var labels = rows.map(function(r){
+        var t = new Date(r.ts * 1000);
+        return (t.getMonth()+1) + '/' + t.getDate() + '/' + String(t.getFullYear()).slice(-2);
+    });
+    var values = rows.map(function(r){ return r.value; });
+    var costs  = rows.map(function(r){ return r.cost; });
+    var pnls   = rows.map(function(r){ return r.pnl; });
+    var pcts   = rows.map(function(r){ return r.pnl_pct; });
+
+    function buildConfig(mode) {
+        var datasets, yFmt;
+        if (mode === 'usd') {
+            datasets = [
+                { label: 'Portfolio Value', data: values, borderColor: '#0b688c', backgroundColor: 'rgba(11,104,140,0.12)', fill: true, tension: 0.25, pointRadius: 0, borderWidth: 2 },
+                { label: 'Cost Basis',      data: costs,  borderColor: '#bfb3a8', borderDash: [4,4], backgroundColor: 'transparent', fill: false, tension: 0, pointRadius: 0, borderWidth: 1.5 },
+            ];
+            yFmt = function(v){ return '$' + Math.round(v).toLocaleString(); };
+        } else if (mode === 'pnl') {
+            datasets = [
+                { label: 'P&L ($)', data: pnls, borderColor: '#d06643', backgroundColor: 'rgba(208,102,67,0.12)', fill: true, tension: 0.25, pointRadius: 0, borderWidth: 2 },
+            ];
+            yFmt = function(v){ return (v>=0?'+':'') + '$' + Math.round(v).toLocaleString(); };
+        } else {
+            datasets = [
+                { label: 'Return (%)', data: pcts, borderColor: '#d06643', backgroundColor: 'rgba(208,102,67,0.12)', fill: true, tension: 0.25, pointRadius: 0, borderWidth: 2 },
+            ];
+            yFmt = function(v){ return (v>=0?'+':'') + v.toFixed(1) + '%'; };
+        }
+        return {
+            type: 'line',
+            data: { labels: labels, datasets: datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { display: true, labels: { font: { size: 11 } } },
+                    tooltip: {
+                        callbacks: {
+                            label: function(ctx){ return ctx.dataset.label + ': ' + yFmt(ctx.parsed.y); }
+                        }
+                    }
+                },
+                scales: {
+                    y: { ticks: { callback: function(v){ return yFmt(v); }, font: { size: 10 } } },
+                    x: { ticks: { maxTicksLimit: 10, autoSkip: true, font: { size: 10 } } },
+                },
+            },
+        };
+    }
+
+    function render(mode) {
+        if (window._clientPnlChart) { window._clientPnlChart.destroy(); }
+        window._clientPnlChart = new Chart(canvas, buildConfig(mode));
+    }
+
+    window.setPnlMode = function(btn, mode) {
+        var btns = document.querySelectorAll('.pnl-mode-btn');
+        btns.forEach(function(b){ b.classList.remove('pnl-mode-active'); });
+        if (btn) btn.classList.add('pnl-mode-active');
+        render(mode);
+    };
+
+    render('usd');
+})();
+</script>
