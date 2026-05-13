@@ -218,6 +218,58 @@
 </div>
 {% endif %}
 
+<!-- Proposal PDF: branded artifact built from the allocation above -->
+<div class="card proposal-export">
+    <div class="card-header">Proposal</div>
+    <p style="padding:0 32px 12px;font-size:0.78rem;color:var(--text-muted);line-height:1.5;">
+        Generate the branded Teroxx proposal PDF using the allocation above
+        ({{ profile }} · {{ universe }} · {{ portfolio_value|fmt_usd }}).
+        Pick a client to anchor the cover, disclaimers and rationale; the
+        allocation, exhibits and macro framing come from this page.
+    </p>
+    <form id="proposal-export-form" class="controls" onsubmit="return false;"
+          style="padding:0 32px 18px;align-items:flex-end;">
+        <div class="control-group">
+            <span class="control-label">Client</span>
+            <select id="proposal-export-client">
+                <option value="">— pick a client —</option>
+                {% for c in clients %}
+                <option value="{{ c.id }}">{{ c.name }} ({{ c.profile }}{% if c.domicile %} · {{ c.domicile }}{% endif %})</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="button" class="btn-accent" id="proposal-export-pdf"
+                onclick="exportProposal('pdf', {{ portfolio_value|tojson }}, {{ profile|tojson }}, {{ universe|tojson }})">
+            Generate proposal PDF
+        </button>
+        <button type="button" class="btn-outline" id="proposal-export-html"
+                onclick="exportProposal('html', {{ portfolio_value|tojson }}, {{ profile|tojson }}, {{ universe|tojson }})">
+            Preview in browser
+        </button>
+        <span id="proposal-export-status" style="font-size:0.72rem;color:var(--text-muted);"></span>
+    </form>
+</div>
+
+<script>
+window.exportProposal = function (kind, pv, profile, universe) {
+    var sel = document.getElementById('proposal-export-client');
+    var status = document.getElementById('proposal-export-status');
+    var cid = sel && sel.value;
+    if (!cid) {
+        if (status) status.textContent = 'Pick a client first.';
+        return;
+    }
+    var qs = new URLSearchParams({
+        profile: profile || '',
+        universe: universe || '',
+        portfolio_value: String(pv || ''),
+    }).toString();
+    var path = '/api/clients/' + encodeURIComponent(cid) + '/proposal.' + (kind === 'pdf' ? 'pdf' : 'html');
+    window.open(path + '?' + qs, '_blank', 'noopener');
+    if (status) status.textContent = '';
+};
+</script>
+
 <div class="sources">
     <div class="sources-title">Sources</div>
     <sup class="src">1</sup> Allocation percentages from Teroxx Portfolio Allocation Model v4.1.<br>

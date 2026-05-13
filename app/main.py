@@ -29,7 +29,6 @@ from app.engine import (
     detect_vol_regime, compute_stress_scenarios, compute_diversification_score,
     compute_dca_backtest, compute_client_portfolio_pnl,
     compute_client_portfolio_history,
-    compute_workspace_allocation, macro_one_line,
     compute_client_drift, compute_scenario_comparison,
 )
 from app.macro_regime import get_macro_regime, refresh_macro_regime
@@ -395,6 +394,8 @@ async def portfolio_partial(
         "tier_allocs": TIER_ALLOCATIONS,
         "fixed": FIXED_STRATEGIC,
         "price_age": price_age_str(),
+        "universe": universe,
+        "clients": list_clients(),
     })
 
 
@@ -752,97 +753,6 @@ async def client_portfolio_partial(request: Request, client_id: str = ""):
 
 
 # ── Workspace ────────────────────────────────────────────────────────
-
-
-@app.get("/api/workspace", response_class=HTMLResponse)
-async def workspace_partial(request: Request, client_id: str = ""):
-    """Unified per-client landing for Advisor mode.
-
-    Resolves the active client from the explicit query param if present,
-    otherwise the SessionContext, otherwise the first available client.
-    Persists the resolved id back to SessionContext so subsequent tabs see it.
-    """
-    ctx = load_context(request)
-    if not client_id:
-        client_id = ctx.client_id or ""
-
-    clients = list_clients()
-    selected_client = None
-    pnl = None
-    history = None
-    allocation = None
-    activity_rows = []
-
-    if not client_id and clients:
-        client_id = clients[0]["id"]
-
-    if client_id:
-        c = get_client(client_id)
-        if c:
-            selected_client = c
-            patch_context(request, client_id=client_id)
-            pnl = compute_client_portfolio_pnl(c)
-            allocation = compute_workspace_allocation(c, c.get("profile", "Balanced"), ctx.universe)
-            # History fetch — best-effort; failing here just hides the chart.
-            try:
-                from datetime import date, datetime as _dt
-                positions = c.get("positions", []) or []
-                tickers = sorted({p.get("ticker", "") for p in positions if p.get("ticker")})
-                earliest_str = min((p.get("entry_date", "") for p in positions if p.get("entry_date")), default="")
-                days_needed = 365
-                if earliest_str:
-                    try:
-                        edt = _dt.strptime(earliest_str, "%Y-%m-%d").date()
-                        days_needed = max(30, (date.today() - edt).days + 7)
-                    except ValueError:
-                        pass
-                hist_prices = await fetch_historical_prices(tickers, days=min(days_needed, 1900))
-                history = compute_client_portfolio_history(c, hist_prices)
-            except Exception as e:
-                logger.warning(f"Workspace history fetch failed for {client_id}: {e}")
-            # Activity (last 10 advisor_actions for this client).
-            with SessionLocal() as db:
-                from app.repos.clients import recent_actions as _recent
-                rows = _recent(db, client_id=client_id, limit=10)
-                for a in rows:
-                    activity_rows.append({
-                        "created_at": a.created_at.isoformat(timespec="seconds"),
-                        "actor_email": a.actor_email,
-                        "action_type": a.action_type,
-                        "payload": a.payload_json,
-                    })
-
-    macro = get_macro_regime()
-    # Compliance surface: regulatory badges per ticker + MiCA reminder banner
-    # + domicile-aware disclaimer block at the bottom.
-    from app.compliance import (
-        regulatory_flags as _reg_flags,
-        flag_meaning as _flag_meaning,
-        mica_banner as _mica_banner,
-        disclaimer_for as _disclaimer_for,
-    )
-    reg_flags_map: dict = {}
-    if allocation:
-        reg_flags_map = {r["ticker"]: _reg_flags(r["ticker"]) for r in allocation}
-    active_tickers = [r["ticker"] for r in (allocation or []) if r.get("current_pct", 0) > 0 or r.get("target_pct", 0) > 0]
-    banner_text = _mica_banner(selected_client, active_tickers) if selected_client else None
-    disclaimer_block = _disclaimer_for(selected_client) if selected_client else None
-    return templates.TemplateResponse("partials/workspace.html", {
-        "request": request,
-        "clients": clients,
-        "selected_client": selected_client,
-        "pnl": pnl,
-        "history": history,
-        "allocation": allocation,
-        "macro": macro,
-        "macro_narrative": macro_one_line(macro),
-        "activity": activity_rows,
-        "universe": ctx.universe,
-        "reg_flags": reg_flags_map,
-        "flag_meaning": _flag_meaning,
-        "mica_banner": banner_text,
-        "disclaimer": disclaimer_block,
-    })
 
 
 # ── Admin: API token management (Phase 9) ────────────────────────────

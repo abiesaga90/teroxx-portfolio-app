@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Teroxx Portfolio Allocator</title>
-    <link rel="stylesheet" href="/static/css/teroxx.css">
+    <link rel="stylesheet" href="/static/css/teroxx.css?v=20260513b">
     <meta name="htmx-config" content='{"selfRequestsOnly": false}'>
     <script src="/static/js/htmx.min.js"></script>
     <script src="/static/js/chart.min.js"></script>
@@ -12,7 +12,7 @@
     // Seed SessionContext so client JS can render the right mode without a fetch.
     window.__INITIAL_CTX__ = {{ ctx|tojson }};
     </script>
-    <script src="/static/js/session.js"></script>
+    <script src="/static/js/session.js?v=20260513b"></script>
     <script>
     // Apply dark mode before render to prevent flash
     (function() {
@@ -748,7 +748,7 @@
     Teroxx Portfolio Allocation Model v4.1 &mdash; For informational purposes only. Not financial advice.
 </footer>
 
-<script src="/static/js/app.js"></script>
+<script src="/static/js/app.js?v=20260513b"></script>
 <script>
 // ── Auto-load tabs that need HTMX on first open ──
 function triggerTabLoad(tabId) {
