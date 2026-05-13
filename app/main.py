@@ -7,7 +7,7 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Form
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -27,9 +27,25 @@ from app.engine import (
     detect_vol_regime, compute_stress_scenarios, compute_diversification_score,
     compute_dca_backtest, compute_client_portfolio_pnl,
     compute_client_portfolio_history,
+    compute_workspace_allocation, macro_one_line,
 )
-from app.demo_clients import list_clients, get_client
 from app.macro_regime import get_macro_regime, refresh_macro_regime
+from app.session_context import SessionContext, load_context, patch_context
+from app.db import SessionLocal, get_db, log_action
+from app.repos import clients as clients_repo
+
+
+def list_clients():
+    """DB-backed summary list (replaces the demo_clients dict accessor)."""
+    with SessionLocal() as db:
+        return [clients_repo.to_summary_dict(c) for c in clients_repo.list_active_clients(db)]
+
+
+def get_client(client_id: str):
+    """DB-backed read returning the legacy dict shape engine code expects."""
+    with SessionLocal() as db:
+        c = clients_repo.get_client(db, client_id)
+        return clients_repo.to_legacy_dict(c) if c else None
 from app.market_data import (
     fetch_prices, fetch_market_data, price_age_str, background_refresh,
     get_logo_url, get_source_health, fetch_historical_prices,
@@ -90,6 +106,14 @@ async def _defi_health_loop():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Persistence comes online before background refreshers so any
+    # downstream code can already read clients/lots/audit rows.
+    try:
+        from app.db import init_db, DB_PATH
+        init_db()
+        logger.info("SQLite ready at %s", DB_PATH)
+    except Exception as e:
+        logger.exception("Failed to initialise SQLite: %s", e)
     warmup_task = asyncio.create_task(_initial_warmup())
     refresh_task = asyncio.create_task(background_refresh())
     defi_task = asyncio.create_task(_defi_health_loop())
@@ -189,7 +213,29 @@ async def save_prefs(request: Request):
         if k in PREF_KEYS:
             prefs[k] = v
     request.session["prefs"] = prefs
+    # Mirror into SessionContext so the new context-aware surfaces stay in sync.
+    patch_context(request, **{k: v for k, v in body.items() if k in PREF_KEYS})
     return {"ok": True}
+
+
+@app.get("/api/session")
+async def get_session(request: Request):
+    """Return the current SessionContext as JSON for the frontend shim."""
+    return load_context(request).model_dump()
+
+
+@app.post("/api/session")
+async def update_session(request: Request):
+    """Patch one or more SessionContext fields from the frontend shim.
+
+    Accepts JSON body with any of: mode, client_id, universe, profile,
+    portfolio_value. Unknown keys are ignored.
+    """
+    body = await request.json()
+    if not isinstance(body, dict):
+        return JSONResponse({"ok": False, "error": "invalid_body"}, status_code=400)
+    ctx = patch_context(request, **body)
+    return ctx.model_dump()
 
 
 # ── Authentication Routes ────────────────────────────────────────────
@@ -227,11 +273,14 @@ def _position_chart_data(positions: list[dict]) -> str:
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     user = get_current_user(request)
+    # SessionContext is the new source of truth; prefs are still consulted
+    # by load_context() for back-compat.
+    ctx = load_context(request)
     prefs = request.session.get("prefs", {})
-    profile = prefs.get("profile", PREF_DEFAULTS["profile"])
-    universe = prefs.get("universe", PREF_DEFAULTS["universe"])
-    mode = prefs.get("mode", PREF_DEFAULTS["mode"])
-    portfolio_value = prefs.get("portfolio_value", PREF_DEFAULTS["portfolio_value"])
+    profile = ctx.profile or prefs.get("profile", PREF_DEFAULTS["profile"])
+    universe = ctx.universe or prefs.get("universe", PREF_DEFAULTS["universe"])
+    mode = prefs.get("mode", PREF_DEFAULTS["mode"])  # allocation mode (Standard/Fundamental); distinct from ctx.mode
+    portfolio_value = ctx.portfolio_value or prefs.get("portfolio_value", PREF_DEFAULTS["portfolio_value"])
     positions = compute_portfolio(profile, universe, mode, portfolio_value)
     defensive_pct = sum(p["alloc_pct"] for p in positions if p["ticker"] in ("USDC", "EURC", "PAXG"))
     crypto_pct = sum(p["alloc_pct"] for p in positions if p["ticker"] not in ("USDC", "EURC", "PAXG"))
@@ -261,6 +310,9 @@ async def index(request: Request):
         "defi_health": get_defi_health(),
         "vol_regime": detect_vol_regime(),
         "source_health": get_source_health(),
+        "clients_list": list_clients(),
+        "ctx": ctx.model_dump(),
+        "app_mode": ctx.mode,
     })
 
 
@@ -536,10 +588,10 @@ async def rebalance_pnl_partial(
         positions = {}
     data = compute_rebalance_pnl(profile, universe, mode, portfolio_value, positions)
 
-    # P&L waterfall chart
+    # P&L waterfall chart — sourced from row["pnl"] (engine field name).
     pnl_items = []
     for row in data.get("rows", []):
-        pnl = row.get("pnl_usd", 0)
+        pnl = row.get("pnl", 0) or 0
         if pnl != 0:
             pnl_items.append((row.get("ticker", "?"), round(pnl, 2)))
     pnl_items.sort(key=lambda x: -abs(x[1]))
@@ -607,6 +659,48 @@ async def market_context_partial(request: Request):
     })
 
 
+@app.get("/api/client-positions")
+async def client_positions_json(client_id: str = ""):
+    """Return a {ticker: {current_usd, entry_price}} map sized at *live* mark
+    for the requested client, so the Rebalancing & P&L tab can populate
+    its Current $ and Entry Price inputs from a real client portfolio.
+
+    `current_usd` is set to the live USD value of all lots in that ticker
+    (qty * live price). `entry_price` is the qty-weighted average entry
+    across that ticker's lots. Stable pegs default to $1 if no live mark.
+    """
+    c = get_client(client_id) if client_id else None
+    if not c:
+        return JSONResponse({"positions": {}, "client": None})
+    from app.market_data import get_price
+    STABLES = {"USDC", "EURC", "USDT", "DAI", "FDUSD"}
+    agg: dict[str, dict] = {}
+    for pos in c.get("positions", []) or []:
+        ticker = pos.get("ticker", "")
+        qty = float(pos.get("quantity", 0) or 0)
+        entry = float(pos.get("entry_price", 0) or 0)
+        if not ticker or qty <= 0:
+            continue
+        live = 1.0 if ticker in STABLES else (get_price(ticker) or 0.0)
+        if live <= 0:
+            live = entry  # fall back so the row isn't blank
+        bucket = agg.setdefault(ticker, {"qty": 0.0, "cost": 0.0, "current_usd": 0.0})
+        bucket["qty"] += qty
+        bucket["cost"] += qty * entry
+        bucket["current_usd"] += qty * live
+    positions = {}
+    for t, b in agg.items():
+        avg_entry = (b["cost"] / b["qty"]) if b["qty"] > 0 else 0.0
+        positions[t] = {
+            "current_usd": round(b["current_usd"], 2),
+            "entry_price": round(avg_entry, 6),
+        }
+    return JSONResponse({
+        "client": {"id": c.get("id"), "name": c.get("name"), "profile": c.get("profile")},
+        "positions": positions,
+    })
+
+
 @app.get("/api/client-portfolio", response_class=HTMLResponse)
 async def client_portfolio_partial(request: Request, client_id: str = ""):
     clients = list_clients()
@@ -643,3 +737,206 @@ async def client_portfolio_partial(request: Request, client_id: str = ""):
         "history": history,
         "price_age": price_age_str(),
     })
+
+
+# ── Workspace ────────────────────────────────────────────────────────
+
+
+@app.get("/api/workspace", response_class=HTMLResponse)
+async def workspace_partial(request: Request, client_id: str = ""):
+    """Unified per-client landing for Advisor mode.
+
+    Resolves the active client from the explicit query param if present,
+    otherwise the SessionContext, otherwise the first available client.
+    Persists the resolved id back to SessionContext so subsequent tabs see it.
+    """
+    ctx = load_context(request)
+    if not client_id:
+        client_id = ctx.client_id or ""
+
+    clients = list_clients()
+    selected_client = None
+    pnl = None
+    history = None
+    allocation = None
+    activity_rows = []
+
+    if not client_id and clients:
+        client_id = clients[0]["id"]
+
+    if client_id:
+        c = get_client(client_id)
+        if c:
+            selected_client = c
+            patch_context(request, client_id=client_id)
+            pnl = compute_client_portfolio_pnl(c)
+            allocation = compute_workspace_allocation(c, c.get("profile", "Balanced"), ctx.universe)
+            # History fetch — best-effort; failing here just hides the chart.
+            try:
+                from datetime import date, datetime as _dt
+                positions = c.get("positions", []) or []
+                tickers = sorted({p.get("ticker", "") for p in positions if p.get("ticker")})
+                earliest_str = min((p.get("entry_date", "") for p in positions if p.get("entry_date")), default="")
+                days_needed = 365
+                if earliest_str:
+                    try:
+                        edt = _dt.strptime(earliest_str, "%Y-%m-%d").date()
+                        days_needed = max(30, (date.today() - edt).days + 7)
+                    except ValueError:
+                        pass
+                hist_prices = await fetch_historical_prices(tickers, days=min(days_needed, 1900))
+                history = compute_client_portfolio_history(c, hist_prices)
+            except Exception as e:
+                logger.warning(f"Workspace history fetch failed for {client_id}: {e}")
+            # Activity (last 10 advisor_actions for this client).
+            with SessionLocal() as db:
+                from app.repos.clients import recent_actions as _recent
+                rows = _recent(db, client_id=client_id, limit=10)
+                for a in rows:
+                    activity_rows.append({
+                        "created_at": a.created_at.isoformat(timespec="seconds"),
+                        "actor_email": a.actor_email,
+                        "action_type": a.action_type,
+                        "payload": a.payload_json,
+                    })
+
+    macro = get_macro_regime()
+    return templates.TemplateResponse("partials/workspace.html", {
+        "request": request,
+        "clients": clients,
+        "selected_client": selected_client,
+        "pnl": pnl,
+        "history": history,
+        "allocation": allocation,
+        "macro": macro,
+        "macro_narrative": macro_one_line(macro),
+        "activity": activity_rows,
+        "universe": ctx.universe,
+    })
+
+
+# ── Client CRUD ──────────────────────────────────────────────────────
+
+
+def _actor_email(request: Request):
+    user = get_current_user(request)
+    return user["email"] if user else None
+
+
+@app.get("/api/clients")
+async def list_clients_json(request: Request):
+    with SessionLocal() as db:
+        return [clients_repo.to_summary_dict(c) for c in clients_repo.list_active_clients(db)]
+
+
+@app.get("/api/clients/{client_id}")
+async def get_client_json(request: Request, client_id: str):
+    with SessionLocal() as db:
+        c = clients_repo.get_client(db, client_id)
+        if not c:
+            return JSONResponse({"error": "not_found"}, status_code=404)
+        return clients_repo.to_legacy_dict(c)
+
+
+@app.post("/api/clients")
+async def create_client_endpoint(request: Request):
+    payload = await request.json()
+    if not isinstance(payload, dict) or not payload.get("name"):
+        return JSONResponse({"error": "name_required"}, status_code=400)
+    with SessionLocal() as db:
+        c = clients_repo.create_client(
+            db,
+            actor_email=_actor_email(request),
+            name=payload.get("name", ""),
+            profile=payload.get("profile", "Balanced"),
+            domicile=payload.get("domicile"),
+            domicile_country=payload.get("domicile_country"),
+            currency=payload.get("currency", "USD"),
+            inception_date=payload.get("inception_date"),
+            starting_capital_usd=payload.get("starting_capital_usd"),
+            tagline=payload.get("tagline"),
+            risk_notes=payload.get("risk_notes"),
+        )
+        db.commit()
+        db.refresh(c)
+        return clients_repo.to_legacy_dict(c)
+
+
+@app.patch("/api/clients/{client_id}")
+async def update_client_endpoint(request: Request, client_id: str):
+    payload = await request.json()
+    if not isinstance(payload, dict):
+        return JSONResponse({"error": "invalid_body"}, status_code=400)
+    with SessionLocal() as db:
+        c = clients_repo.get_client(db, client_id)
+        if not c:
+            return JSONResponse({"error": "not_found"}, status_code=404)
+        clients_repo.update_client(db, actor_email=_actor_email(request), client=c, fields=payload)
+        db.commit()
+        db.refresh(c)
+        return clients_repo.to_legacy_dict(c)
+
+
+@app.delete("/api/clients/{client_id}")
+async def delete_client_endpoint(request: Request, client_id: str):
+    with SessionLocal() as db:
+        c = clients_repo.get_client(db, client_id)
+        if not c:
+            return JSONResponse({"error": "not_found"}, status_code=404)
+        clients_repo.soft_delete_client(db, actor_email=_actor_email(request), client=c)
+        db.commit()
+        return {"ok": True}
+
+
+@app.post("/api/clients/{client_id}/lots")
+async def add_lot_endpoint(request: Request, client_id: str):
+    payload = await request.json()
+    if not isinstance(payload, dict) or not payload.get("ticker"):
+        return JSONResponse({"error": "ticker_required"}, status_code=400)
+    with SessionLocal() as db:
+        c = clients_repo.get_client(db, client_id)
+        if not c:
+            return JSONResponse({"error": "not_found"}, status_code=404)
+        lot = clients_repo.add_lot(
+            db,
+            actor_email=_actor_email(request),
+            client=c,
+            ticker=payload["ticker"],
+            quantity=float(payload.get("quantity", 0) or 0),
+            entry_price=float(payload.get("entry_price", 0) or 0),
+            entry_date=payload.get("entry_date"),
+            notes=payload.get("notes"),
+        )
+        db.commit()
+        return {"id": lot.id, "ticker": lot.ticker, "quantity": lot.quantity, "entry_price": lot.entry_price}
+
+
+@app.patch("/api/clients/{client_id}/lots/{lot_id}")
+async def update_lot_endpoint(request: Request, client_id: str, lot_id: int):
+    payload = await request.json()
+    if not isinstance(payload, dict):
+        return JSONResponse({"error": "invalid_body"}, status_code=400)
+    with SessionLocal() as db:
+        c = clients_repo.get_client(db, client_id)
+        if not c:
+            return JSONResponse({"error": "not_found"}, status_code=404)
+        lot = next((l for l in c.lots if l.id == lot_id), None)
+        if not lot:
+            return JSONResponse({"error": "lot_not_found"}, status_code=404)
+        clients_repo.update_lot(db, actor_email=_actor_email(request), lot=lot, fields=payload)
+        db.commit()
+        return {"id": lot.id, "ticker": lot.ticker, "quantity": lot.quantity, "entry_price": lot.entry_price}
+
+
+@app.delete("/api/clients/{client_id}/lots/{lot_id}")
+async def delete_lot_endpoint(request: Request, client_id: str, lot_id: int):
+    with SessionLocal() as db:
+        c = clients_repo.get_client(db, client_id)
+        if not c:
+            return JSONResponse({"error": "not_found"}, status_code=404)
+        lot = next((l for l in c.lots if l.id == lot_id), None)
+        if not lot:
+            return JSONResponse({"error": "lot_not_found"}, status_code=404)
+        clients_repo.delete_lot(db, actor_email=_actor_email(request), lot=lot)
+        db.commit()
+        return {"ok": True}

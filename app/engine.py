@@ -1593,6 +1593,89 @@ def compute_client_portfolio_pnl(client: dict) -> dict:
     }
 
 
+def compute_workspace_allocation(
+    client: dict,
+    profile: str,
+    universe: str,
+    mode: str = "Standard",
+) -> list[dict]:
+    """Build a per-asset Current vs Target rollup for the Workspace tab.
+
+    Returns rows: [{ticker, name, current_pct, target_pct, drift_pp, dollar_move}].
+    Dollar move is positive = need to BUY, negative = need to SELL, scaled
+    against the client's *current* total value (so the recommendations are
+    self-balancing without requiring an external portfolio_value input).
+    Stable pegs default to $1 if no live price is available.
+    """
+    # Target rollup from the allocation engine.
+    targets = compute_allocations(profile, universe, mode)
+    target_pct_by_ticker = {row["ticker"]: float(row.get("alloc_pct", 0) or 0) * 100 for row in targets}
+    name_by_ticker = {row["ticker"]: row.get("name", row["ticker"]) for row in targets}
+
+    # Current values from client lots, marked at live prices.
+    STABLES = {"USDC", "EURC", "USDT", "DAI", "FDUSD"}
+    current_value_by_ticker: dict[str, float] = {}
+    for pos in client.get("positions", []) or []:
+        t = pos.get("ticker", "")
+        if not t:
+            continue
+        qty = float(pos.get("quantity", 0) or 0)
+        live = 1.0 if t in STABLES else (get_price(t) or 0.0)
+        if live <= 0:
+            live = float(pos.get("entry_price", 0) or 0)
+        current_value_by_ticker[t] = current_value_by_ticker.get(t, 0.0) + qty * live
+
+    total_value = sum(current_value_by_ticker.values())
+    if total_value <= 0:
+        total_value = 1.0  # avoid div-by-zero; rows render as 0%/target%
+
+    tickers = sorted(set(target_pct_by_ticker.keys()) | set(current_value_by_ticker.keys()))
+    rows = []
+    for t in tickers:
+        target_pct = target_pct_by_ticker.get(t, 0.0)
+        current_val = current_value_by_ticker.get(t, 0.0)
+        current_pct = (current_val / total_value) * 100 if total_value else 0.0
+        target_val = (target_pct / 100) * total_value
+        rows.append({
+            "ticker": t,
+            "name": name_by_ticker.get(t, t),
+            "current_pct": round(current_pct, 2),
+            "target_pct": round(target_pct, 2),
+            "drift_pp": round(current_pct - target_pct, 2),
+            "current_value": round(current_val, 2),
+            "target_value": round(target_val, 2),
+            "dollar_move": round(target_val - current_val, 2),
+        })
+    # Sort by target weight desc so the biggest positions land at the top;
+    # tickers with 0 target but holdings get pushed below.
+    rows.sort(key=lambda r: (-r["target_pct"], -r["current_pct"]))
+    return rows
+
+
+def macro_one_line(macro_state: dict) -> str:
+    """Build a single-line plain-English narrative from the macro regime state.
+
+    Used by Workspace, Client View, and the PDF cover so the wording stays
+    consistent across surfaces. Tone is advisor-to-advisor, no em dashes.
+    """
+    r = (macro_state or {}).get("result") or {}
+    if not r:
+        return "Macro regime data is still loading."
+    label = r.get("regime_label") or r.get("regime") or "neutral"
+    score = r.get("composite_score")
+    bias_map = {
+        "Deep Bear": "defensive bias, prioritise capital preservation",
+        "Late Bear": "cautious accumulation in core names",
+        "Transition": "balanced posture, defer large adds",
+        "Early Bull": "constructive, lean into core L1 and quality DeFi",
+        "Full Bull": "growth bias, trim defensives at the margin",
+    }
+    bias = bias_map.get(label, "balanced posture, defer large adds")
+    if score is not None:
+        return f"Composite {score}/100 ({label}). Suggested {bias}."
+    return f"{label}. Suggested {bias}."
+
+
 def compute_client_portfolio_history(
     client: dict,
     historical_prices: dict[str, list[tuple[float, float]]],

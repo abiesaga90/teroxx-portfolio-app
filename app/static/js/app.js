@@ -1,5 +1,11 @@
 // ── Tab switching ──
 function switchTab(tabId) {
+    const btn = document.querySelector(`[data-tab="${tabId}"]`);
+    // Refuse to switch to a tab that's hidden by the current app mode.
+    if (btn && btn.classList.contains('mode-hidden')) {
+        const firstVisible = document.querySelector('.tab-btn:not(.mode-hidden)');
+        if (firstVisible) tabId = firstVisible.getAttribute('data-tab');
+    }
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.getElementById(tabId)?.classList.add('active');

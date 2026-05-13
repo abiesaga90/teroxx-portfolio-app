@@ -3,8 +3,14 @@
     <div class="card-header">P&L Attribution</div>
     <div class="chart-section">
         <div class="chart-box-wide">
+            {% if data.total_pnl != 0 or data.total_current > 0 %}
             <canvas id="pnl-chart"></canvas>
             <div class="chart-label">Unrealized P&L by position (sorted by magnitude)</div>
+            {% else %}
+            <p style="padding:24px;color:var(--text-muted);font-size:0.8rem;text-align:center;">
+                Enter Current $ and Entry Price values below — or load a client portfolio above — to see per-position P&L.
+            </p>
+            {% endif %}
         </div>
     </div>
 </div>

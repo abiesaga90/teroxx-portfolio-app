@@ -9,6 +9,11 @@
     <script src="/static/js/htmx.min.js"></script>
     <script src="/static/js/chart.min.js"></script>
     <script>
+    // Seed SessionContext so client JS can render the right mode without a fetch.
+    window.__INITIAL_CTX__ = {{ ctx|tojson }};
+    </script>
+    <script src="/static/js/session.js"></script>
+    <script>
     // Apply dark mode before render to prevent flash
     (function() {
         var saved = localStorage.getItem('theme') || 'light';
@@ -30,7 +35,7 @@
     }
     </script>
 </head>
-<body>
+<body data-mode="{{ app_mode|default('advisor') }}">
 
 <!-- Header -->
 <header class="header">
@@ -74,24 +79,56 @@
     <input type="hidden" name="portfolio_value" value="{{ portfolio_value }}">
 </form>
 
-<!-- Tab Navigation -->
+<!-- Mode Switch (Advisor / Research / Client View) -->
+<nav class="mode-switch" data-mode="{{ app_mode|default('advisor') }}" aria-label="Application mode">
+    <button class="mode-btn" data-mode="advisor" onclick="setAppMode('advisor')">
+        <span class="mode-label">Advisor</span>
+        <span class="mode-sub">workbench</span>
+    </button>
+    <button class="mode-btn" data-mode="research" onclick="setAppMode('research')">
+        <span class="mode-label">Research</span>
+        <span class="mode-sub">universe &amp; signals</span>
+    </button>
+    <button class="mode-btn" data-mode="client_view" onclick="setAppMode('client_view')">
+        <span class="mode-label">Client View</span>
+        <span class="mode-sub">screen-share</span>
+    </button>
+</nav>
+
+<!-- Tab Navigation (mode-scoped via data-modes; JS hides tabs that don't apply) -->
 <nav class="tab-nav">
-    <button class="tab-btn active" data-tab="tab-portfolio" onclick="switchTab('tab-portfolio')">Portfolio</button>
-    <button class="tab-btn" data-tab="tab-scoring" onclick="switchTab('tab-scoring')">Scoring</button>
-    <button class="tab-btn" data-tab="tab-data" onclick="switchTab('tab-data')">Data</button>
-    <button class="tab-btn" data-tab="tab-dca" onclick="switchTab('tab-dca')">DCA Planner</button>
-    <button class="tab-btn" data-tab="tab-rebalance-pnl" onclick="switchTab('tab-rebalance-pnl')">Rebalancing &amp; P&L</button>
-    <button class="tab-btn" data-tab="tab-clients" onclick="switchTab('tab-clients')">Client Portfolios</button>
-    <button class="tab-btn" data-tab="tab-market-context" onclick="switchTab('tab-market-context')">Market Context</button>
-    <button class="tab-btn" data-tab="tab-defi-macro" onclick="switchTab('tab-defi-macro')">DeFi Macro</button>
-    <button class="tab-btn" data-tab="tab-methodology" onclick="switchTab('tab-methodology')">Methodology</button>
-    <button class="tab-btn" data-tab="tab-apis" onclick="switchTab('tab-apis')">APIs</button>
+    <button class="tab-btn{% if app_mode == 'advisor' %} active{% endif %}" data-tab="tab-workspace" data-modes="advisor" onclick="switchTab('tab-workspace')">Workspace</button>
+    <button class="tab-btn{% if app_mode != 'advisor' %} active{% endif %}" data-tab="tab-portfolio" data-modes="advisor,research" onclick="switchTab('tab-portfolio')">Portfolio</button>
+    <button class="tab-btn" data-tab="tab-clients" data-modes="advisor,client_view" onclick="switchTab('tab-clients')">Client Portfolios</button>
+    <button class="tab-btn" data-tab="tab-rebalance-pnl" data-modes="advisor" onclick="switchTab('tab-rebalance-pnl')">Rebalancing &amp; P&L</button>
+    <button class="tab-btn" data-tab="tab-market-context" data-modes="advisor,research" onclick="switchTab('tab-market-context')">Market Context</button>
+    <button class="tab-btn" data-tab="tab-scoring" data-modes="research" onclick="switchTab('tab-scoring')">Scoring</button>
+    <button class="tab-btn" data-tab="tab-data" data-modes="research" onclick="switchTab('tab-data')">Data</button>
+    <button class="tab-btn" data-tab="tab-dca" data-modes="research" onclick="switchTab('tab-dca')">DCA Planner</button>
+    <button class="tab-btn" data-tab="tab-defi-macro" data-modes="research" onclick="switchTab('tab-defi-macro')">DeFi Macro</button>
+    <button class="tab-btn" data-tab="tab-methodology" data-modes="research" onclick="switchTab('tab-methodology')">Methodology</button>
+    <button class="tab-btn" data-tab="tab-apis" data-modes="research" onclick="switchTab('tab-apis')">APIs</button>
 </nav>
 
 <main class="main">
 
+    <!-- ═══ Tab 0: Workspace (Advisor mode default landing) ═══ -->
+    <div id="tab-workspace" class="tab-panel{% if app_mode == 'advisor' %} active{% endif %}">
+        <div id="workspace-results"
+             hx-get="/api/workspace"
+             hx-trigger="load once"
+             hx-indicator="#workspace-loading"
+             hx-on::after-settle="requestAnimationFrame(function(){setTimeout(tryRenderAllCharts,50)})">
+            <div class="card"><div class="card-header">Workspace</div>
+                <p style="padding:12px 32px;color:var(--text-muted);font-size:0.8rem;">
+                    <span id="workspace-loading"><span class="spinner"></span> Loading workspace...</span>
+                </p>
+            </div>
+        </div>
+    </div>
+
     <!-- ═══ Tab 1: Portfolio ═══ -->
-    <div id="tab-portfolio" class="tab-panel active">
+    <div id="tab-portfolio" class="tab-panel{% if app_mode != 'advisor' %} active{% endif %}">
         <div class="card">
             <div class="card-header">Portfolio</div>
             <form id="portfolio-form" class="controls"
@@ -286,9 +323,25 @@
                     <input type="number" name="portfolio_value" value="100000" min="0" step="1000"
                            onchange="syncGlobal('portfolio_value', this.value)">
                 </div>
+                <div class="control-group">
+                    <span class="control-label">Load Client</span>
+                    <select id="rpnl-client-select" onchange="loadClientIntoRebalance(this.value)">
+                        <option value="">— Self-managed —</option>
+                        {% for c in clients_list %}
+                        <option value="{{ c.id }}">{{ c.name }} ({{ c.profile }})</option>
+                        {% endfor %}
+                    </select>
+                    <button type="button" id="rpnl-client-clear" onclick="clearRebalanceClient()"
+                            style="margin-left:6px;padding:4px 10px;font-size:0.7rem;display:none;">
+                        Clear
+                    </button>
+                </div>
                 <input type="hidden" name="positions_json" value="{}">
                 <span id="rpnl-loading" class="htmx-indicator"><span class="spinner"></span></span>
             </form>
+            <p id="rpnl-client-banner" style="display:none;padding:0 16px 12px;font-size:0.75rem;color:var(--text-muted);">
+                Showing <strong id="rpnl-client-banner-name"></strong> — Current $ uses live mark-to-market on existing lots; Entry Price is the qty-weighted average. Edit any cell to override.
+            </p>
         </div>
         <div id="rebalance-pnl-results"></div>
     </div>
@@ -764,6 +817,7 @@ function switchDCAMode(mode) {
 // ── Rebalance + P&L position persistence ──
 function saveRPnlPositions() {
     const positions = {};
+    const loadedClient = sessionStorage.getItem('rpnlLoadedClient');
     document.querySelectorAll('.rpnl-row').forEach(row => {
         const ticker = row.dataset.ticker;
         const current = parseFloat(row.querySelector('.rpnl-current')?.value) || 0;
@@ -772,7 +826,11 @@ function saveRPnlPositions() {
             positions[ticker] = { current_usd: current, entry_price: entry };
         }
     });
-    localStorage.setItem('rpnlPositions', JSON.stringify(positions));
+    // Don't pollute the self-managed snapshot with edits made while a
+    // client portfolio is loaded.
+    if (!loadedClient) {
+        localStorage.setItem('rpnlPositions', JSON.stringify(positions));
+    }
     return positions;
 }
 
@@ -783,6 +841,53 @@ function triggerRebalancePnl() {
         form.querySelector('[name=positions_json]').value = JSON.stringify(positions);
         htmx.trigger(form, 'change');
     }
+}
+
+async function loadClientIntoRebalance(clientId) {
+    const form = document.getElementById('rebalance-pnl-form');
+    const banner = document.getElementById('rpnl-client-banner');
+    const bannerName = document.getElementById('rpnl-client-banner-name');
+    const clearBtn = document.getElementById('rpnl-client-clear');
+    if (!form) return;
+    if (!clientId) {
+        // Switching back to self-managed — restore the user's own saved positions.
+        clearRebalanceClient();
+        return;
+    }
+    try {
+        const resp = await fetch('/api/client-positions?client_id=' + encodeURIComponent(clientId));
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const payload = await resp.json();
+        const positions = payload.positions || {};
+        form.querySelector('[name=positions_json]').value = JSON.stringify(positions);
+        // Remember which client is loaded but DO NOT overwrite the user's
+        // own rpnlPositions in localStorage — that snapshot is for the
+        // self-managed view.
+        sessionStorage.setItem('rpnlLoadedClient', clientId);
+        if (banner && bannerName && payload.client) {
+            bannerName.textContent = payload.client.name + ' (' + payload.client.profile + ')';
+            banner.style.display = '';
+        }
+        if (clearBtn) clearBtn.style.display = '';
+        htmx.trigger(form, 'change');
+    } catch (e) {
+        console.warn('Load client into rebalance failed:', e);
+    }
+}
+
+function clearRebalanceClient() {
+    const form = document.getElementById('rebalance-pnl-form');
+    const select = document.getElementById('rpnl-client-select');
+    const banner = document.getElementById('rpnl-client-banner');
+    const clearBtn = document.getElementById('rpnl-client-clear');
+    sessionStorage.removeItem('rpnlLoadedClient');
+    if (select) select.value = '';
+    if (banner) banner.style.display = 'none';
+    if (clearBtn) clearBtn.style.display = 'none';
+    if (!form) return;
+    const savedPos = localStorage.getItem('rpnlPositions') || '{}';
+    form.querySelector('[name=positions_json]').value = savedPos;
+    htmx.trigger(form, 'change');
 }
 
 function useTargetAsCurrent() {

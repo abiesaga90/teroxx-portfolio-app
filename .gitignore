@@ -6,3 +6,7 @@ __pycache__/
 dist/
 build/
 .DS_Store
+# SQLite store seeded at startup; data lives outside the repo.
+data/
+*.db
+*.db-journal

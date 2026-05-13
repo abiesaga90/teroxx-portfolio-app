@@ -1,26 +1,151 @@
 <!-- Client Portfolio: picker + P&L view -->
 <div class="card">
-    <div class="card-header">Client Portfolios</div>
+    <div class="card-header">
+        Client Portfolios
+        <button type="button" onclick="openClientEditor(null)" class="btn-ghost-sm" style="float:right;margin:8px 24px 0 0;">+ New client</button>
+    </div>
     <p style="padding:0 32px 8px;font-size:0.7rem;color:var(--text-muted);">
-        Demo portfolios for advisory review. Entry prices and dates are illustrative. Mark-to-market uses live prices (updated {{ price_age }}).
+        Live portfolios stored locally. Mark-to-market uses live prices (updated {{ price_age }}). Edits write to the advisor audit trail.
     </p>
     <div style="display:flex;flex-wrap:wrap;gap:12px;padding:12px 32px 20px;">
         {% for c in clients %}
-        <button
-            class="client-card{% if selected == c.id %} selected{% endif %}"
-            hx-get="/api/client-portfolio?client_id={{ c.id }}"
-            hx-target="#client-portfolio-results"
-            hx-swap="innerHTML">
-            <div class="client-card-name">{{ c.name }}</div>
-            <div class="client-card-meta">
-                <span class="tag tag-{{ c.profile|lower }}">{{ c.profile }}</span>
-                <span style="color:var(--text-muted);font-size:0.65rem;">{{ c.domicile }}</span>
-            </div>
-            <div class="client-card-tagline">{{ c.tagline }}</div>
-        </button>
+        <div class="client-card-wrap" style="position:relative;">
+            <button
+                class="client-card{% if selected == c.id %} selected{% endif %}"
+                hx-get="/api/client-portfolio?client_id={{ c.id }}"
+                hx-target="#client-portfolio-results"
+                hx-swap="innerHTML">
+                <div class="client-card-name">{{ c.name }}</div>
+                <div class="client-card-meta">
+                    <span class="tag tag-{{ c.profile|lower }}">{{ c.profile }}</span>
+                    <span style="color:var(--text-muted);font-size:0.65rem;">{{ c.domicile }}</span>
+                </div>
+                <div class="client-card-tagline">{{ c.tagline }}</div>
+            </button>
+            <button type="button" class="client-card-edit"
+                    title="Edit {{ c.name }}"
+                    onclick="event.stopPropagation();openClientEditor('{{ c.id }}')">Edit</button>
+        </div>
         {% endfor %}
     </div>
 </div>
+
+<!-- Client editor drawer (hidden by default; opened by openClientEditor) -->
+<div id="client-editor-drawer" class="client-editor" style="display:none;">
+    <div class="client-editor-panel">
+        <div class="client-editor-head">
+            <strong id="client-editor-title">New client</strong>
+            <button type="button" onclick="closeClientEditor()" class="btn-ghost-sm">Close</button>
+        </div>
+        <form id="client-editor-form" onsubmit="return submitClientEditor(event)">
+            <input type="hidden" name="id" value="">
+            <label>Name<input name="name" required maxlength="160"></label>
+            <label>Risk profile
+                <select name="profile">
+                    <option>Conservative</option><option selected>Balanced</option>
+                    <option>Growth</option><option>Aggressive</option>
+                </select>
+            </label>
+            <label>Domicile (free-text)<input name="domicile" placeholder="Munich, DE"></label>
+            <label>Domicile country (ISO-2)<input name="domicile_country" maxlength="2" placeholder="DE"></label>
+            <label>Reporting currency
+                <select name="currency"><option>USD</option><option>EUR</option><option>GBP</option><option>CHF</option><option>AED</option></select>
+            </label>
+            <label>Inception date<input type="date" name="inception_date"></label>
+            <label>Starting capital (USD)<input type="number" step="1000" name="starting_capital_usd"></label>
+            <label>Tagline<input name="tagline" maxlength="240" placeholder="One-line client framing"></label>
+            <label>Risk notes<textarea name="risk_notes" rows="3"></textarea></label>
+            <div class="client-editor-actions">
+                <button type="submit" class="btn-primary-sm">Save</button>
+                <button type="button" onclick="deleteCurrentClient()" id="client-editor-delete" class="btn-danger-sm" style="display:none;">Delete</button>
+            </div>
+            <div id="client-editor-status" style="margin-top:8px;font-size:0.7rem;color:var(--text-muted);"></div>
+        </form>
+    </div>
+</div>
+
+<script>
+async function openClientEditor(clientId) {
+    const drawer = document.getElementById('client-editor-drawer');
+    const form = document.getElementById('client-editor-form');
+    const title = document.getElementById('client-editor-title');
+    const del = document.getElementById('client-editor-delete');
+    form.reset();
+    form.elements['id'].value = '';
+    if (clientId) {
+        try {
+            const resp = await fetch('/api/clients/' + encodeURIComponent(clientId), { credentials: 'same-origin' });
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            const data = await resp.json();
+            form.elements['id'].value = data.id;
+            for (const k of ['name','profile','domicile','domicile_country','currency','inception_date','starting_capital_usd','tagline','risk_notes']) {
+                if (form.elements[k] && data[k] != null) form.elements[k].value = data[k];
+            }
+            title.textContent = 'Editing ' + data.name;
+            del.style.display = '';
+        } catch (e) {
+            document.getElementById('client-editor-status').textContent = 'Could not load client: ' + e.message;
+        }
+    } else {
+        title.textContent = 'New client';
+        del.style.display = 'none';
+    }
+    drawer.style.display = 'flex';
+}
+function closeClientEditor() {
+    document.getElementById('client-editor-drawer').style.display = 'none';
+}
+async function submitClientEditor(ev) {
+    ev.preventDefault();
+    const form = ev.target;
+    const id = form.elements['id'].value;
+    const status = document.getElementById('client-editor-status');
+    const payload = {};
+    for (const el of form.elements) {
+        if (el.name && el.name !== 'id') {
+            let v = el.value;
+            if (el.type === 'number') v = v === '' ? null : parseFloat(v);
+            if (v === '') v = null;
+            payload[el.name] = v;
+        }
+    }
+    const url = id ? '/api/clients/' + encodeURIComponent(id) : '/api/clients';
+    const method = id ? 'PATCH' : 'POST';
+    status.textContent = 'Saving...';
+    try {
+        const resp = await fetch(url, {
+            method, credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        if (!resp.ok) {
+            const t = await resp.text();
+            throw new Error('HTTP ' + resp.status + ': ' + t);
+        }
+        status.textContent = 'Saved.';
+        closeClientEditor();
+        htmx.ajax('GET', '/api/client-portfolio', '#client-portfolio-results');
+    } catch (e) {
+        status.textContent = 'Save failed: ' + e.message;
+    }
+    return false;
+}
+async function deleteCurrentClient() {
+    const form = document.getElementById('client-editor-form');
+    const id = form.elements['id'].value;
+    if (!id) return;
+    if (!confirm('Soft-delete this client? They can be restored from the audit log later.')) return;
+    const status = document.getElementById('client-editor-status');
+    try {
+        const resp = await fetch('/api/clients/' + encodeURIComponent(id), { method: 'DELETE', credentials: 'same-origin' });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        closeClientEditor();
+        htmx.ajax('GET', '/api/client-portfolio', '#client-portfolio-results');
+    } catch (e) {
+        status.textContent = 'Delete failed: ' + e.message;
+    }
+}
+</script>
 
 {% if pnl %}
 {% set s = pnl.summary %}

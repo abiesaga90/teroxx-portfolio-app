@@ -1,0 +1,207 @@
+<!-- Workspace: unified per-client advisor view -->
+{% if not selected_client %}
+<div class="card workspace-empty">
+    <div class="card-header">Workspace</div>
+    <p style="padding:24px 32px;color:var(--text-muted);font-size:0.85rem;">
+        Pick a client below to load their portfolio, allocation, drift and macro framing in one view.
+    </p>
+    <div style="display:flex;flex-wrap:wrap;gap:12px;padding:0 32px 24px;">
+        {% for c in clients %}
+        <button class="client-card"
+                hx-get="/api/workspace?client_id={{ c.id }}"
+                hx-target="#workspace-results"
+                hx-swap="innerHTML">
+            <div class="client-card-name">{{ c.name }}</div>
+            <div class="client-card-meta">
+                <span class="tag tag-{{ c.profile|lower }}">{{ c.profile }}</span>
+                <span style="color:var(--text-muted);font-size:0.65rem;">{{ c.domicile }}</span>
+            </div>
+            <div class="client-card-tagline">{{ c.tagline }}</div>
+        </button>
+        {% endfor %}
+    </div>
+</div>
+{% else %}
+{% set c = selected_client %}
+{% set s = pnl.summary %}
+{% set is_up = s.total_pnl >= 0 %}
+
+<!-- Client picker pill bar (compact) -->
+<div class="workspace-picker">
+    <span class="workspace-picker-label">Workspace</span>
+    {% for cl in clients %}
+    <button class="workspace-pill{% if cl.id == c.id %} active{% endif %}"
+            hx-get="/api/workspace?client_id={{ cl.id }}"
+            hx-target="#workspace-results"
+            hx-swap="innerHTML">{{ cl.name }}</button>
+    {% endfor %}
+</div>
+
+<!-- 1. Header strip ─ client framing + portfolio totals -->
+<div class="card workspace-header">
+    <div class="workspace-header-grid">
+        <div class="workspace-client-id">
+            <div class="ws-name">{{ c.name }}</div>
+            <div class="ws-sub">
+                <span class="tag tag-{{ c.profile|lower }}">{{ c.profile }}</span>
+                <span>{{ c.domicile }}</span>
+                {% if c.inception_date %}<span>since {{ c.inception_date }} · {{ s.days_since_entry }}d</span>{% endif %}
+            </div>
+            {% if c.tagline %}<div class="ws-tagline">{{ c.tagline }}</div>{% endif %}
+        </div>
+        <div class="workspace-kpis">
+            <div class="ws-kpi"><span class="ws-kpi-label">Invested</span><span class="ws-kpi-value">${{ "{:,.0f}".format(s.total_cost) }}</span></div>
+            <div class="ws-kpi"><span class="ws-kpi-label">Current</span><span class="ws-kpi-value">${{ "{:,.0f}".format(s.total_value) }}</span></div>
+            <div class="ws-kpi">
+                <span class="ws-kpi-label">P&L</span>
+                <span class="ws-kpi-value {{ 'pos' if is_up else 'neg' }}">{{ '+' if is_up else '' }}${{ "{:,.0f}".format(s.total_pnl) }}</span>
+            </div>
+            <div class="ws-kpi">
+                <span class="ws-kpi-label">Return</span>
+                <span class="ws-kpi-value {{ 'pos' if is_up else 'neg' }}">{{ '+' if is_up else '' }}{{ "{:.1f}".format(s.total_pnl_pct) }}%</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 2. Macro framing (compact) -->
+{% if macro and macro.result %}
+{% set r = macro.result %}
+<div class="card workspace-macro">
+    <div class="card-header">
+        Macro Context
+        <span style="font-size:0.7rem;color:var(--text-muted);font-family:'Sohne',sans-serif;font-weight:400;margin-left:8px;">
+            {{ r.sources_available }}/{{ r.sources_total }} sources
+        </span>
+    </div>
+    <div class="workspace-macro-row">
+        <div class="ws-macro-score" style="color:{{ r.regime_color }};">
+            {{ r.composite_score }}
+            <span class="ws-macro-label" style="background:{{ r.regime_color }}22;color:{{ r.regime_color }};">{{ r.regime_label }}</span>
+        </div>
+        <div class="ws-macro-narrative">
+            {{ macro_narrative }}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- 3. Allocation card: current vs target -->
+{% if allocation %}
+<div class="card">
+    <div class="card-header">
+        Allocation — Current vs Target
+        <span style="font-size:0.7rem;color:var(--text-muted);font-family:'Sohne',sans-serif;font-weight:400;margin-left:8px;">
+            Target = {{ c.profile }} · {{ universe }}
+        </span>
+    </div>
+    <div class="table-wrap">
+        <table class="workspace-alloc-table">
+            <thead>
+                <tr>
+                    <th>Asset</th>
+                    <th class="right">Current %</th>
+                    <th class="right">Target %</th>
+                    <th class="right">Δ pp</th>
+                    <th class="right">$ to move</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in allocation %}
+                <tr>
+                    <td class="ticker"><strong>{{ r.ticker }}</strong> <span style="color:var(--text-muted);font-size:0.7rem;">{{ r.name }}</span></td>
+                    <td class="right">{{ "{:.2f}".format(r.current_pct) }}%</td>
+                    <td class="right">{{ "{:.2f}".format(r.target_pct) }}%</td>
+                    <td class="right {{ 'pos' if r.drift_pp <= 0.5 and r.drift_pp >= -0.5 else ('neg' if r.drift_pp > 0 else 'pos') }}">{{ "{:+.2f}".format(r.drift_pp) }}</td>
+                    <td class="right">{% if r.dollar_move >= 0 %}+${{ "{:,.0f}".format(r.dollar_move) }}{% else %}-${{ "{:,.0f}".format(-r.dollar_move) }}{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<!-- 4. P&L over time (embed) -->
+{% if history and history|length >= 2 %}
+<div class="card">
+    <div class="card-header">P&L Over Time</div>
+    <div style="padding:12px 32px 20px;">
+        <div style="height:260px;position:relative;">
+            <canvas id="workspace-pnl-chart"></canvas>
+        </div>
+    </div>
+    <div id="workspace-pnl-data" style="display:none">{{ history|tojson }}</div>
+</div>
+{% endif %}
+
+<!-- 5. Activity history -->
+{% if activity %}
+<div class="card">
+    <div class="card-header">Recent Activity <span style="font-size:0.7rem;color:var(--text-muted);font-family:'Sohne',sans-serif;font-weight:400;margin-left:8px;">last {{ activity|length }} actions</span></div>
+    <div class="table-wrap">
+        <table class="workspace-activity">
+            <thead>
+                <tr><th>When</th><th>Advisor</th><th>Action</th><th>Detail</th></tr>
+            </thead>
+            <tbody>
+                {% for a in activity %}
+                <tr>
+                    <td style="font-family:monospace;font-size:0.7rem;color:var(--text-muted);">{{ a.created_at }}</td>
+                    <td>{{ a.actor_email or '—' }}</td>
+                    <td><span class="tag">{{ a.action_type }}</span></td>
+                    <td style="font-size:0.7rem;color:var(--text-muted);max-width:340px;overflow:hidden;text-overflow:ellipsis;">{{ a.payload or '' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<script>
+(function() {
+    var dataEl = document.getElementById('workspace-pnl-data');
+    var canvas = document.getElementById('workspace-pnl-chart');
+    if (!dataEl || !canvas || typeof Chart === 'undefined') return;
+    var rows;
+    try { rows = JSON.parse(dataEl.textContent); } catch(e) { return; }
+    if (!rows || rows.length < 2) return;
+    if (window._wsPnlChart) { window._wsPnlChart.destroy(); }
+    var labels = rows.map(function(r){
+        var t = new Date(r.ts * 1000);
+        return (t.getMonth()+1) + '/' + t.getDate() + '/' + String(t.getFullYear()).slice(-2);
+    });
+    var values = rows.map(function(r){ return r.value; });
+    var costs  = rows.map(function(r){ return r.cost; });
+    window._wsPnlChart = new Chart(canvas, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [
+                { label: 'Portfolio Value', data: values, borderColor: '#0b688c', backgroundColor: 'rgba(11,104,140,0.12)', fill: true, tension: 0.25, pointRadius: 0, borderWidth: 2 },
+                { label: 'Cost Basis', data: costs, borderColor: '#bfb3a8', borderDash: [4,4], backgroundColor: 'transparent', fill: false, tension: 0, pointRadius: 0, borderWidth: 1.5 },
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: { legend: { display: true, labels: { font: { size: 11 } } } },
+            scales: {
+                y: { ticks: { callback: function(v){ return '$' + Math.round(v).toLocaleString(); }, font: { size: 10 } } },
+                x: { ticks: { maxTicksLimit: 10, autoSkip: true, font: { size: 10 } } },
+            },
+        },
+    });
+})();
+
+// Persist client_id into SessionContext so other tabs pick it up.
+(function() {
+    var cid = "{{ selected_client.id if selected_client else '' }}";
+    if (cid && window.teroxx && window.teroxx.session) {
+        window.teroxx.session.patch({ client_id: cid });
+    }
+})();
+</script>
+{% endif %}
