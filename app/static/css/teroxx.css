@@ -1340,3 +1340,18 @@ sup.src {
     font-family: 'Sohne', monospace, sans-serif;
     font-size: 0.65rem;
 }
+
+/* ── Workspace action row (Phase 3) ────────────────────────────── */
+.workspace-actions {
+    display: flex; gap: 8px;
+    padding: 0 32px 16px;
+    align-items: center;
+}
+.workspace-actions a {
+    text-decoration: none;
+    display: inline-block;
+}
+.proposal-btn::after {
+    content: " →";
+    margin-left: 2px;
+}

@@ -1,0 +1,515 @@
+/* ─────────────────────────────────────────────────────────────────
+   Teroxx Investment Advisory — Proposal PDF stylesheet
+   Targets WeasyPrint (paged-media); single source of truth for the
+   McKinsey-quality layout, typography and exhibit chrome. Reused by
+   the HTML preview at /api/clients/{id}/proposal.html.
+   ───────────────────────────────────────────────────────────────── */
+
+/* ── Fonts (must be served from /static/fonts/) ─────────────────── */
+@font-face {
+    font-family: 'Sohne';
+    src: url('/static/fonts/Sohne-Buch.otf') format('opentype');
+    font-weight: 400; font-style: normal;
+}
+@font-face {
+    font-family: 'Sohne';
+    src: url('/static/fonts/Sohne-Halbfett.otf') format('opentype');
+    font-weight: 600; font-style: normal;
+}
+@font-face {
+    font-family: 'Sohne';
+    src: url('/static/fonts/Sohne-Fett.otf') format('opentype');
+    font-weight: 700; font-style: normal;
+}
+@font-face {
+    font-family: 'SometimesTimes';
+    src: url('/static/fonts/SometimesTimes-Medium.otf') format('opentype');
+    font-weight: 500; font-style: normal;
+}
+
+/* ── Brand tokens ───────────────────────────────────────────────── */
+:root {
+    --nightblue: #010626;
+    --deep-indigo: #060D43;
+    --electric-sky: #0B688C;
+    --sandstone: #BFB3A8;
+    --cream: #ECE8E5;
+    --sunset-ember: #D06643;
+    --white: #FFFFFF;
+    --success: #1A8A4A;
+    --danger: #C0432A;
+    --text-body: #060D43;
+    --text-muted: rgba(6, 13, 67, 0.55);
+    --rule: rgba(6, 13, 67, 0.18);
+}
+
+/* ── Page geometry ──────────────────────────────────────────────── */
+@page {
+    size: A4 portrait;
+    margin: 22mm 18mm 22mm 18mm;
+    @top-left {
+        content: element(running-header);
+    }
+    @bottom-left {
+        content: element(running-footer);
+    }
+    @bottom-right {
+        content: "Page " counter(page) " of " counter(pages);
+        font-family: 'Sohne', Arial, sans-serif;
+        font-size: 8pt;
+        color: var(--text-muted);
+    }
+}
+@page :first {
+    margin: 0;                   /* full-bleed cover */
+    @top-left { content: none; }
+    @bottom-left { content: none; }
+    @bottom-right { content: none; }
+}
+
+/* Running header / footer elements (pulled out of flow). */
+.running-header {
+    position: running(running-header);
+    font-family: 'Sohne', Arial, sans-serif;
+    font-size: 8pt;
+    color: var(--text-muted);
+    display: flex;
+    gap: 12pt;
+    align-items: center;
+}
+.running-header .brand {
+    font-family: 'SometimesTimes', Georgia, serif;
+    color: var(--nightblue);
+    font-size: 9pt;
+    letter-spacing: 0.04em;
+}
+.running-footer {
+    position: running(running-footer);
+    font-family: 'Sohne', Arial, sans-serif;
+    font-size: 8pt;
+    color: var(--text-muted);
+}
+
+/* ── Base typography ────────────────────────────────────────────── */
+* { box-sizing: border-box; }
+html, body {
+    background: var(--white);
+    color: var(--text-body);
+    font-family: 'Sohne', Arial, sans-serif;
+    font-size: 10pt;
+    line-height: 1.45;
+    margin: 0;
+    padding: 0;
+    counter-reset: exhibit;  /* exhibit numbering is document-wide */
+}
+h1, h2, h3, h4 {
+    font-family: 'SometimesTimes', Georgia, serif;
+    color: var(--nightblue);
+    margin: 0;
+    font-weight: 500;
+    line-height: 1.18;
+}
+strong, .num { font-weight: 600; }
+p { margin: 0 0 8pt; }
+a { color: var(--electric-sky); text-decoration: none; }
+
+/* Page-break utilities */
+.page-break { page-break-after: always; break-after: page; }
+.no-break   { page-break-inside: avoid; break-inside: avoid; }
+
+/* ── Cover page ─────────────────────────────────────────────────── */
+.cover {
+    width: 210mm;
+    height: 297mm;
+    background: var(--nightblue);
+    color: var(--white);
+    position: relative;
+    padding: 28mm 22mm 22mm 22mm;
+    page-break-after: always;
+}
+.cover .wordmark {
+    font-family: 'SometimesTimes', Georgia, serif;
+    font-size: 18pt;
+    letter-spacing: 0.03em;
+    color: var(--white);
+}
+.cover .wordmark-sub {
+    font-family: 'Sohne', Arial, sans-serif;
+    font-size: 8pt;
+    letter-spacing: 0.18em;
+    color: var(--sandstone);
+    margin-top: 6pt;
+    text-transform: uppercase;
+}
+.cover .rule {
+    width: 60pt;
+    height: 1.5pt;
+    background: var(--sunset-ember);
+    margin: 22mm 0 14mm;
+}
+.cover h1 {
+    color: var(--white);
+    font-size: 42pt;
+    line-height: 1.05;
+    max-width: 130mm;
+    font-weight: 500;
+}
+.cover .subtitle {
+    margin-top: 10mm;
+    font-family: 'Sohne', Arial, sans-serif;
+    font-size: 11pt;
+    color: var(--cream);
+    line-height: 1.5;
+    max-width: 130mm;
+}
+.cover .meta {
+    position: absolute;
+    bottom: 28mm;
+    left: 22mm;
+    right: 22mm;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+}
+.cover .meta .left {
+    font-family: 'Sohne', Arial, sans-serif;
+    font-size: 9pt;
+    color: var(--cream);
+    line-height: 1.6;
+}
+.cover .meta .left .lbl {
+    color: var(--sandstone);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-size: 7.5pt;
+    margin-right: 8pt;
+}
+.cover .meta .right {
+    font-family: 'Sohne', Arial, sans-serif;
+    font-size: 7pt;
+    color: var(--sandstone);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    text-align: right;
+    max-width: 60mm;
+}
+.cover .mark {
+    position: absolute;
+    bottom: 18mm;
+    right: 18mm;
+    width: 38mm;
+    height: 38mm;
+    color: var(--electric-sky);
+    opacity: 0.55;
+}
+
+/* ── Standard page chrome ───────────────────────────────────────── */
+.page {
+    page-break-after: always;
+    break-after: page;
+    padding-bottom: 6mm;
+}
+.page:last-child { page-break-after: auto; }
+
+.page-tag {
+    font-family: 'Sohne', Arial, sans-serif;
+    font-size: 7.5pt;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--electric-sky);
+    margin-bottom: 6pt;
+}
+.action-title {
+    font-family: 'SometimesTimes', Georgia, serif;
+    font-size: 18pt;
+    color: var(--nightblue);
+    line-height: 1.22;
+    max-width: 165mm;
+    margin: 0 0 12pt;
+}
+.action-rule {
+    height: 1pt;
+    background: var(--rule);
+    margin: 4pt 0 14pt;
+}
+
+/* ── Exhibits ───────────────────────────────────────────────────── */
+.exhibit {
+    margin-bottom: 16pt;
+    page-break-inside: avoid;
+}
+.exhibit::before {
+    counter-increment: exhibit;
+    content: "EXHIBIT " counter(exhibit);
+    display: block;
+    font-family: 'Sohne', Arial, sans-serif;
+    font-size: 7pt;
+    letter-spacing: 0.16em;
+    color: var(--electric-sky);
+    margin-bottom: 2pt;
+}
+.exhibit-title {
+    font-family: 'SometimesTimes', Georgia, serif;
+    font-size: 12pt;
+    color: var(--nightblue);
+    margin: 0 0 1pt;
+}
+.exhibit-subtitle {
+    font-family: 'Sohne', Arial, sans-serif;
+    font-size: 9pt;
+    color: var(--text-muted);
+    margin-bottom: 8pt;
+}
+.exhibit-body {
+    margin-bottom: 4pt;
+}
+.exhibit-source {
+    font-family: 'Sohne', Arial, sans-serif;
+    font-size: 7.5pt;
+    color: var(--text-muted);
+    border-top: 0.5pt solid var(--rule);
+    padding-top: 4pt;
+    margin-top: 4pt;
+}
+
+/* Two-column grid for executive summary / mac framing pages */
+.grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14pt;
+}
+.grid-3 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10pt;
+}
+
+/* KPI blocks (executive summary) */
+.kpi {
+    border-top: 1.5pt solid var(--nightblue);
+    padding-top: 4pt;
+}
+.kpi .lbl {
+    font-family: 'Sohne', Arial, sans-serif;
+    font-size: 7pt;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 2pt;
+}
+.kpi .val {
+    font-family: 'SometimesTimes', Georgia, serif;
+    font-size: 22pt;
+    color: var(--nightblue);
+    line-height: 1.1;
+}
+.kpi .sub {
+    font-family: 'Sohne', Arial, sans-serif;
+    font-size: 8pt;
+    color: var(--text-muted);
+    margin-top: 2pt;
+}
+
+/* Bullet stack with brand markers */
+.bullets {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+.bullets li {
+    padding: 6pt 0 6pt 14pt;
+    position: relative;
+    border-top: 0.5pt solid var(--rule);
+    font-size: 10pt;
+    line-height: 1.5;
+}
+.bullets li:first-child { border-top: none; padding-top: 0; }
+.bullets li::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 11pt;
+    width: 6pt; height: 6pt;
+    background: var(--sunset-ember);
+}
+
+/* ── Allocation table ───────────────────────────────────────────── */
+table.alloc {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 9pt;
+}
+table.alloc thead th {
+    font-family: 'Sohne', Arial, sans-serif;
+    font-weight: 600;
+    font-size: 8pt;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    text-align: left;
+    border-bottom: 1pt solid var(--nightblue);
+    padding: 4pt 6pt;
+}
+table.alloc tbody td {
+    padding: 5pt 6pt;
+    border-bottom: 0.5pt solid var(--rule);
+    vertical-align: top;
+}
+table.alloc .ticker {
+    font-family: 'Sohne', Arial, sans-serif;
+    font-weight: 700;
+    color: var(--nightblue);
+}
+table.alloc .name {
+    color: var(--text-muted);
+    font-size: 8pt;
+    font-weight: 400;
+}
+table.alloc .right { text-align: right; }
+table.alloc .tier-tag {
+    display: inline-block;
+    padding: 1pt 6pt;
+    background: rgba(11, 104, 140, 0.10);
+    color: var(--electric-sky);
+    border-radius: 2pt;
+    font-size: 7.5pt;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+table.alloc .reg-flag {
+    display: inline-block;
+    padding: 1pt 4pt;
+    background: rgba(208, 102, 67, 0.12);
+    color: var(--sunset-ember);
+    border-radius: 2pt;
+    font-size: 7pt;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    margin-left: 4pt;
+    text-transform: uppercase;
+}
+
+/* ── Per-asset rationale cards ──────────────────────────────────── */
+.rationale-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10pt;
+    margin-top: 8pt;
+}
+.rationale {
+    border-top: 1pt solid var(--nightblue);
+    padding: 6pt 0 0;
+    break-inside: avoid;
+}
+.rationale .top {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 4pt;
+}
+.rationale .ticker {
+    font-family: 'Sohne', Arial, sans-serif;
+    font-weight: 700;
+    font-size: 11pt;
+    color: var(--nightblue);
+}
+.rationale .name {
+    font-family: 'Sohne', Arial, sans-serif;
+    color: var(--text-muted);
+    font-size: 8pt;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-left: 4pt;
+}
+.rationale .tag {
+    font-family: 'Sohne', Arial, sans-serif;
+    font-size: 7pt;
+    color: var(--electric-sky);
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+}
+.rationale .headline {
+    font-family: 'SometimesTimes', Georgia, serif;
+    color: var(--nightblue);
+    font-size: 11pt;
+    margin: 0 0 4pt;
+}
+.rationale .body {
+    font-size: 9pt;
+    line-height: 1.5;
+    color: var(--text-body);
+}
+.rationale .footer-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 6pt;
+    padding-top: 4pt;
+    border-top: 0.5pt solid var(--rule);
+    font-family: 'Sohne', Arial, sans-serif;
+    font-size: 8pt;
+    color: var(--text-muted);
+}
+
+/* ── Macro framing exhibit row ──────────────────────────────────── */
+.macro-row {
+    display: grid;
+    grid-template-columns: 220pt 1fr;
+    gap: 16pt;
+    align-items: center;
+    margin-top: 8pt;
+}
+.indicator-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 9pt;
+    margin-top: 4pt;
+}
+.indicator-table th, .indicator-table td {
+    padding: 3pt 6pt;
+    border-bottom: 0.5pt solid var(--rule);
+}
+.indicator-table th {
+    font-family: 'Sohne', Arial, sans-serif;
+    font-weight: 600;
+    font-size: 8pt;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    text-align: left;
+}
+.indicator-table td.right { text-align: right; }
+.score-pos { color: var(--success); font-weight: 600; }
+.score-neg { color: var(--danger); font-weight: 600; }
+
+/* ── Appendix / disclaimers ─────────────────────────────────────── */
+.disclaimer-block {
+    background: var(--cream);
+    border-left: 3pt solid var(--nightblue);
+    padding: 10pt 12pt;
+    margin-bottom: 10pt;
+    font-size: 8.5pt;
+    line-height: 1.5;
+    color: var(--text-body);
+}
+.disclaimer-block h3 {
+    font-family: 'Sohne', Arial, sans-serif;
+    font-size: 8.5pt;
+    text-transform: uppercase;
+    letter-spacing: 0.10em;
+    color: var(--nightblue);
+    margin-bottom: 4pt;
+}
+.signoff {
+    margin-top: 14pt;
+    padding-top: 8pt;
+    border-top: 1pt solid var(--nightblue);
+    font-size: 8.5pt;
+    color: var(--text-body);
+}
+.signoff strong { color: var(--nightblue); }
+
+/* Pos/Neg deltas in alloc table */
+.delta-pos { color: var(--success); }
+.delta-neg { color: var(--danger); }
+.delta-neutral { color: var(--text-muted); }

@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Allocation Proposal — {{ client.name }}</title>
+    <link rel="stylesheet" href="{{ static_url('css/proposal.css') }}">
+</head>
+<body>
+
+<!-- Running header & footer pulled out of normal flow by `position: running()` -->
+<div class="running-header">
+    <span class="brand">Teroxx Advisory</span>
+    <span>Allocation Proposal · {{ client.name }} · {{ prepared_date }}</span>
+</div>
+<div class="running-footer">
+    Strictly confidential. Prepared by {{ prepared_by }} for {{ client.name }}.
+</div>
+
+<!-- ═══════════════ COVER ═══════════════ -->
+<section class="cover">
+    <div class="wordmark">Teroxx Advisory</div>
+    <div class="wordmark-sub">Investment Advisory · MiCA-regulated</div>
+    <div class="rule"></div>
+    <h1>Allocation Proposal</h1>
+    <div class="subtitle">{{ cover_subtitle }}</div>
+    <div class="meta">
+        <div class="left">
+            <div><span class="lbl">CLIENT</span>{{ client.name }}</div>
+            <div><span class="lbl">PROFILE</span>{{ client.profile }}{% if client.domicile %} · {{ client.domicile }}{% endif %}</div>
+            <div><span class="lbl">PREPARED BY</span>{{ prepared_by }}</div>
+            <div><span class="lbl">DATE</span>{{ prepared_date }}</div>
+        </div>
+        <div class="right">
+            Strictly confidential. Prepared for client use only.
+        </div>
+    </div>
+    <div class="mark">{{ teroxx_mark | safe }}</div>
+</section>
+
+<!-- ═══════════════ PAGE 2 — EXECUTIVE SUMMARY ═══════════════ -->
+<section class="page">
+    <div class="page-tag">Executive summary</div>
+    <h2 class="action-title">{{ exec_title }}</h2>
+    <div class="action-rule"></div>
+
+    <div class="grid-3" style="margin-bottom: 16pt;">
+        <div class="kpi">
+            <div class="lbl">Portfolio value</div>
+            <div class="val">${{ "{:,.0f}".format(portfolio_value) }}</div>
+            <div class="sub">{{ client.currency or "USD" }} reporting</div>
+        </div>
+        <div class="kpi">
+            <div class="lbl">Defensive sleeve</div>
+            <div class="val">{{ "{:.0f}".format(defensive_pct) }}%</div>
+            <div class="sub">USDC · EURC · PAXG</div>
+        </div>
+        <div class="kpi">
+            <div class="lbl">Risk profile</div>
+            <div class="val">{{ client.profile }}</div>
+            <div class="sub">{{ allocation_count }} positions</div>
+        </div>
+    </div>
+
+    <div class="grid-2">
+        <div>
+            <div class="exhibit">
+                <div class="exhibit-title">What this means</div>
+                <div class="exhibit-subtitle">Three implications for the client.</div>
+                <ul class="bullets">
+                    {% for b in exec_bullets %}
+                    <li>{{ b }}</li>
+                    {% endfor %}
+                </ul>
+                <div class="exhibit-source">
+                    Source: Teroxx Portfolio Allocation Model v4.1. Data as of {{ prepared_date }}.
+                </div>
+            </div>
+        </div>
+        <div>
+            <div class="exhibit">
+                <div class="exhibit-title">Recommended allocation</div>
+                <div class="exhibit-subtitle">Top-down weights, target.</div>
+                <div class="exhibit-body" style="text-align:center;">
+                    {{ donut_svg | safe }}
+                </div>
+                <table class="alloc" style="margin-top: 6pt;">
+                    <tbody>
+                    {% for row in donut_legend[:6] %}
+                    <tr>
+                        <td><span style="display:inline-block;width:8pt;height:8pt;background:{{ row.color }};margin-right:6pt;vertical-align:middle;"></span>{{ row.label }}</td>
+                        <td class="right">{{ "{:.1f}".format(row.share_pct) }}%</td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+                <div class="exhibit-source">
+                    Source: Teroxx PAM v4.1. Renormalised across {{ allocation_count }} positions.
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ═══════════════ PAGE 3 — RECOMMENDED ALLOCATION ═══════════════ -->
+<section class="page">
+    <div class="page-tag">Recommended allocation</div>
+    <h2 class="action-title">{{ allocation_title }}</h2>
+    <div class="action-rule"></div>
+
+    <div class="exhibit">
+        <div class="exhibit-title">Per-asset target weights</div>
+        <div class="exhibit-subtitle">
+            Sorted by target weight. The defensive sleeve is profile-driven and always included.
+        </div>
+        <table class="alloc">
+            <thead>
+                <tr>
+                    <th style="width: 28%;">Asset</th>
+                    <th>Tier</th>
+                    <th class="right">Weight %</th>
+                    <th class="right">$ allocation</th>
+                    <th>Role</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for row in allocation_rows %}
+                <tr>
+                    <td>
+                        <span class="ticker">{{ row.ticker }}</span>
+                        <span class="name">· {{ row.name }}</span>
+                        {% for flag in row.flags %}<span class="reg-flag">{{ flag }}</span>{% endfor %}
+                    </td>
+                    <td><span class="tier-tag">{{ row.tier_label }}</span></td>
+                    <td class="right">{{ "{:.2f}".format(row.target_pct) }}%</td>
+                    <td class="right">${{ "{:,.0f}".format(row.target_usd) }}</td>
+                    <td>{{ row.rationale_tag }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        <div class="exhibit-source">
+            Source: Teroxx PAM v4.1, profile {{ client.profile }}, universe {{ universe }}.
+            EMT = e-money token under MiCA Art. 40. ART = asset-referenced token.
+        </div>
+    </div>
+
+    <div class="exhibit">
+        <div class="exhibit-title">Allocation by tier</div>
+        <div class="exhibit-subtitle">Share of portfolio across defensive, core and extended sleeves.</div>
+        <div class="exhibit-body" style="text-align:center;">
+            {{ tier_bar_svg | safe }}
+        </div>
+        <div class="exhibit-source">Source: Teroxx PAM v4.1 tier framework.</div>
+    </div>
+</section>
+
+<!-- ═══════════════ PAGE 4 — MACRO FRAMING ═══════════════ -->
+<section class="page">
+    <div class="page-tag">Macro framing</div>
+    <h2 class="action-title">{{ macro_title }}</h2>
+    <div class="action-rule"></div>
+
+    <div class="exhibit">
+        <div class="exhibit-title">Composite regime read</div>
+        <div class="exhibit-subtitle">
+            22 indicators aggregated across sentiment, traditional markets, on-chain activity and technicals.
+        </div>
+        <div class="macro-row">
+            <div style="text-align:center;">{{ regime_gauge_svg | safe }}</div>
+            <div>
+                <p>{{ macro_paragraph_text }}</p>
+                {% if top_indicators %}
+                <table class="indicator-table">
+                    <thead><tr><th>Indicator</th><th>Category</th><th class="right">Score</th></tr></thead>
+                    <tbody>
+                    {% for ind in top_indicators %}
+                    <tr>
+                        <td>{{ ind.label }}</td>
+                        <td>{{ ind.category }}</td>
+                        <td class="right {{ 'score-pos' if ind.score is not none and ind.score >= 60 else ('score-neg' if ind.score is not none and ind.score <= 40 else '') }}">
+                            {{ "{:.0f}".format(ind.score) if ind.score is not none else "—" }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+                {% endif %}
+            </div>
+        </div>
+        <div class="exhibit-source">
+            Source: alternative.me, Yahoo Finance, Binance, blockchain.info, CoinMetrics, CryptoCompare. Composite renormalises when sources are unavailable.
+        </div>
+    </div>
+</section>
+
+<!-- ═══════════════ PAGES 5..N — PER-ASSET RATIONALE ═══════════════ -->
+{% if rationale_pages %}
+{% for chunk in rationale_pages %}
+<section class="page">
+    {% if loop.first %}
+    <div class="page-tag">Per-asset rationale</div>
+    <h2 class="action-title">Why each position earns its weight</h2>
+    <div class="action-rule"></div>
+    {% else %}
+    <div class="page-tag">Per-asset rationale (continued)</div>
+    <div class="action-rule"></div>
+    {% endif %}
+    <div class="rationale-grid">
+        {% for r in chunk %}
+        <div class="rationale">
+            <div class="top">
+                <div>
+                    <span class="ticker">{{ r.ticker }}</span><span class="name">{{ r.name }}</span>
+                </div>
+                <div class="tag">{{ r.tag }}</div>
+            </div>
+            <div class="headline">{{ r.headline }}</div>
+            <div class="body">{{ r.body }}</div>
+            <div class="footer-row">
+                <span>Weight target {{ "{:.2f}".format(r.target_pct) }}%</span>
+                {% if r.current_price %}<span>Spot ${{ "{:,.4f}".format(r.current_price) if r.current_price < 10 else "{:,.2f}".format(r.current_price) }}</span>{% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</section>
+{% endfor %}
+{% endif %}
+
+<!-- ═══════════════ IMPLEMENTATION NOTE ═══════════════ -->
+<section class="page">
+    <div class="page-tag">Implementation</div>
+    <h2 class="action-title">Phased build-out tailored to the {{ client.profile|lower }} profile</h2>
+    <div class="action-rule"></div>
+    <div class="exhibit">
+        <div class="exhibit-title">Suggested execution path</div>
+        <div class="exhibit-subtitle">Editable per client; defaults below.</div>
+        <p>{{ implementation_text }}</p>
+        <div class="exhibit-source">
+            Source: Teroxx Advisory house view, calibrated to {{ client.profile }} risk profile.
+        </div>
+    </div>
+    <div class="exhibit">
+        <div class="exhibit-title">Review cadence</div>
+        <ul class="bullets">
+            <li>Portfolio drift checked at each review window or on regime shifts greater than 10 composite points.</li>
+            <li>Single-position drift over 5 percentage points triggers a rebalance proposal.</li>
+            <li>Macro regime is re-scored every 30 minutes by the Teroxx allocation model.</li>
+        </ul>
+    </div>
+</section>
+
+<!-- ═══════════════ APPENDIX + DISCLAIMERS ═══════════════ -->
+<section class="page">
+    <div class="page-tag">Appendix</div>
+    <h2 class="action-title">Methodology, data sources and important information</h2>
+    <div class="action-rule"></div>
+
+    <div class="exhibit">
+        <div class="exhibit-title">Methodology in one paragraph</div>
+        <p>
+            The Teroxx Portfolio Allocation Model v4.1 assigns each asset to a strategic tier
+            (defensive, core, large cap, mid cap, small cap) and distributes a profile-specific
+            budget across the universe using either equal-weight (Standard mode) or factor-weighted
+            (Fundamental mode) allocation. The factor stack includes value-accrual signals, on-chain
+            fundamentals and selective momentum overlays. Defensive sleeves (USDC, EURC, PAXG) are
+            held flat against their reference currencies; no yield is implied or paid.
+        </p>
+    </div>
+
+    <div class="exhibit">
+        <div class="exhibit-title">Data sources</div>
+        <ul class="bullets">
+            <li>Spot prices and market data: CoinMarketCap (primary), CoinGecko (fallback). Five-minute cache.</li>
+            <li>Macro composite: alternative.me, Yahoo Finance, Binance public fapi, blockchain.info, CoinGecko global, CoinMetrics community API.</li>
+            <li>On-chain protocol metrics: DeFiLlama, Messari, native protocol RPCs.</li>
+            <li>Historical daily closes: CryptoCompare.</li>
+        </ul>
+    </div>
+
+    <div class="disclaimer-block">
+        <h3>{{ disclaimer.title }}</h3>
+        <p>{{ disclaimer.body }}</p>
+        <p>{{ disclaimer.tax }}</p>
+        <p>{{ disclaimer.estate }}</p>
+    </div>
+
+    <div class="signoff">
+        <p><strong>Prepared by Teroxx Advisory.</strong></p>
+        <p>{{ prepared_by }} · {{ prepared_date }}</p>
+    </div>
+</section>
+
+</body>
+</html>

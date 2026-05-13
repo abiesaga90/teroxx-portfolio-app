@@ -440,3 +440,347 @@ def get_alloc_tier(ticker: str) -> str:
     if rt == "Growth":
         return "Mid Cap"
     return "Small Cap"
+
+
+# ── Proposal copy: rationale tags, paragraph library, disclaimers ──
+#
+# RATIONALE_TAGS is the short label that appears next to each ticker in
+# the allocation table on the Recommended Allocation page of the PDF.
+# Two-word maximum. Sourced from the Teroxx PAM v4.1 framework and the
+# Expanded universe valuation models in
+# `~/teroxx-research/altcoin-alpha-q2-2026/data_layer/`.
+
+RATIONALE_TAGS = {
+    "USDC":   "Liquidity buffer",
+    "EURC":   "EUR liquidity",
+    "PAXG":   "Gold hedge",
+    "BTC":    "Strategic anchor",
+    "ETH":    "Settlement layer",
+    "BNB":    "Exchange utility",
+    "XRP":    "Payments rail",
+    "ADA":    "L1 alternative",
+    "POL":    "L2 incumbent",
+    "MNT":    "L2 challenger",
+    "AAVE":   "Lending leader",
+    "UNI":    "DEX incumbent",
+    "COMP":   "Lending classic",
+    "EUL":    "Lending growth",
+    "PENDLE": "Yield infra",
+    "SYRUP":  "Institutional credit",
+    "ENA":    "Synthetic dollar",
+    "ONDO":   "RWA tokenisation",
+    "LINK":   "Oracle backbone",
+    "QNT":    "Enterprise rails",
+    "CHZ":    "Consumer brand",
+}
+
+# RATIONALE_LIBRARY holds the per-ticker paragraph templates used on the
+# Per-asset Rationale pages of the PDF. Placeholders in curly braces are
+# filled at render time by `app.pdf.narrative.rationale_paragraph()`;
+# missing values collapse to "n/a" so the prose still flows.
+#
+# Tone: factual, no superlatives, no em dashes, no marketing language.
+# Each entry has:
+#   tag         : short label (also in RATIONALE_TAGS).
+#   headline    : 3-6 word headline above the paragraph.
+#   body        : 2-3 sentence body with optional {placeholders}.
+
+RATIONALE_LIBRARY = {
+    "USDC": {
+        "tag": "Liquidity buffer",
+        "headline": "Operational liquidity, MiCA-compliant",
+        "body": (
+            "USDC anchors the liquidity sleeve and serves as the staging account for "
+            "rebalances and inflows. Circle's authorisation under MiCA constrains the "
+            "messaging on yield, so this position is held flat against USD rather than "
+            "lent or staked."
+        ),
+    },
+    "EURC": {
+        "tag": "EUR liquidity",
+        "headline": "EUR-denominated liquidity",
+        "body": (
+            "EURC provides EUR-native dry powder for European clients and reduces FX "
+            "drag on funding and withdrawal. Treated identically to USDC for risk and "
+            "yield messaging purposes."
+        ),
+    },
+    "PAXG": {
+        "tag": "Gold hedge",
+        "headline": "Tokenised gold, defensive sleeve",
+        "body": (
+            "PAXG references physical allocated gold held by Paxos and behaves as a "
+            "non-correlated hedge against crypto drawdowns. Used as a substitute for "
+            "the traditional gold sleeve in client portfolios where direct bullion is "
+            "operationally impractical."
+        ),
+    },
+    "BTC": {
+        "tag": "Strategic anchor",
+        "headline": "Programmatic scarcity, monetary base",
+        "body": (
+            "Bitcoin remains the strategic anchor of any digital-asset allocation: "
+            "deepest liquidity, highest institutional adoption, lowest counterparty "
+            "complexity. Position sizing scales with risk profile rather than view; "
+            "we never recommend zero BTC."
+        ),
+    },
+    "ETH": {
+        "tag": "Settlement layer",
+        "headline": "Programmable settlement, fee-bearing asset",
+        "body": (
+            "Ether captures the settlement value of the dominant smart-contract "
+            "platform and accrues fee revenue through the EIP-1559 burn. Holdings "
+            "earn staking yield where the client mandate allows; otherwise held in "
+            "spot form."
+        ),
+    },
+    "BNB": {
+        "tag": "Exchange utility",
+        "headline": "Exchange-tied L1 and utility token",
+        "body": (
+            "BNB combines exchange utility (trading-fee discounts) with the BNB Chain "
+            "L1. We treat the position as exchange-exposure first and L1 second; "
+            "concentration is capped accordingly."
+        ),
+    },
+    "XRP": {
+        "tag": "Payments rail",
+        "headline": "Cross-border payments infrastructure",
+        "body": (
+            "XRP serves cross-border value transfer for banks and remittance providers. "
+            "The asset's correlation with the broader market has tightened post-2024, "
+            "but it retains differentiated catalysts tied to payment-rail adoption."
+        ),
+    },
+    "ADA": {
+        "tag": "L1 alternative",
+        "headline": "Research-driven L1 with measured cadence",
+        "body": (
+            "Cardano's slower release cadence trades execution speed for verifiable "
+            "engineering. We hold a measured allocation that reflects long-term "
+            "optionality rather than near-term catalysts."
+        ),
+    },
+    "POL": {
+        "tag": "L2 incumbent",
+        "headline": "L2 incumbent in the Polygon 2.0 transition",
+        "body": (
+            "POL is the upgraded gas and staking token of the Polygon ecosystem. The "
+            "thesis hinges on the AggLayer and CDK adoption; near-term price action is "
+            "tied to migration milestones rather than user metrics."
+        ),
+    },
+    "MNT": {
+        "tag": "L2 challenger",
+        "headline": "Mantle L2, treasury-anchored",
+        "body": (
+            "Mantle pairs an OP-stack L2 with one of the largest on-chain treasuries. "
+            "We size the position to the treasury-coverage ratio rather than market "
+            "capitalisation to reflect the implicit floor."
+        ),
+    },
+    "AAVE": {
+        "tag": "Lending leader",
+        "headline": "Lending market leader, fee-accruing",
+        "body": (
+            "Aave V3 captures the largest share of non-custodial lending across chains. "
+            "Fee capture {fees_30d_change} over the trailing 30 days, TVL {tvl}. The "
+            "GHO stablecoin module is incremental optionality rather than core thesis."
+        ),
+    },
+    "UNI": {
+        "tag": "DEX incumbent",
+        "headline": "Dominant DEX with pending fee switch",
+        "body": (
+            "Uniswap remains the spot DEX of record on-chain by volume. The thesis is "
+            "fee-switch optionality: when (not if) governance activates protocol-level "
+            "fees, the cash-flow profile changes materially. Position sized to that "
+            "tail rather than today's economics."
+        ),
+    },
+    "COMP": {
+        "tag": "Lending classic",
+        "headline": "Compound, conservative lending exposure",
+        "body": (
+            "Compound is the OG lending market and remains a benchmark counterparty "
+            "for risk-managed lending exposure. Useful as a paired position alongside "
+            "AAVE for advisors wanting two-name diversification within the sub-sector."
+        ),
+    },
+    "EUL": {
+        "tag": "Lending growth",
+        "headline": "Euler, growth lender post-restart",
+        "body": (
+            "Euler V2 returned in 2024 with a vault architecture that compares "
+            "favourably to legacy money markets on isolation. Earlier-stage than Aave; "
+            "sized accordingly."
+        ),
+    },
+    "PENDLE": {
+        "tag": "Yield infra",
+        "headline": "Yield tokenisation infrastructure",
+        "body": (
+            "Pendle splits yield-bearing assets into principal and yield tokens, "
+            "letting users trade fixed and floating yield separately. The protocol "
+            "rides any growth in tokenised yield (LSTs, stablecoin yield, RWA) and "
+            "compounds when rates are volatile."
+        ),
+    },
+    "SYRUP": {
+        "tag": "Institutional credit",
+        "headline": "Maple Finance, institutional credit on-chain",
+        "body": (
+            "Maple originates fixed-term loans to credit-worthy borrowers and "
+            "distributes yield to lenders. SYRUP represents fee accrual; pair with "
+            "rigorous monitoring of underwriting quality and default rates."
+        ),
+    },
+    "ENA": {
+        "tag": "Synthetic dollar",
+        "headline": "Ethena's USDe and the funding-rate carry",
+        "body": (
+            "Ethena issues USDe, a synthetic dollar collateralised by ETH long-short "
+            "positions earning the perp funding spread. ENA is the governance and "
+            "fee token; exposure should be sized to comfort with the funding-cycle "
+            "tail risk."
+        ),
+    },
+    "ONDO": {
+        "tag": "RWA tokenisation",
+        "headline": "RWA tokenisation, tradfi bridge",
+        "body": (
+            "Ondo brings tokenised T-bills and money-market funds on-chain through "
+            "OUSG and USDY. The franchise depends on continued institutional "
+            "willingness to settle on-chain; track AUM rather than token-velocity "
+            "metrics."
+        ),
+    },
+    "LINK": {
+        "tag": "Oracle backbone",
+        "headline": "Chainlink, oracle and cross-chain backbone",
+        "body": (
+            "Chainlink is the oracle layer the largest part of DeFi depends on, and "
+            "with CCIP it now also serves cross-chain messaging. Fee capture has "
+            "historically lagged usage; we hold for strategic optionality rather than "
+            "near-term yield."
+        ),
+    },
+    "QNT": {
+        "tag": "Enterprise rails",
+        "headline": "Quant, enterprise integration narrative",
+        "body": (
+            "Quant pursues enterprise integration through Overledger and has measured "
+            "but persistent partnerships in financial-infrastructure RFPs. Sized small "
+            "to the speculative tier; the proof is in book-of-business, not announcements."
+        ),
+    },
+    "CHZ": {
+        "tag": "Consumer brand",
+        "headline": "Chiliz, consumer-brand crypto rails",
+        "body": (
+            "Chiliz operates the Socios fan-token platform and the Chiliz Chain "
+            "consumer L1. Most adjacent to consumer-brand utility; volatility tracks "
+            "sports-calendar catalysts more than crypto-native flows."
+        ),
+    },
+}
+
+
+# DISCLAIMERS is keyed by ISO-3166 alpha-2 country code. The PDF picks the
+# matching block based on the client's `domicile_country`; everything
+# falls back to "default" if no match. Wording is intentionally
+# conservative and aligned with the Teroxx CASP scope (advisory + RTO,
+# no fund wrapper, no tax/estate advice).
+
+_TAX_PARAGRAPH = (
+    "This document does not constitute tax advice. Crypto-asset transactions "
+    "may trigger taxable events under local law. Teroxx Advisory provides "
+    "tax-ready data on request; clients should consult a qualified tax "
+    "advisor (in Germany, a Steuerberater) for personalised guidance."
+)
+
+_ESTATE_PARAGRAPH = (
+    "This document does not constitute estate, succession, or inheritance "
+    "advice. Clients should consult a qualified notary or lawyer in their "
+    "jurisdiction for planning related to digital-asset succession."
+)
+
+DISCLAIMERS = {
+    "default": {
+        "title": "Important information",
+        "body": (
+            "This proposal is provided by Teroxx Advisory as part of a "
+            "non-discretionary advisory mandate. It is not an offer or "
+            "solicitation, nor investment advice tailored to a particular "
+            "jurisdiction other than as expressly stated. Past performance "
+            "is not indicative of future results. All allocations are "
+            "subject to market and operational risks; capital is at risk."
+        ),
+        "tax": _TAX_PARAGRAPH,
+        "estate": _ESTATE_PARAGRAPH,
+    },
+    "DE": {
+        "title": "Important information (Germany / EU)",
+        "body": (
+            "Teroxx operates as a regulated crypto-asset service provider "
+            "under MiCA (Markets in Crypto-Assets Regulation). The "
+            "recommendations in this proposal are advisory in nature and "
+            "do not constitute portfolio management on a discretionary "
+            "basis. References to e-money tokens (USDC, EURC) reflect "
+            "their classification under MiCA Art. 40 and Art. 50; Teroxx "
+            "does not pay interest or yield on EMT holdings, and the "
+            "client should disregard third-party offers that imply "
+            "otherwise. Capital is at risk; past performance is not "
+            "indicative of future results."
+        ),
+        "tax": _TAX_PARAGRAPH,
+        "estate": _ESTATE_PARAGRAPH,
+    },
+    "AT": {
+        "title": "Important information (Austria / EU)",
+        "body": (
+            "Teroxx operates as a regulated crypto-asset service provider "
+            "under MiCA. References to e-money tokens (USDC, EURC) "
+            "reflect their classification under MiCA Art. 40 and Art. 50; "
+            "Teroxx does not pay interest or yield on EMT holdings. "
+            "Capital is at risk."
+        ),
+        "tax": _TAX_PARAGRAPH,
+        "estate": _ESTATE_PARAGRAPH,
+    },
+    "CH": {
+        "title": "Important information (Switzerland)",
+        "body": (
+            "This proposal is provided to a Swiss-domiciled client by "
+            "Teroxx Advisory under its advisory mandate. Swiss FinSA "
+            "client-segmentation rules apply; suitability and "
+            "appropriateness checks are documented separately. Capital is "
+            "at risk."
+        ),
+        "tax": _TAX_PARAGRAPH,
+        "estate": _ESTATE_PARAGRAPH,
+    },
+    "AE": {
+        "title": "Important information (UAE)",
+        "body": (
+            "This proposal is provided to a UAE-domiciled client. Teroxx "
+            "Advisory is not regulated by the UAE Securities and Commodities "
+            "Authority for the purposes of this engagement; the client "
+            "acknowledges the cross-border nature of the relationship. "
+            "Capital is at risk."
+        ),
+        "tax": _TAX_PARAGRAPH,
+        "estate": _ESTATE_PARAGRAPH,
+    },
+}
+
+
+# Regulatory flags rendered as inline badges next to a ticker. EMT badge
+# fires on MiCA-classified e-money tokens regardless of client domicile
+# so advisors do not stray into yield messaging on those names.
+ASSET_REGULATORY_FLAGS = {
+    "USDC": ["EMT"],
+    "EURC": ["EMT"],
+    "PAXG": ["ART"],   # Asset-Referenced Token under MiCA
+}

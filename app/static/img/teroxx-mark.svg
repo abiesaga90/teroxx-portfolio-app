@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200" aria-hidden="true">
+  <!-- Subtle geometric brand mark for the proposal cover. -->
+  <g fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity="0.85">
+    <circle cx="100" cy="100" r="92"/>
+    <circle cx="100" cy="100" r="64"/>
+    <circle cx="100" cy="100" r="36"/>
+    <line x1="100" y1="8" x2="100" y2="192"/>
+    <line x1="8" y1="100" x2="192" y2="100"/>
+    <line x1="35" y1="35" x2="165" y2="165" opacity="0.5"/>
+    <line x1="35" y1="165" x2="165" y2="35" opacity="0.5"/>
+  </g>
+</svg>

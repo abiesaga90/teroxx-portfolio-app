@@ -5,6 +5,7 @@ import asyncio
 import json
 import logging
 from contextlib import asynccontextmanager
+from typing import Optional
 
 from fastapi import FastAPI, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
@@ -33,6 +34,8 @@ from app.macro_regime import get_macro_regime, refresh_macro_regime
 from app.session_context import SessionContext, load_context, patch_context
 from app.db import SessionLocal, get_db, log_action
 from app.repos import clients as clients_repo
+from app.pdf.proposal import ProposalInputs, build_proposal_context, render_pdf as render_proposal_pdf
+from fastapi.responses import Response
 
 
 def list_clients():
@@ -813,6 +816,106 @@ async def workspace_partial(request: Request, client_id: str = ""):
         "activity": activity_rows,
         "universe": ctx.universe,
     })
+
+
+# ── Proposal PDF ─────────────────────────────────────────────────────
+
+
+def _proposal_inputs_for(request: Request, client_id: str, *, portfolio_value: Optional[float] = None,
+                         profile: Optional[str] = None, universe: Optional[str] = None) -> Optional[ProposalInputs]:
+    """Common assembly for both /proposal.pdf and /proposal.html endpoints."""
+    c = get_client(client_id)
+    if not c:
+        return None
+    user = get_current_user(request) or {}
+    ctx = load_context(request)
+    profile_use = profile or c.get("profile") or "Balanced"
+    universe_use = universe or ctx.universe or "Teroxx Core (9)"
+    pv = portfolio_value if portfolio_value is not None else (ctx.portfolio_value or 100_000)
+    # Live spot prices for all tickers in the universe — keeps rationale
+    # pages from showing stale numbers.
+    spot: dict[str, float] = {}
+    try:
+        from app.market_data import get_price
+        from app.engine import get_universe_tickers
+        for t in get_universe_tickers(universe_use):
+            p = get_price(t)
+            if p:
+                spot[t] = float(p)
+    except Exception:
+        spot = {}
+    return ProposalInputs(
+        client=c,
+        profile=profile_use,
+        universe=universe_use,
+        portfolio_value=float(pv),
+        prepared_by=user.get("name") or user.get("email") or "Teroxx Advisory",
+        prepared_date=datetime.utcnow().strftime("%d %B %Y"),
+        macro_state=get_macro_regime(),
+        spot_prices=spot,
+    )
+
+
+@app.get("/api/clients/{client_id}/proposal.pdf")
+async def client_proposal_pdf(
+    request: Request,
+    client_id: str,
+    profile: Optional[str] = None,
+    universe: Optional[str] = None,
+    portfolio_value: Optional[float] = None,
+):
+    inp = _proposal_inputs_for(request, client_id, profile=profile, universe=universe,
+                               portfolio_value=portfolio_value)
+    if inp is None:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    try:
+        ctx = build_proposal_context(inp)
+        pdf_bytes = render_proposal_pdf(ctx, html_only=False)
+    except Exception as e:
+        logger.exception("Proposal PDF render failed for %s: %s", client_id, e)
+        return JSONResponse({"error": "render_failed", "detail": str(e)}, status_code=500)
+    # Audit log.
+    try:
+        with SessionLocal() as db:
+            log_action(
+                db,
+                actor_email=_actor_email(request),
+                action_type="proposal_generated",
+                client_id=client_id,
+                payload={"profile": inp.profile, "universe": inp.universe,
+                         "portfolio_value": inp.portfolio_value, "size_bytes": len(pdf_bytes)},
+            )
+            db.commit()
+    except Exception as e:
+        logger.warning("Audit log for proposal_generated failed: %s", e)
+    safe_name = "".join(ch if ch.isalnum() else "_" for ch in inp.client.get("name", client_id))
+    filename = f"Teroxx_Proposal_{safe_name}_{datetime.utcnow().strftime('%Y%m%d')}.pdf"
+    headers = {
+        "Content-Disposition": f'attachment; filename="{filename}"',
+        "Cache-Control": "private, no-store",
+    }
+    return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
+
+
+@app.get("/api/clients/{client_id}/proposal.html", response_class=HTMLResponse)
+async def client_proposal_html(
+    request: Request,
+    client_id: str,
+    profile: Optional[str] = None,
+    universe: Optional[str] = None,
+    portfolio_value: Optional[float] = None,
+):
+    inp = _proposal_inputs_for(request, client_id, profile=profile, universe=universe,
+                               portfolio_value=portfolio_value)
+    if inp is None:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    try:
+        ctx = build_proposal_context(inp)
+        html = render_proposal_pdf(ctx, html_only=True)
+    except Exception as e:
+        logger.exception("Proposal HTML render failed for %s: %s", client_id, e)
+        return JSONResponse({"error": "render_failed", "detail": str(e)}, status_code=500)
+    return HTMLResponse(html)
 
 
 # ── Client CRUD ──────────────────────────────────────────────────────
