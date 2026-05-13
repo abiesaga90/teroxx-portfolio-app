@@ -98,7 +98,8 @@
 <!-- Tab Navigation (mode-scoped via data-modes; JS hides tabs that don't apply) -->
 <nav class="tab-nav">
     <button class="tab-btn{% if app_mode == 'advisor' %} active{% endif %}" data-tab="tab-workspace" data-modes="advisor" onclick="switchTab('tab-workspace')">Workspace</button>
-    <button class="tab-btn{% if app_mode != 'advisor' %} active{% endif %}" data-tab="tab-portfolio" data-modes="advisor,research" onclick="switchTab('tab-portfolio')">Portfolio</button>
+    <button class="tab-btn{% if app_mode == 'client_view' %} active{% endif %}" data-tab="tab-client-review" data-modes="client_view" onclick="switchTab('tab-client-review')">Client Review</button>
+    <button class="tab-btn{% if app_mode == 'research' %} active{% endif %}" data-tab="tab-portfolio" data-modes="advisor,research" onclick="switchTab('tab-portfolio')">Portfolio</button>
     <button class="tab-btn" data-tab="tab-clients" data-modes="advisor,client_view" onclick="switchTab('tab-clients')">Client Portfolios</button>
     <button class="tab-btn" data-tab="tab-rebalance-pnl" data-modes="advisor" onclick="switchTab('tab-rebalance-pnl')">Rebalancing &amp; P&L</button>
     <button class="tab-btn" data-tab="tab-market-context" data-modes="advisor,research" onclick="switchTab('tab-market-context')">Market Context</button>
@@ -122,6 +123,20 @@
             <div class="card"><div class="card-header">Workspace</div>
                 <p style="padding:12px 32px;color:var(--text-muted);font-size:0.8rem;">
                     <span id="workspace-loading"><span class="spinner"></span> Loading workspace...</span>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ Tab 0b: Client Review (Client View mode landing) ═══ -->
+    <div id="tab-client-review" class="tab-panel{% if app_mode == 'client_view' %} active{% endif %}">
+        <div id="client-review-results"
+             hx-get="/api/client-review"
+             hx-trigger="load once"
+             hx-indicator="#client-review-loading">
+            <div class="card"><div class="card-header">Client Review</div>
+                <p style="padding:12px 32px;color:var(--text-muted);font-size:0.8rem;">
+                    <span id="client-review-loading"><span class="spinner"></span> Loading client review...</span>
                 </p>
             </div>
         </div>

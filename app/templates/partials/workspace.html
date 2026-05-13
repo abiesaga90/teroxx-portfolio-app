@@ -26,6 +26,12 @@
 {% set s = pnl.summary %}
 {% set is_up = s.total_pnl >= 0 %}
 
+{% if mica_banner %}
+<div class="compliance-banner" role="note">
+    <strong>MiCA.</strong> {{ mica_banner }}
+</div>
+{% endif %}
+
 <!-- Client picker pill bar (compact) -->
 <div class="workspace-picker">
     <span class="workspace-picker-label">Workspace</span>
@@ -117,7 +123,13 @@
             <tbody>
                 {% for r in allocation %}
                 <tr>
-                    <td class="ticker"><strong>{{ r.ticker }}</strong> <span style="color:var(--text-muted);font-size:0.7rem;">{{ r.name }}</span></td>
+                    <td class="ticker">
+                        <strong>{{ r.ticker }}</strong>
+                        <span style="color:var(--text-muted);font-size:0.7rem;">{{ r.name }}</span>
+                        {% for flag in (reg_flags.get(r.ticker) or []) %}
+                        <span class="reg-flag" title="{{ flag_meaning(flag) }}">{{ flag }}</span>
+                        {% endfor %}
+                    </td>
                     <td class="right">{{ "{:.2f}".format(r.current_pct) }}%</td>
                     <td class="right">{{ "{:.2f}".format(r.target_pct) }}%</td>
                     <td class="right {{ 'pos' if r.drift_pp <= 0.5 and r.drift_pp >= -0.5 else ('neg' if r.drift_pp > 0 else 'pos') }}">{{ "{:+.2f}".format(r.drift_pp) }}</td>
@@ -144,6 +156,17 @@
 {% endif %}
 
 <!-- 5. Activity history -->
+{% if disclaimer %}
+<div class="card workspace-disclaimer">
+    <div class="card-header">{{ disclaimer.title }}</div>
+    <div style="padding:14px 32px 16px;font-size:0.78rem;line-height:1.55;color:var(--text-body);">
+        <p style="margin-bottom:8px;">{{ disclaimer.body }}</p>
+        <p style="margin-bottom:8px;">{{ disclaimer.tax }}</p>
+        <p style="color:var(--text-muted);font-size:0.72rem;">{{ disclaimer.estate }}</p>
+    </div>
+</div>
+{% endif %}
+
 {% if activity %}
 <div class="card">
     <div class="card-header">Recent Activity <span style="font-size:0.7rem;color:var(--text-muted);font-family:'Sohne',sans-serif;font-weight:400;margin-left:8px;">last {{ activity|length }} actions</span></div>

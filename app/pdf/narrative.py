@@ -136,6 +136,46 @@ def implementation_default(
     )
 
 
+def client_review_narrative(
+    *,
+    client_name: str,
+    profile: str,
+    is_up: bool,
+    total_pnl_pct: float,
+    days_held: int,
+    n_unique_tickers: int,
+    regime_label: str,
+    score: Optional[float],
+    next_review_weeks: int = 4,
+) -> dict:
+    """Three paragraphs for the client-facing Review page.
+
+    Tone: read out loud to a non-specialist. Reads from the same regime
+    state but lands the point in plain English, not jargon.
+    """
+    bias_word, regime_sentence = regime_bias(regime_label)
+    direction = "up" if is_up else "down"
+    magnitude = abs(total_pnl_pct)
+    portfolio = (
+        f"Your portfolio is {direction} {magnitude:.1f}% over {days_held} days, "
+        f"spread across {n_unique_tickers} positions consistent with the "
+        f"{profile.lower()} mandate. We mark to live market prices once per minute; "
+        f"the allocation shown below reflects today's values."
+    )
+    score_clause = f" The composite score reads {int(score)} out of 100." if score is not None else ""
+    macro = (
+        f"The broader market is in a {regime_label.lower()} regime.{score_clause} "
+        f"{regime_sentence}"
+    )
+    next_focus = (
+        f"At the next review window in roughly {next_review_weeks} weeks, we will "
+        f"check whether the allocation has drifted beyond the {profile.lower()} "
+        f"profile thresholds and confirm the macro read still supports a "
+        f"{bias_word} posture. Anything material in between is flagged here."
+    )
+    return {"portfolio": portfolio, "macro": macro, "next": next_focus}
+
+
 def rationale_paragraph(template: str, signals: dict) -> str:
     """Fill a per-asset rationale template with live signal placeholders.
 
@@ -161,4 +201,5 @@ __all__ = [
     "regime_bias",
     "implementation_default",
     "rationale_paragraph",
+    "client_review_narrative",
 ]

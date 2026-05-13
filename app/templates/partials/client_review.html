@@ -1,0 +1,168 @@
+<!-- Client Review: calm, screen-share-friendly per-client surface. -->
+<!-- Same data as Workspace, intentionally fewer numbers, larger type. -->
+{% if not selected_client %}
+<div class="card cv-empty">
+    <div class="cv-empty-inner">
+        <h2 class="cv-headline">Client Review</h2>
+        <p class="cv-sub">Pick a client to review their portfolio in a screen-share-friendly view.</p>
+        <div class="cv-picker">
+            {% for c in clients %}
+            <button class="cv-client-card"
+                    hx-get="/api/client-review?client_id={{ c.id }}"
+                    hx-target="#client-review-results"
+                    hx-swap="innerHTML">
+                <div class="cv-client-name">{{ c.name }}</div>
+                <div class="cv-client-meta">
+                    <span class="cv-pill">{{ c.profile }}</span>
+                    <span>{{ c.domicile }}</span>
+                </div>
+            </button>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% else %}
+{% set c = selected_client %}
+{% set s = pnl.summary %}
+{% set is_up = s.total_pnl >= 0 %}
+
+<!-- Switch client (compact pill bar at the top) -->
+<div class="cv-picker-bar">
+    <span class="cv-picker-label">Client Review</span>
+    {% for cl in clients %}
+    <button class="cv-pill-btn{% if cl.id == c.id %} active{% endif %}"
+            hx-get="/api/client-review?client_id={{ cl.id }}"
+            hx-target="#client-review-results"
+            hx-swap="innerHTML">{{ cl.name }}</button>
+    {% endfor %}
+</div>
+
+<!-- Hero -->
+<section class="cv-hero">
+    <div class="cv-hero-inner">
+        <div class="cv-eyebrow">Portfolio review · {{ as_of_date }}</div>
+        <h1 class="cv-hero-name">{{ c.name }}</h1>
+        <div class="cv-hero-meta">
+            <span>{{ c.profile }} mandate</span>
+            <span>{{ c.domicile }}</span>
+            {% if c.inception_date %}<span>since {{ c.inception_date }}</span>{% endif %}
+        </div>
+    </div>
+    <div class="cv-hero-totals">
+        <div class="cv-total">
+            <div class="cv-total-label">Current value</div>
+            <div class="cv-total-value">${{ "{:,.0f}".format(s.total_value) }}</div>
+        </div>
+        <div class="cv-total">
+            <div class="cv-total-label">Total return</div>
+            <div class="cv-total-value {{ 'pos' if is_up else 'neg' }}">
+                {{ '+' if is_up else '' }}{{ "{:.1f}".format(s.total_pnl_pct) }}%
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Narrative -->
+<section class="cv-section cv-narrative">
+    <h2 class="cv-section-title">Where the portfolio stands</h2>
+    <p>{{ narrative.portfolio }}</p>
+</section>
+
+<!-- Allocation -->
+<section class="cv-section">
+    <h2 class="cv-section-title">Current allocation</h2>
+    <div class="cv-alloc-grid">
+        <div class="cv-alloc-chart">
+            {{ donut_svg | safe }}
+        </div>
+        <div class="cv-alloc-table">
+            {% for row in legend %}
+            <div class="cv-alloc-row">
+                <span class="cv-alloc-dot" style="background:{{ row.color }};"></span>
+                <span class="cv-alloc-ticker">{{ row.label }}</span>
+                <span class="cv-alloc-share">{{ "{:.1f}".format(row.share_pct) }}%</span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+
+<!-- Performance over time -->
+{% if history and history|length >= 2 %}
+<section class="cv-section">
+    <h2 class="cv-section-title">Performance since inception</h2>
+    <p class="cv-section-sub">Daily mark-to-market value versus invested cost basis.</p>
+    <div class="cv-chart">
+        <canvas id="cv-pnl-chart"></canvas>
+    </div>
+    <div id="cv-pnl-data" style="display:none">{{ history|tojson }}</div>
+</section>
+{% endif %}
+
+<!-- Macro framing -->
+<section class="cv-section cv-narrative">
+    <h2 class="cv-section-title">What the market is telling us</h2>
+    <p>{{ narrative.macro }}</p>
+</section>
+
+<!-- Next review focus -->
+<section class="cv-section cv-narrative">
+    <h2 class="cv-section-title">What we will focus on next</h2>
+    <p>{{ narrative.next }}</p>
+</section>
+
+<!-- Disclaimer footer -->
+<footer class="cv-disclaimer">
+    <h3>{{ disclaimer.title }}</h3>
+    <p>{{ disclaimer.body }}</p>
+    <p>{{ disclaimer.tax }}</p>
+    <p class="cv-disclaimer-meta">Prepared by Teroxx Advisory · {{ as_of_date }}</p>
+</footer>
+
+<script>
+(function () {
+    var dataEl = document.getElementById('cv-pnl-data');
+    var canvas = document.getElementById('cv-pnl-chart');
+    if (!dataEl || !canvas || typeof Chart === 'undefined') return;
+    var rows;
+    try { rows = JSON.parse(dataEl.textContent); } catch (e) { return; }
+    if (!rows || rows.length < 2) return;
+    if (window._cvChart) { window._cvChart.destroy(); }
+    var labels = rows.map(function (r) {
+        var t = new Date(r.ts * 1000);
+        return (t.getMonth() + 1) + '/' + t.getDate() + '/' + String(t.getFullYear()).slice(-2);
+    });
+    window._cvChart = new Chart(canvas, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [
+                { label: 'Portfolio Value', data: rows.map(function (r) { return r.value; }),
+                  borderColor: '#0b688c', backgroundColor: 'rgba(11,104,140,0.12)',
+                  fill: true, tension: 0.25, pointRadius: 0, borderWidth: 2.5 },
+                { label: 'Invested', data: rows.map(function (r) { return r.cost; }),
+                  borderColor: '#bfb3a8', borderDash: [4, 4], backgroundColor: 'transparent',
+                  fill: false, tension: 0, pointRadius: 0, borderWidth: 1.5 },
+            ]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: { legend: { display: true, labels: { font: { size: 13 } } } },
+            scales: {
+                y: { ticks: { callback: function (v) { return '$' + Math.round(v).toLocaleString(); }, font: { size: 12 } } },
+                x: { ticks: { maxTicksLimit: 8, autoSkip: true, font: { size: 12 } } },
+            },
+        },
+    });
+})();
+
+// Persist current client into SessionContext so other tabs follow.
+(function () {
+    var cid = "{{ selected_client.id if selected_client else '' }}";
+    if (cid && window.teroxx && window.teroxx.session) {
+        window.teroxx.session.patch({ client_id: cid });
+    }
+})();
+</script>
+{% endif %}

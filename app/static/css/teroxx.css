@@ -1355,3 +1355,293 @@ sup.src {
     content: " →";
     margin-left: 2px;
 }
+
+/* ── Client Review (Phase 4) ───────────────────────────────────── */
+/* The whole surface only gets the calm styling in Client View mode. */
+body[data-mode="client_view"] .main {
+    max-width: 980px;
+    padding: 24px 28px 100px;
+}
+body[data-mode="client_view"] {
+    background: var(--cream);
+}
+
+/* Hide tab strip in Client View — there's only one tab anyway. */
+body[data-mode="client_view"] .tab-nav { display: none; }
+
+.cv-empty {
+    margin-top: 32px;
+    padding: 48px 32px;
+    background: var(--bg-card);
+    border-radius: 4px;
+    text-align: center;
+}
+.cv-empty-inner { max-width: 620px; margin: 0 auto; }
+.cv-headline {
+    font-family: 'SometimesTimes', Georgia, serif;
+    font-size: 2.2rem;
+    color: var(--nightblue);
+    margin-bottom: 8px;
+}
+.cv-sub {
+    color: var(--text-muted);
+    font-size: 0.95rem;
+    margin-bottom: 24px;
+}
+.cv-picker {
+    display: flex; flex-wrap: wrap; gap: 12px; justify-content: center;
+}
+.cv-client-card {
+    text-align: left;
+    background: var(--bg-card-alt);
+    border: 1px solid var(--border);
+    padding: 18px 22px;
+    min-width: 220px;
+    cursor: pointer;
+    border-radius: 3px;
+    transition: border-color 0.15s ease, background 0.15s ease;
+    font-family: 'Sohne', Arial, sans-serif;
+}
+.cv-client-card:hover {
+    border-color: var(--electric-sky);
+    background: #fff;
+}
+.cv-client-name {
+    font-family: 'SometimesTimes', Georgia, serif;
+    font-size: 1.1rem;
+    color: var(--nightblue);
+    margin-bottom: 6px;
+}
+.cv-client-meta {
+    display: flex; gap: 10px; align-items: center;
+    font-size: 0.75rem; color: var(--text-muted);
+}
+.cv-pill {
+    display: inline-block;
+    padding: 2px 10px;
+    background: rgba(11,104,140,0.10);
+    color: var(--electric-sky);
+    border-radius: 999px;
+    font-size: 0.7rem;
+    letter-spacing: 0.04em;
+}
+
+.cv-picker-bar {
+    display: flex; flex-wrap: wrap; align-items: center;
+    gap: 8px; padding: 6px 0 18px;
+}
+.cv-picker-label {
+    font-family: 'SometimesTimes', Georgia, serif;
+    font-size: 1.0rem; color: var(--text-heading);
+    margin-right: 8px;
+}
+.cv-pill-btn {
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border-strong);
+    padding: 6px 14px;
+    border-radius: 999px;
+    cursor: pointer;
+    font-family: 'Sohne', Arial, sans-serif;
+    font-size: 0.78rem;
+}
+.cv-pill-btn:hover { background: rgba(6,13,67,0.04); }
+.cv-pill-btn.active {
+    background: var(--nightblue);
+    color: #fff;
+    border-color: var(--nightblue);
+}
+
+.cv-hero {
+    background: var(--nightblue);
+    color: #fff;
+    padding: 36px 40px;
+    border-radius: 4px;
+    margin-bottom: 28px;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 32px;
+    align-items: end;
+}
+.cv-eyebrow {
+    font-family: 'Sohne', Arial, sans-serif;
+    font-size: 0.7rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--sandstone);
+    margin-bottom: 14px;
+}
+.cv-hero-name {
+    font-family: 'SometimesTimes', Georgia, serif;
+    font-size: 2.6rem;
+    color: #fff;
+    line-height: 1.1;
+    margin: 0 0 12px;
+}
+.cv-hero-meta {
+    color: var(--cream);
+    font-size: 0.85rem;
+    display: flex; gap: 18px; flex-wrap: wrap;
+}
+.cv-hero-totals {
+    display: flex; gap: 32px;
+}
+.cv-total-label {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--sandstone);
+    margin-bottom: 6px;
+}
+.cv-total-value {
+    font-family: 'SometimesTimes', Georgia, serif;
+    font-size: 2rem;
+    line-height: 1;
+    color: #fff;
+}
+.cv-total-value.pos { color: #6FDDA0; }
+.cv-total-value.neg { color: #F08A6E; }
+
+.cv-section {
+    background: var(--bg-card);
+    padding: 28px 36px;
+    border-radius: 4px;
+    margin-bottom: 18px;
+}
+.cv-section-title {
+    font-family: 'SometimesTimes', Georgia, serif;
+    font-size: 1.4rem;
+    color: var(--nightblue);
+    margin-bottom: 14px;
+}
+.cv-section-sub {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    margin-bottom: 14px;
+}
+.cv-narrative p {
+    font-size: 1.0rem;
+    line-height: 1.7;
+    color: var(--text-body);
+    max-width: 70ch;
+}
+
+.cv-alloc-grid {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 32px;
+    align-items: center;
+}
+.cv-alloc-chart {
+    text-align: center;
+}
+.cv-alloc-table {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.cv-alloc-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 0.95rem;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border);
+}
+.cv-alloc-row:last-child { border-bottom: none; }
+.cv-alloc-dot {
+    width: 10px;
+    height: 10px;
+    display: inline-block;
+    flex: 0 0 auto;
+}
+.cv-alloc-ticker {
+    flex: 1;
+    font-weight: 600;
+    color: var(--text-heading);
+}
+.cv-alloc-share {
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+.cv-chart {
+    height: 280px;
+    position: relative;
+}
+
+.cv-disclaimer {
+    margin-top: 32px;
+    padding: 24px 36px;
+    background: var(--bg-card-alt);
+    border-left: 3px solid var(--nightblue);
+    font-size: 0.8rem;
+    line-height: 1.55;
+    color: var(--text-body);
+}
+.cv-disclaimer h3 {
+    font-family: 'Sohne', Arial, sans-serif;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.10em;
+    color: var(--nightblue);
+    margin-bottom: 8px;
+}
+.cv-disclaimer p { margin-bottom: 8px; }
+.cv-disclaimer-meta {
+    margin-top: 14px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 0.7rem;
+}
+
+/* Print: Client View doubles as a printable one-pager. */
+@media print {
+    body[data-mode="client_view"] .header,
+    body[data-mode="client_view"] .mode-switch,
+    body[data-mode="client_view"] .tab-nav,
+    body[data-mode="client_view"] .source-health-footer,
+    body[data-mode="client_view"] .cv-picker-bar { display: none !important; }
+    body[data-mode="client_view"] { background: #fff; }
+    body[data-mode="client_view"] .cv-section,
+    body[data-mode="client_view"] .cv-hero { box-shadow: none; }
+}
+
+/* ── Compliance surface (Phase 5) ──────────────────────────────── */
+.compliance-banner {
+    background: rgba(208, 102, 67, 0.10);
+    color: var(--text-body);
+    border-left: 3px solid var(--sunset-ember);
+    padding: 10px 16px;
+    margin-bottom: 12px;
+    font-size: 0.78rem;
+    line-height: 1.55;
+    border-radius: 2px;
+}
+.compliance-banner strong {
+    color: var(--sunset-ember);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    font-size: 0.68rem;
+    font-weight: 700;
+    margin-right: 6px;
+}
+.reg-flag {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 6px;
+    background: rgba(208, 102, 67, 0.12);
+    color: var(--sunset-ember);
+    border-radius: 2px;
+    font-family: 'Sohne', monospace, sans-serif;
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    vertical-align: middle;
+}
+.workspace-disclaimer {
+    background: var(--bg-card-alt);
+    border-left: 3px solid var(--nightblue);
+}

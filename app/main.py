@@ -804,6 +804,20 @@ async def workspace_partial(request: Request, client_id: str = ""):
                     })
 
     macro = get_macro_regime()
+    # Compliance surface: regulatory badges per ticker + MiCA reminder banner
+    # + domicile-aware disclaimer block at the bottom.
+    from app.compliance import (
+        regulatory_flags as _reg_flags,
+        flag_meaning as _flag_meaning,
+        mica_banner as _mica_banner,
+        disclaimer_for as _disclaimer_for,
+    )
+    reg_flags_map: dict = {}
+    if allocation:
+        reg_flags_map = {r["ticker"]: _reg_flags(r["ticker"]) for r in allocation}
+    active_tickers = [r["ticker"] for r in (allocation or []) if r.get("current_pct", 0) > 0 or r.get("target_pct", 0) > 0]
+    banner_text = _mica_banner(selected_client, active_tickers) if selected_client else None
+    disclaimer_block = _disclaimer_for(selected_client) if selected_client else None
     return templates.TemplateResponse("partials/workspace.html", {
         "request": request,
         "clients": clients,
@@ -815,6 +829,104 @@ async def workspace_partial(request: Request, client_id: str = ""):
         "macro_narrative": macro_one_line(macro),
         "activity": activity_rows,
         "universe": ctx.universe,
+        "reg_flags": reg_flags_map,
+        "flag_meaning": _flag_meaning,
+        "mica_banner": banner_text,
+        "disclaimer": disclaimer_block,
+    })
+
+
+# ── Client Review (calm screen-share surface) ────────────────────────
+
+
+@app.get("/api/client-review", response_class=HTMLResponse)
+async def client_review_partial(request: Request, client_id: str = ""):
+    """Calm, read-only per-client review surface for screen-share / meetings."""
+    ctx = load_context(request)
+    if not client_id:
+        client_id = ctx.client_id or ""
+    clients = list_clients()
+    selected_client = None
+    pnl = None
+    history = None
+    donut_svg = ""
+    legend = []
+    narrative = {"portfolio": "", "macro": "", "next": ""}
+    disclaimer = None
+    as_of_date = datetime.utcnow().strftime("%d %B %Y")
+
+    if not client_id and clients:
+        client_id = clients[0]["id"]
+
+    if client_id:
+        c = get_client(client_id)
+        if c:
+            selected_client = c
+            patch_context(request, client_id=client_id)
+            pnl = compute_client_portfolio_pnl(c)
+            # History (best effort).
+            try:
+                from datetime import date as _date, datetime as _dt
+                positions = c.get("positions", []) or []
+                tickers = sorted({p.get("ticker", "") for p in positions if p.get("ticker")})
+                earliest_str = min(
+                    (p.get("entry_date", "") for p in positions if p.get("entry_date")),
+                    default="",
+                )
+                days_needed = 365
+                if earliest_str:
+                    try:
+                        edt = _dt.strptime(earliest_str, "%Y-%m-%d").date()
+                        days_needed = max(30, (_date.today() - edt).days + 7)
+                    except ValueError:
+                        pass
+                hist_prices = await fetch_historical_prices(tickers, days=min(days_needed, 1900))
+                history = compute_client_portfolio_history(c, hist_prices)
+            except Exception as e:
+                logger.warning("Client Review history fetch failed for %s: %s", client_id, e)
+                history = None
+
+            # Allocation donut sourced from the client's mark-to-market mix
+            # (so the chart matches the table on screen).
+            from app.pdf.exhibits import donut as _donut, donut_legend as _donut_legend
+            ts = pnl.get("ticker_summary", []) if pnl else []
+            slices = [(row["ticker"], float(row.get("current_value") or 0)) for row in ts]
+            donut_svg = _donut(slices, width=320, height=320,
+                               center_text=str(pnl["summary"]["n_unique_tickers"]) if pnl else "",
+                               center_sub="positions")
+            legend = _donut_legend(slices)
+
+            # Macro state.
+            macro = get_macro_regime()
+            r = (macro or {}).get("result") or {}
+            from app.pdf.narrative import client_review_narrative as _cv_narrative
+            narrative = _cv_narrative(
+                client_name=c.get("name", ""),
+                profile=c.get("profile", "Balanced"),
+                is_up=pnl["summary"]["total_pnl"] >= 0 if pnl else True,
+                total_pnl_pct=pnl["summary"]["total_pnl_pct"] if pnl else 0.0,
+                days_held=pnl["summary"]["days_since_entry"] if pnl else 0,
+                n_unique_tickers=pnl["summary"]["n_unique_tickers"] if pnl else 0,
+                regime_label=r.get("regime_label") or "Transition",
+                score=r.get("composite_score"),
+            )
+
+            # Domicile-aware disclaimer.
+            from app.data import DISCLAIMERS as _DISCLAIMERS
+            domicile_key = (c.get("domicile_country") or "").upper()
+            disclaimer = _DISCLAIMERS.get(domicile_key) or _DISCLAIMERS["default"]
+
+    return templates.TemplateResponse("partials/client_review.html", {
+        "request": request,
+        "clients": clients,
+        "selected_client": selected_client,
+        "pnl": pnl,
+        "history": history,
+        "donut_svg": donut_svg,
+        "legend": legend,
+        "narrative": narrative,
+        "disclaimer": disclaimer,
+        "as_of_date": as_of_date,
     })
 
 
