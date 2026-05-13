@@ -37,6 +37,52 @@ _defillama_ts: float = 0
 _binance_cache: dict[str, dict] = {}
 _binance_ts: float = 0
 _supply_history: dict[str, list[tuple[float, float]]] = {}  # {cg_id: [(ts, supply), ...]}
+_SUPPLY_HISTORY_PATH = os.getenv("TEROXX_SUPPLY_HISTORY_PATH", "/tmp/teroxx_supply_history.json")
+_supply_history_loaded = False
+
+
+def _load_supply_history() -> None:
+    """Hydrate the in-memory supply history from disk on first use.
+
+    Without this Supply Δ never accumulates across Render restarts: each
+    fresh boot would start with one sample and the UI would show '—' for
+    every ticker until enough time passed for two samples to land.
+    """
+    global _supply_history_loaded
+    if _supply_history_loaded:
+        return
+    _supply_history_loaded = True
+    try:
+        if os.path.exists(_SUPPLY_HISTORY_PATH):
+            import json as _json
+            with open(_SUPPLY_HISTORY_PATH, "r") as f:
+                raw = _json.load(f)
+            cutoff = time.time() - 14 * 86400  # keep ~2 weeks of supply samples
+            for cg_id, rows in raw.items():
+                if not isinstance(rows, list):
+                    continue
+                cleaned = [(float(r[0]), float(r[1])) for r in rows
+                           if isinstance(r, (list, tuple)) and len(r) == 2 and r[0] >= cutoff]
+                if cleaned:
+                    _supply_history[cg_id] = cleaned
+            logger.info(
+                "Loaded supply history for %d tickers from %s",
+                len(_supply_history), _SUPPLY_HISTORY_PATH,
+            )
+    except Exception as e:
+        logger.warning("Could not load supply history from %s: %s", _SUPPLY_HISTORY_PATH, e)
+
+
+def _save_supply_history() -> None:
+    try:
+        import json as _json
+        os.makedirs(os.path.dirname(_SUPPLY_HISTORY_PATH) or ".", exist_ok=True)
+        tmp = _SUPPLY_HISTORY_PATH + ".tmp"
+        with open(tmp, "w") as f:
+            _json.dump({cg_id: rows for cg_id, rows in _supply_history.items()}, f)
+        os.replace(tmp, _SUPPLY_HISTORY_PATH)
+    except Exception as e:
+        logger.warning("Could not save supply history to %s: %s", _SUPPLY_HISTORY_PATH, e)
 _coingecko_dev_cache: dict[str, dict] = {}
 _coingecko_dev_ts: float = 0
 COINGECKO_DEV_TTL = 86400  # 24 hours
@@ -210,6 +256,15 @@ async def _fetch_cmc_quotes() -> tuple[dict[str, float], dict[str, dict]]:
                     fdv = quote.get("fully_diluted_market_cap") or 0
                     circ_supply = coin.get("circulating_supply") or 0
                     vol = quote.get("volume_24h") or 0
+                    cmc_id = coin.get("id")
+                    # CMC's static logo CDN is keyed by numeric id and is the
+                    # most reliable free source we have. Falling back to the
+                    # cryptofonts CDN was leaving holes for stablecoins, RWA
+                    # tokens, and newer listings.
+                    logo_url = (
+                        f"https://s2.coinmarketcap.com/static/img/coins/64x64/{cmc_id}.png"
+                        if cmc_id else ""
+                    )
 
                     market[cg_id] = {
                         "market_cap": mc,
@@ -219,7 +274,8 @@ async def _fetch_cmc_quotes() -> tuple[dict[str, float], dict[str, dict]]:
                         "price_change_30d": quote.get("percent_change_30d") or 0,
                         "ath": 0,  # CMC doesn't provide ATH on free tier
                         "ath_change_pct": -50,  # neutral fallback
-                        "image": "",  # will use CDN fallback
+                        "image": logo_url,
+                        "cmc_id": cmc_id,
                         "fdv": fdv,
                         "fdv_mcap_ratio": fdv / mc if mc > 0 else 0,
                         "circulating_supply": circ_supply,
@@ -338,7 +394,9 @@ async def fetch_market_data() -> dict[str, dict]:
             _price_cache = prices
             _price_ts = now
 
-        # Track supply history
+        # Track supply history (hydrate from disk first so deltas survive
+        # restarts; then append and persist).
+        _load_supply_history()
         for cg_id, info in market.items():
             circ_supply = info.get("circulating_supply", 0)
             if circ_supply > 0:
@@ -346,6 +404,7 @@ async def fetch_market_data() -> dict[str, dict]:
                     _supply_history[cg_id] = []
                 _supply_history[cg_id].append((now, circ_supply))
                 _supply_history[cg_id] = _supply_history[cg_id][-288:]
+        _save_supply_history()
 
         logger.info(f"Market data refreshed from CMC: {len(market)} tokens")
         return _market_cache
@@ -357,7 +416,8 @@ async def fetch_market_data() -> dict[str, dict]:
     if result:
         _market_cache = result
         _market_ts = now
-        # Track supply history from CoinGecko
+        # Track supply history from CoinGecko (same disk-backed store).
+        _load_supply_history()
         for cg_id, info in result.items():
             circ_supply = info.get("circulating_supply", 0)
             if circ_supply > 0:
@@ -365,6 +425,7 @@ async def fetch_market_data() -> dict[str, dict]:
                     _supply_history[cg_id] = []
                 _supply_history[cg_id].append((now, circ_supply))
                 _supply_history[cg_id] = _supply_history[cg_id][-288:]
+        _save_supply_history()
 
     return _market_cache
 
@@ -986,6 +1047,7 @@ def get_binance_info(ticker: str) -> Optional[dict]:
 
 def get_supply_delta_pct(ticker: str) -> Optional[float]:
     """Compute supply delta % from in-memory history. Returns None if insufficient data."""
+    _load_supply_history()
     cg_id = TOKEN_MAP.get(ticker)
     if not cg_id or cg_id not in _supply_history:
         return None
