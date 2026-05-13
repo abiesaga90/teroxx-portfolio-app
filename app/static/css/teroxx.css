@@ -1356,12 +1356,13 @@ sup.src {
 }
 
 /* ── Client Review (Phase 4) ───────────────────────────────────── */
-/* The whole surface only gets the calm styling in Client View mode. */
-body[data-mode="client_view"] .main {
+/* The whole surface only gets the calm styling when the Client Review
+   tab is the active tab. Theme follows the tab, not a removed mode. */
+body[data-active-tab="tab-client-review"] .main {
     max-width: 980px;
     padding: 24px 28px 100px;
 }
-body[data-mode="client_view"] {
+body[data-active-tab="tab-client-review"] {
     background: var(--cream);
 }
 
@@ -1598,14 +1599,13 @@ body[data-mode="client_view"] {
 
 /* Print: Client View doubles as a printable one-pager. */
 @media print {
-    body[data-mode="client_view"] .header,
-    body[data-mode="client_view"] .mode-switch,
-    body[data-mode="client_view"] .tab-nav,
-    body[data-mode="client_view"] .source-health-footer,
-    body[data-mode="client_view"] .cv-picker-bar { display: none !important; }
-    body[data-mode="client_view"] { background: #fff; }
-    body[data-mode="client_view"] .cv-section,
-    body[data-mode="client_view"] .cv-hero { box-shadow: none; }
+    body[data-active-tab="tab-client-review"] .header,
+    body[data-active-tab="tab-client-review"] .tab-nav,
+    body[data-active-tab="tab-client-review"] .source-health-footer,
+    body[data-active-tab="tab-client-review"] .cv-picker-bar { display: none !important; }
+    body[data-active-tab="tab-client-review"] { background: #fff; }
+    body[data-active-tab="tab-client-review"] .cv-section,
+    body[data-active-tab="tab-client-review"] .cv-hero { box-shadow: none; }
 }
 
 /* ── Compliance surface (Phase 5) ──────────────────────────────── */

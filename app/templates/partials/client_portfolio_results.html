@@ -9,23 +9,18 @@
     </p>
     <div style="display:flex;flex-wrap:wrap;gap:12px;padding:12px 32px 20px;">
         {% for c in clients %}
-        <div class="client-card-wrap" style="position:relative;">
-            <button
-                class="client-card{% if selected == c.id %} selected{% endif %}"
-                hx-get="/api/client-portfolio?client_id={{ c.id }}"
-                hx-target="#client-portfolio-results"
-                hx-swap="innerHTML">
-                <div class="client-card-name">{{ c.name }}</div>
-                <div class="client-card-meta">
-                    <span class="tag tag-{{ c.profile|lower }}">{{ c.profile }}</span>
-                    <span style="color:var(--text-muted);font-size:0.65rem;">{{ c.domicile }}</span>
-                </div>
-                <div class="client-card-tagline">{{ c.tagline }}</div>
-            </button>
-            <button type="button" class="client-card-edit"
-                    title="Edit {{ c.name }}"
-                    onclick="event.stopPropagation();openClientEditor('{{ c.id }}')">Edit</button>
-        </div>
+        <button
+            class="client-card{% if selected == c.id %} selected{% endif %}"
+            hx-get="/api/client-portfolio?client_id={{ c.id }}"
+            hx-target="#client-portfolio-results"
+            hx-swap="innerHTML">
+            <div class="client-card-name">{{ c.name }}</div>
+            <div class="client-card-meta">
+                <span class="tag tag-{{ c.profile|lower }}">{{ c.profile }}</span>
+                <span style="color:var(--text-muted);font-size:0.65rem;">{{ c.domicile }}</span>
+            </div>
+            <div class="client-card-tagline">{{ c.tagline }}</div>
+        </button>
         {% endfor %}
     </div>
 </div>

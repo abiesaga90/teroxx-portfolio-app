@@ -15,38 +15,21 @@ function openClientInWorkspace(clientId) {
 
 // ── Tab switching ──
 //
-// Tabs live under their canonical master mode. Switching to a tab
-// always switches the master mode to match, so the visible strip below
-// the mode switch stays in sync with whatever the user just clicked.
+// One flat tab strip; switching a tab toggles the active classes and
+// stamps body[data-active-tab] so any tab-scoped theme (e.g. the calm
+// Client Review treatment) can still target the right panel via CSS.
 function switchTab(tabId) {
-    const btn = document.querySelector(`[data-tab="${tabId}"]`);
-    const primary = btn?.getAttribute('data-primary-mode');
-
-    // If the tab belongs to a different mode than the one currently
-    // active, flip the master first. setAppMode() will hide/reveal
-    // sub-tabs accordingly.
-    const currentMode = document.body.getAttribute('data-mode');
-    if (primary && primary !== currentMode) {
-        document.body.setAttribute('data-mode', primary);
-        const sw = document.querySelector('.mode-switch');
-        if (sw) sw.setAttribute('data-mode', primary);
-        if (typeof applyTabVisibility === 'function') applyTabVisibility(primary);
-        if (window.teroxx && window.teroxx.session) {
-            window.teroxx.session.patch({ mode: primary });
-        }
-    }
-
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.getElementById(tabId)?.classList.add('active');
-    btn?.classList.add('active');
+    document.querySelector(`[data-tab="${tabId}"]`)?.classList.add('active');
+    document.body.setAttribute('data-active-tab', tabId);
     localStorage.setItem('activeTab', tabId);
 }
 
 // Restore last tab on load
 document.addEventListener('DOMContentLoaded', () => {
     const saved = localStorage.getItem('activeTab');
-    // Map old tab IDs to new ones for users with stale localStorage
     const tabMap = {
         'tab-allocator': 'tab-portfolio',
         'tab-factors': 'tab-scoring',
@@ -54,10 +37,13 @@ document.addEventListener('DOMContentLoaded', () => {
         'tab-allocations': 'tab-portfolio',
         'tab-rebalancing': 'tab-rebalance-pnl',
         'tab-pnl': 'tab-rebalance-pnl',
+        'tab-workspace': 'tab-portfolio',
     };
     const mapped = tabMap[saved] || saved;
     if (mapped && document.getElementById(mapped)) {
         switchTab(mapped);
+    } else {
+        document.body.setAttribute('data-active-tab', 'tab-portfolio');
     }
 });
 

@@ -35,7 +35,7 @@
     }
     </script>
 </head>
-<body{% if app_mode %} data-mode="{{ app_mode }}"{% else %} data-landing="1"{% endif %}>
+<body>
 
 <!-- Header -->
 <header class="header">
@@ -79,112 +79,26 @@
     <input type="hidden" name="portfolio_value" value="{{ portfolio_value }}">
 </form>
 
-{% if app_mode %}
-<!-- Mode Switch — compact primary nav, visible once a mode has been chosen. -->
-<nav class="mode-switch" data-mode="{{ app_mode }}" aria-label="Application mode">
-    <button class="mode-btn" data-mode="advisor" onclick="setAppMode('advisor')">
-        <span class="mode-label">Advisor</span>
-    </button>
-    <button class="mode-btn" data-mode="research" onclick="setAppMode('research')">
-        <span class="mode-label">Research</span>
-    </button>
-    <button class="mode-btn" data-mode="client_view" onclick="setAppMode('client_view')">
-        <span class="mode-label">Client View</span>
-    </button>
-</nav>
-{% endif %}
-
-{% if app_mode %}
-<!-- Tab Navigation — only sub-tabs for the current master mode are visible. -->
+<!-- Tab Navigation — single flat strip, all sub-tabs always visible. -->
 <nav class="tab-nav">
-    <!-- Advisor mode -->
-    <button class="tab-btn{% if app_mode == 'advisor' %} active{% endif %}" data-tab="tab-workspace" data-primary-mode="advisor" onclick="switchTab('tab-workspace')">Workspace</button>
-    <button class="tab-btn" data-tab="tab-clients" data-primary-mode="advisor" onclick="switchTab('tab-clients')">Client Portfolios</button>
-    <button class="tab-btn" data-tab="tab-rebalance-pnl" data-primary-mode="advisor" onclick="switchTab('tab-rebalance-pnl')">Rebalancing &amp; P&L</button>
-    <button class="tab-btn" data-tab="tab-activity" data-primary-mode="advisor" onclick="switchTab('tab-activity')">Activity</button>
-
-    <!-- Research mode -->
-    <button class="tab-btn{% if app_mode == 'research' %} active{% endif %}" data-tab="tab-portfolio" data-primary-mode="research" onclick="switchTab('tab-portfolio')">Portfolio</button>
-    <button class="tab-btn" data-tab="tab-scoring" data-primary-mode="research" onclick="switchTab('tab-scoring')">Scoring</button>
-    <button class="tab-btn" data-tab="tab-data" data-primary-mode="research" onclick="switchTab('tab-data')">Data</button>
-    <button class="tab-btn" data-tab="tab-dca" data-primary-mode="research" onclick="switchTab('tab-dca')">DCA Planner</button>
-    <button class="tab-btn" data-tab="tab-market-context" data-primary-mode="research" onclick="switchTab('tab-market-context')">Market Context</button>
-    <button class="tab-btn" data-tab="tab-defi-macro" data-primary-mode="research" onclick="switchTab('tab-defi-macro')">DeFi Macro</button>
-    <button class="tab-btn" data-tab="tab-methodology" data-primary-mode="research" onclick="switchTab('tab-methodology')">Methodology</button>
-    <button class="tab-btn" data-tab="tab-apis" data-primary-mode="research" onclick="switchTab('tab-apis')">APIs</button>
-
-    <!-- Client View mode -->
-    <button class="tab-btn{% if app_mode == 'client_view' %} active{% endif %}" data-tab="tab-client-review" data-primary-mode="client_view" onclick="switchTab('tab-client-review')">Client Review</button>
+    <button class="tab-btn active" data-tab="tab-portfolio" onclick="switchTab('tab-portfolio')">Portfolio</button>
+    <button class="tab-btn" data-tab="tab-scoring" onclick="switchTab('tab-scoring')">Scoring</button>
+    <button class="tab-btn" data-tab="tab-data" onclick="switchTab('tab-data')">Data</button>
+    <button class="tab-btn" data-tab="tab-dca" onclick="switchTab('tab-dca')">DCA Planner</button>
+    <button class="tab-btn" data-tab="tab-rebalance-pnl" onclick="switchTab('tab-rebalance-pnl')">Rebalancing &amp; P&L</button>
+    <button class="tab-btn" data-tab="tab-clients" onclick="switchTab('tab-clients')">Client Portfolios</button>
+    <button class="tab-btn" data-tab="tab-client-review" onclick="switchTab('tab-client-review')">Client Review</button>
+    <button class="tab-btn" data-tab="tab-market-context" onclick="switchTab('tab-market-context')">Market Context</button>
+    <button class="tab-btn" data-tab="tab-defi-macro" onclick="switchTab('tab-defi-macro')">DeFi Macro</button>
+    <button class="tab-btn" data-tab="tab-activity" onclick="switchTab('tab-activity')">Activity</button>
+    <button class="tab-btn" data-tab="tab-methodology" onclick="switchTab('tab-methodology')">Methodology</button>
+    <button class="tab-btn" data-tab="tab-apis" onclick="switchTab('tab-apis')">APIs</button>
 </nav>
-{% endif %}
-
-{% if not app_mode %}
-<!-- Institutional landing — only the three master modes, nothing else. -->
-<section class="landing">
-    <div class="landing-inner">
-        <div class="landing-eyebrow">Teroxx Investment Advisory</div>
-        <h1 class="landing-headline">Choose a workspace.</h1>
-        <p class="landing-sub">
-            Three modes, one client at a time. Advisor for analysis and rebalancing,
-            Research for the universe and signals, Client View for the screen-share
-            during meetings.
-        </p>
-        <div class="landing-grid">
-            <button class="landing-card" type="button" onclick="setAppMode('advisor')">
-                <div class="landing-card-eyebrow">01 · Workbench</div>
-                <div class="landing-card-title">Advisor</div>
-                <div class="landing-card-desc">
-                    One client at a time. Allocation, drift, rebalance moves, P&L history,
-                    macro framing, audit trail. Generate the branded proposal PDF.
-                </div>
-                <div class="landing-card-cta">Open workbench →</div>
-            </button>
-            <button class="landing-card" type="button" onclick="setAppMode('research')">
-                <div class="landing-card-eyebrow">02 · Universe &amp; signals</div>
-                <div class="landing-card-title">Research</div>
-                <div class="landing-card-desc">
-                    The full scoring stack: portfolio targets, factor scores, data tables,
-                    DCA planner, market regime, DeFi macro, methodology and API references.
-                </div>
-                <div class="landing-card-cta">Open research →</div>
-            </button>
-            <button class="landing-card" type="button" onclick="setAppMode('client_view')">
-                <div class="landing-card-eyebrow">03 · Screen-share</div>
-                <div class="landing-card-title">Client View</div>
-                <div class="landing-card-desc">
-                    A calm one-page review for client meetings. Same data, narrative
-                    framing, large summary cards. Doubles as a printable handout.
-                </div>
-                <div class="landing-card-cta">Open client view →</div>
-            </button>
-        </div>
-    </div>
-</section>
-{% endif %}
 
 <main class="main">
 
-    <!-- ═══ Tab 0: Workspace (Advisor mode default landing) ═══ -->
-    <div id="tab-workspace" class="tab-panel{% if app_mode == 'advisor' %} active{% endif %}">
-        <div id="client-overview-results"
-             hx-get="/api/client-overview"
-             hx-trigger="load once">
-        </div>
-        <div id="workspace-results"
-             hx-get="/api/workspace"
-             hx-trigger="load once"
-             hx-indicator="#workspace-loading"
-             hx-on::after-settle="requestAnimationFrame(function(){setTimeout(tryRenderAllCharts,50)})">
-            <div class="card"><div class="card-header">Workspace</div>
-                <p style="padding:12px 32px;color:var(--text-muted);font-size:0.8rem;">
-                    <span id="workspace-loading"><span class="spinner"></span> Loading workspace...</span>
-                </p>
-            </div>
-        </div>
-    </div>
-
-    <!-- ═══ Tab 0b: Client Review (Client View mode landing) ═══ -->
-    <div id="tab-client-review" class="tab-panel{% if app_mode == 'client_view' %} active{% endif %}">
+    <!-- ═══ Tab: Client Review ═══ -->
+    <div id="tab-client-review" class="tab-panel">
         <div id="client-review-results"
              hx-get="/api/client-review"
              hx-trigger="load once"
@@ -212,7 +126,7 @@
     </div>
 
     <!-- ═══ Tab 1: Portfolio ═══ -->
-    <div id="tab-portfolio" class="tab-panel{% if app_mode != 'advisor' %} active{% endif %}">
+    <div id="tab-portfolio" class="tab-panel active">
         <div class="card">
             <div class="card-header">Portfolio</div>
             <form id="portfolio-form" class="controls"
