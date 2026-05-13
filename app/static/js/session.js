@@ -84,40 +84,45 @@
 })();
 
 // ── Mode switch handler ───────────────────────────────────────────────
+//
+// The mode selector no longer hides tabs. Every tab is always visible
+// (grouped by mode in the tab strip). Clicking a mode acts as a quick
+// jump to that group's primary tab and applies the body[data-mode]
+// attribute so per-mode theming (e.g. the calm Client View) takes
+// effect. Returning users who closed the app on, say, the Scoring tab
+// will see Scoring exactly where it was; the JS reconciles the data
+// without dropping them into a different mode.
+
+const MODE_HOME_TABS = {
+    advisor: 'tab-workspace',
+    research: 'tab-portfolio',
+    client_view: 'tab-client-review',
+};
+
 function setAppMode(mode) {
     const valid = ['advisor', 'research', 'client_view'];
     if (!valid.includes(mode)) return;
     document.body.setAttribute('data-mode', mode);
     const sw = document.querySelector('.mode-switch');
     if (sw) sw.setAttribute('data-mode', mode);
-    applyTabVisibility(mode);
-    // If the currently active tab is no longer visible in this mode,
-    // jump to the first visible tab.
-    const activeBtn = document.querySelector('.tab-btn.active:not(.mode-hidden)');
-    if (!activeBtn) {
-        const firstVisible = document.querySelector('.tab-btn:not(.mode-hidden)');
-        if (firstVisible) {
-            const tabId = firstVisible.getAttribute('data-tab');
-            if (tabId && typeof switchTab === 'function') switchTab(tabId);
-        }
+    const home = MODE_HOME_TABS[mode];
+    if (home && typeof switchTab === 'function') {
+        switchTab(home);
     }
     if (window.teroxx && window.teroxx.session) {
         window.teroxx.session.patch({ mode: mode });
     }
 }
 
-function applyTabVisibility(mode) {
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-        const modes = (btn.getAttribute('data-modes') || '').split(',').map(s => s.trim()).filter(Boolean);
-        if (modes.length === 0 || modes.includes(mode)) {
-            btn.classList.remove('mode-hidden');
-        } else {
-            btn.classList.add('mode-hidden');
-        }
-    });
+// No-op kept for backward compatibility with older base.html builds; the
+// new design relies on always-visible tabs grouped by mode.
+function applyTabVisibility(_mode) {
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('mode-hidden'));
 }
 
-// Run as early as possible so tabs render correctly for the seeded mode.
+// On first paint, seed the body[data-mode] from the saved SessionContext
+// so the calm theme is right for Client View. We do not touch the active
+// tab here — switchTab() in app.js restores the user's last-used tab.
 (function () {
     function init() {
         const initial = (window.__INITIAL_CTX__ && window.__INITIAL_CTX__.mode) || 'advisor';

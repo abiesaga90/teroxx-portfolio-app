@@ -95,21 +95,30 @@
     </button>
 </nav>
 
-<!-- Tab Navigation (mode-scoped via data-modes; JS hides tabs that don't apply) -->
+<!-- Tab Navigation — every tab is always visible, grouped by primary mode. -->
+<!-- The mode switch above acts as a jump-to + theme selector; clicking any -->
+<!-- tab is allowed regardless of the currently-selected mode. -->
 <nav class="tab-nav">
-    <button class="tab-btn{% if app_mode == 'advisor' %} active{% endif %}" data-tab="tab-workspace" data-modes="advisor" onclick="switchTab('tab-workspace')">Workspace</button>
-    <button class="tab-btn{% if app_mode == 'client_view' %} active{% endif %}" data-tab="tab-client-review" data-modes="client_view" onclick="switchTab('tab-client-review')">Client Review</button>
-    <button class="tab-btn{% if app_mode == 'research' %} active{% endif %}" data-tab="tab-portfolio" data-modes="advisor,research" onclick="switchTab('tab-portfolio')">Portfolio</button>
-    <button class="tab-btn" data-tab="tab-clients" data-modes="advisor,client_view" onclick="switchTab('tab-clients')">Client Portfolios</button>
-    <button class="tab-btn" data-tab="tab-rebalance-pnl" data-modes="advisor" onclick="switchTab('tab-rebalance-pnl')">Rebalancing &amp; P&L</button>
-    <button class="tab-btn" data-tab="tab-activity" data-modes="advisor" onclick="switchTab('tab-activity')">Activity</button>
-    <button class="tab-btn" data-tab="tab-market-context" data-modes="advisor,research" onclick="switchTab('tab-market-context')">Market Context</button>
-    <button class="tab-btn" data-tab="tab-scoring" data-modes="research" onclick="switchTab('tab-scoring')">Scoring</button>
-    <button class="tab-btn" data-tab="tab-data" data-modes="research" onclick="switchTab('tab-data')">Data</button>
-    <button class="tab-btn" data-tab="tab-dca" data-modes="research" onclick="switchTab('tab-dca')">DCA Planner</button>
-    <button class="tab-btn" data-tab="tab-defi-macro" data-modes="research" onclick="switchTab('tab-defi-macro')">DeFi Macro</button>
-    <button class="tab-btn" data-tab="tab-methodology" data-modes="research" onclick="switchTab('tab-methodology')">Methodology</button>
-    <button class="tab-btn" data-tab="tab-apis" data-modes="research" onclick="switchTab('tab-apis')">APIs</button>
+    <span class="tab-group-label" data-mode="advisor">Advisor</span>
+    <button class="tab-btn{% if app_mode == 'advisor' %} active{% endif %}" data-tab="tab-workspace" data-primary-mode="advisor" onclick="switchTab('tab-workspace')">Workspace</button>
+    <button class="tab-btn" data-tab="tab-clients" data-primary-mode="advisor" onclick="switchTab('tab-clients')">Client Portfolios</button>
+    <button class="tab-btn" data-tab="tab-rebalance-pnl" data-primary-mode="advisor" onclick="switchTab('tab-rebalance-pnl')">Rebalancing &amp; P&L</button>
+    <button class="tab-btn" data-tab="tab-activity" data-primary-mode="advisor" onclick="switchTab('tab-activity')">Activity</button>
+
+    <span class="tab-group-sep"></span>
+    <span class="tab-group-label" data-mode="research">Research</span>
+    <button class="tab-btn{% if app_mode == 'research' %} active{% endif %}" data-tab="tab-portfolio" data-primary-mode="research" onclick="switchTab('tab-portfolio')">Portfolio</button>
+    <button class="tab-btn" data-tab="tab-scoring" data-primary-mode="research" onclick="switchTab('tab-scoring')">Scoring</button>
+    <button class="tab-btn" data-tab="tab-data" data-primary-mode="research" onclick="switchTab('tab-data')">Data</button>
+    <button class="tab-btn" data-tab="tab-dca" data-primary-mode="research" onclick="switchTab('tab-dca')">DCA Planner</button>
+    <button class="tab-btn" data-tab="tab-market-context" data-primary-mode="research" onclick="switchTab('tab-market-context')">Market Context</button>
+    <button class="tab-btn" data-tab="tab-defi-macro" data-primary-mode="research" onclick="switchTab('tab-defi-macro')">DeFi Macro</button>
+    <button class="tab-btn" data-tab="tab-methodology" data-primary-mode="research" onclick="switchTab('tab-methodology')">Methodology</button>
+    <button class="tab-btn" data-tab="tab-apis" data-primary-mode="research" onclick="switchTab('tab-apis')">APIs</button>
+
+    <span class="tab-group-sep"></span>
+    <span class="tab-group-label" data-mode="client_view">Client View</span>
+    <button class="tab-btn{% if app_mode == 'client_view' %} active{% endif %}" data-tab="tab-client-review" data-primary-mode="client_view" onclick="switchTab('tab-client-review')">Client Review</button>
 </nav>
 
 <main class="main">

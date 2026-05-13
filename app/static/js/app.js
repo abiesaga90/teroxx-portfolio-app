@@ -14,18 +14,30 @@ function openClientInWorkspace(clientId) {
 }
 
 // ── Tab switching ──
+//
+// All tabs are always visible (grouped by mode in the tab strip).
+// Switching to a tab keeps body[data-mode] in sync with that tab's
+// primary mode so the calm Client View theme follows the tab the user
+// is actually looking at, not the mode switch they clicked five minutes
+// ago.
 function switchTab(tabId) {
-    const btn = document.querySelector(`[data-tab="${tabId}"]`);
-    // Refuse to switch to a tab that's hidden by the current app mode.
-    if (btn && btn.classList.contains('mode-hidden')) {
-        const firstVisible = document.querySelector('.tab-btn:not(.mode-hidden)');
-        if (firstVisible) tabId = firstVisible.getAttribute('data-tab');
-    }
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.getElementById(tabId)?.classList.add('active');
-    document.querySelector(`[data-tab="${tabId}"]`)?.classList.add('active');
+    const btn = document.querySelector(`[data-tab="${tabId}"]`);
+    btn?.classList.add('active');
     localStorage.setItem('activeTab', tabId);
+
+    // Sync mode visuals + SessionContext to the tab's primary mode.
+    const primary = btn?.getAttribute('data-primary-mode');
+    if (primary) {
+        document.body.setAttribute('data-mode', primary);
+        const sw = document.querySelector('.mode-switch');
+        if (sw) sw.setAttribute('data-mode', primary);
+        if (window.teroxx && window.teroxx.session) {
+            window.teroxx.session.patch({ mode: primary });
+        }
+    }
 }
 
 // Restore last tab on load
