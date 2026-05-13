@@ -44,12 +44,7 @@ logger = logging.getLogger(__name__)
 
 UNIVERSE_OPTIONS = [
     "Teroxx Core (9)",
-    "Teroxx Core+Additional (15)",
-    "Pre-Kraken Embed (22)",
-    "Full (24)",
-    "Teroxx Research (21)",
-    "Long (79)",
-    "Extended (87)",
+    "Teroxx Expanded (21)",
 ]
 
 
@@ -178,7 +173,7 @@ async def health():
 
 PREF_DEFAULTS = {
     "profile": "Balanced",
-    "universe": "Full (24)",
+    "universe": "Teroxx Core (9)",
     "mode": "Fundamental",
     "portfolio_value": 100000,
 }
@@ -275,7 +270,7 @@ async def index(request: Request):
 async def portfolio_partial(
     request: Request,
     profile: str = Form("Balanced"),
-    universe: str = Form("Full (24)"),
+    universe: str = Form("Teroxx Core (9)"),
     mode: str = Form("Standard"),
     portfolio_value: float = Form(100000),
 ):
@@ -343,7 +338,7 @@ async def portfolio_partial(
 async def scoring_partial(
     request: Request,
     profile: str = Form("Balanced"),
-    universe: str = Form("Full (24)"),
+    universe: str = Form("Teroxx Core (9)"),
 ):
     tickers = [t for t in get_universe_tickers(universe) if t not in ("USDC", "EURC", "PAXG")]
     detail = ten_factor_detail(profile, tickers)
@@ -421,7 +416,7 @@ async def scoring_partial(
 async def dca_partial(
     request: Request,
     profile: str = Form("Balanced"),
-    universe: str = Form("Full (24)"),
+    universe: str = Form("Teroxx Core (9)"),
     mode: str = Form("Standard"),
     monthly_amount: float = Form(1000),
     dca_scope: str = Form("BTC + Large Cap"),
@@ -530,7 +525,7 @@ async def dca_backtest_partial(
 async def rebalance_pnl_partial(
     request: Request,
     profile: str = Form("Balanced"),
-    universe: str = Form("Full (24)"),
+    universe: str = Form("Teroxx Core (9)"),
     mode: str = Form("Standard"),
     portfolio_value: float = Form(100000),
     positions_json: str = Form("{}"),
@@ -582,7 +577,7 @@ async def token_detail(request: Request, ticker: str, profile: str = "Balanced")
 async def data_partial(
     request: Request,
     profile: str = Form("Balanced"),
-    universe: str = Form("Full (24)"),
+    universe: str = Form("Teroxx Core (9)"),
 ):
     tickers = [t for t in get_universe_tickers(universe) if t not in ("USDC", "EURC", "PAXG")]
     rows = full_data_breakdown(tickers, profile)

@@ -22,16 +22,21 @@ DRAWDOWN_IMPACT = {
 ALLOCATION_MODES = ["Standard", "Fundamental"]
 
 ASSET_UNIVERSES = {
-    # Universe lists scope only the CRYPTO sleeve. The defensive trio
-    # (USDC/EURC/PAXG) is always injected by the engine per profile,
-    # so it does NOT need to appear in these lists.
+    # Only two universes are offered. Teroxx Core is the currently live
+    # 9-token roster; Teroxx Expanded is the confirmed next-step roster
+    # whose 21 tokens correspond to the TeroxxUniverseAlpha valuation
+    # models (BTC, ETH, BNB, ADA, XRP, AAVE, UNI, LINK, POL, MNT, SYRUP,
+    # PENDLE, ENA, ONDO, COMP, EUL, QNT, CHZ, PAXG, USDC, EURC).
     "Teroxx Core (9)": ["USDC", "EURC", "PAXG", "BTC", "ETH", "BNB", "XRP", "ADA", "POL"],
-    "Teroxx Core+Additional (15)": ["USDC", "EURC", "PAXG", "BTC", "ETH", "BNB", "XRP", "ADA", "POL", "LTC", "LINK", "BCH", "TRX", "SOL", "XLM"],
-    "Pre-Kraken Embed (22)": ["USDC", "EURC", "PAXG", "BTC", "ETH", "BNB", "XRP", "ADA", "POL", "LTC", "LINK", "BCH", "TRX", "SOL", "XLM", "DOT", "AVAX", "AAVE", "UNI", "TON", "MNT", "ASTER"],
-    "Full (24)": ["USDC", "EURC", "PAXG", "BTC", "ETH", "BNB", "XRP", "ADA", "POL", "LTC", "LINK", "BCH", "TRX", "SOL", "XLM", "HYPE", "DOT", "AVAX", "SUI", "AAVE", "UNI", "TON", "MNT", "ASTER"],
-    "Teroxx Research (21)": ["BTC", "ETH", "AAVE", "BNB", "UNI", "HYPE", "ZEC", "SKY", "TRX", "SYRUP", "XMR", "AR", "PENDLE", "AERO", "VVV", "EUL", "RNDR", "AKT", "TAO", "ATH", "MON"],
-    "Long (79)": None,  # computed: all non-Short tiers
-    "Extended (87)": None,  # all assets
+    "Teroxx Expanded (21)": [
+        "USDC", "EURC", "PAXG",
+        "BTC", "ETH", "BNB", "XRP", "ADA",
+        "POL", "MNT",
+        "AAVE", "UNI", "COMP", "EUL", "PENDLE", "SYRUP", "ENA",
+        "ONDO",
+        "LINK", "QNT",
+        "CHZ",
+    ],
 }
 
 # Complete asset universe — 79 tokens
