@@ -1,0 +1,91 @@
+<!-- Activity feed: filterable view of advisor_actions across the firm. -->
+<div class="card">
+    <div class="card-header">
+        Activity
+        <span style="font-size:0.7rem;color:var(--text-muted);font-family:'Sohne',sans-serif;font-weight:400;margin-left:8px;">
+            {{ total_count }} actions{% if filters_applied %} (filtered){% endif %}
+        </span>
+        <a href="/api/activity.csv?{{ csv_query }}" class="btn-ghost-sm"
+           style="float:right;margin:8px 24px 0 0;text-decoration:none;">
+            Download CSV
+        </a>
+    </div>
+
+    <form class="activity-filters"
+          hx-get="/api/activity"
+          hx-target="#activity-results"
+          hx-trigger="change, keyup changed delay:400ms from:[name=q]"
+          hx-swap="innerHTML">
+        <label>
+            <span>Advisor</span>
+            <select name="actor_email">
+                <option value="">All advisors</option>
+                {% for email, name in actor_options %}
+                <option value="{{ email }}" {% if filters.actor_email == email %}selected{% endif %}>{{ name }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>
+            <span>Client</span>
+            <select name="client_id">
+                <option value="">All clients</option>
+                {% for c in clients %}
+                <option value="{{ c.id }}" {% if filters.client_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>
+            <span>Action</span>
+            <select name="action_type">
+                <option value="">All actions</option>
+                {% for at in action_options %}
+                <option value="{{ at }}" {% if filters.action_type == at %}selected{% endif %}>{{ at }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>
+            <span>Days back</span>
+            <select name="days">
+                {% for d in [7, 14, 30, 90, 365] %}
+                <option value="{{ d }}" {% if filters.days == d %}selected{% endif %}>last {{ d }} days</option>
+                {% endfor %}
+                <option value="0" {% if filters.days == 0 %}selected{% endif %}>all time</option>
+            </select>
+        </label>
+        <label class="search-label">
+            <span>Search</span>
+            <input type="search" name="q" value="{{ filters.q or '' }}" placeholder="Free-text in payload..." maxlength="120">
+        </label>
+    </form>
+
+    {% if rows %}
+    <div class="table-wrap">
+        <table class="activity-table">
+            <thead>
+                <tr>
+                    <th>When (UTC)</th>
+                    <th>Advisor</th>
+                    <th>Client</th>
+                    <th>Action</th>
+                    <th>Detail</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for a in rows %}
+                <tr>
+                    <td class="when">{{ a.when }}</td>
+                    <td>{{ a.actor_name or a.actor_email or "—" }}</td>
+                    <td>{{ a.client_name or (a.client_id or "—") }}</td>
+                    <td><span class="tag">{{ a.action_type }}</span></td>
+                    <td class="detail">{{ a.detail }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p style="padding:18px 32px;color:var(--text-muted);font-size:0.8rem;">
+        No activity matches the current filters.
+    </p>
+    {% endif %}
+</div>

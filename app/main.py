@@ -5,6 +5,7 @@ import asyncio
 import json
 import logging
 from contextlib import asynccontextmanager
+from datetime import datetime
 from typing import Optional
 
 from fastapi import FastAPI, Request, Form
@@ -29,6 +30,7 @@ from app.engine import (
     compute_dca_backtest, compute_client_portfolio_pnl,
     compute_client_portfolio_history,
     compute_workspace_allocation, macro_one_line,
+    compute_client_drift,
 )
 from app.macro_regime import get_macro_regime, refresh_macro_regime
 from app.session_context import SessionContext, load_context, patch_context
@@ -834,6 +836,185 @@ async def workspace_partial(request: Request, client_id: str = ""):
         "mica_banner": banner_text,
         "disclaimer": disclaimer_block,
     })
+
+
+# ── Client overview (drift roll-up) ──────────────────────────────────
+
+
+@app.get("/api/client-overview", response_class=HTMLResponse)
+async def client_overview_partial(request: Request):
+    """Roll-up card listing every active client, sorted by max drift desc.
+
+    Cheap to compute: walks the seeded client set once, uses cached live
+    prices via compute_workspace_allocation(). Designed to embed above
+    the Workspace tab as the advisor's "what needs attention" landing.
+    """
+    ctx = load_context(request)
+    rows = []
+    for summary in list_clients():
+        client = get_client(summary["id"])
+        if not client:
+            continue
+        try:
+            drift = compute_client_drift(client, profile=client.get("profile"), universe=ctx.universe)
+        except Exception as e:
+            logger.warning("Drift compute failed for %s: %s", summary["id"], e)
+            drift = {"max_drift_pp": None, "max_drift_ticker": None, "attention": False, "threshold_pp": None}
+        try:
+            pnl = compute_client_portfolio_pnl(client)
+            total_value = pnl["summary"]["total_value"]
+            total_pnl_pct = pnl["summary"]["total_pnl_pct"]
+        except Exception as e:
+            logger.warning("PnL compute failed for %s: %s", summary["id"], e)
+            total_value = 0.0
+            total_pnl_pct = 0.0
+        rows.append({
+            "id": client["id"],
+            "name": client["name"],
+            "profile": client.get("profile", "Balanced"),
+            "domicile": client.get("domicile", ""),
+            "total_value": total_value,
+            "total_pnl_pct": total_pnl_pct,
+            "max_drift_pp": drift.get("max_drift_pp"),
+            "max_drift_ticker": drift.get("max_drift_ticker"),
+            "attention": drift.get("attention", False),
+            "threshold_pp": drift.get("threshold_pp"),
+        })
+    # Sort: attention first, then by max_drift desc.
+    rows.sort(key=lambda r: (-(1 if r["attention"] else 0), -(r["max_drift_pp"] or 0)))
+    return templates.TemplateResponse("partials/client_overview.html", {
+        "request": request,
+        "rows": rows,
+    })
+
+
+# ── Activity / Audit trail ───────────────────────────────────────────
+
+
+def _format_activity_row(a, client_name_by_id: dict, actor_name_by_email: dict) -> dict:
+    """Shape one AdvisorAction row for the Activity template / CSV export."""
+    payload = a.payload_json or ""
+    # Compact detail: strip surrounding {} for one-line table display.
+    detail = payload.strip()
+    if detail.startswith("{") and detail.endswith("}"):
+        inner = detail[1:-1].strip()
+        if len(inner) > 220:
+            inner = inner[:217] + "..."
+        detail = inner
+    return {
+        "id": a.id,
+        "when": a.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+        "actor_email": a.actor_email,
+        "actor_name": actor_name_by_email.get((a.actor_email or "").lower()) or a.actor_email,
+        "client_id": a.client_id,
+        "client_name": client_name_by_id.get(a.client_id),
+        "action_type": a.action_type,
+        "detail": detail,
+        "payload": payload,
+    }
+
+
+def _activity_query_lookups(db) -> tuple[dict, dict]:
+    """Return (client_name_by_id, actor_name_by_email) maps used to enrich rows."""
+    from app.auth import USERS
+    client_name_by_id = {
+        c.id: c.name for c in clients_repo.list_active_clients(db)
+    }
+    actor_name_by_email = {email.lower(): info["name"] for email, info in USERS.items()}
+    return client_name_by_id, actor_name_by_email
+
+
+@app.get("/api/activity", response_class=HTMLResponse)
+async def activity_partial(
+    request: Request,
+    client_id: str = "",
+    actor_email: str = "",
+    action_type: str = "",
+    days: int = 30,
+    q: str = "",
+):
+    from app.auth import USERS
+    with SessionLocal() as db:
+        rows_raw = clients_repo.query_actions(
+            db,
+            client_id=client_id or None,
+            actor_email=actor_email or None,
+            action_type=action_type or None,
+            days=days,
+            q=q or None,
+            limit=500,
+        )
+        client_name_by_id, actor_name_by_email = _activity_query_lookups(db)
+        rows = [_format_activity_row(a, client_name_by_id, actor_name_by_email) for a in rows_raw]
+        action_options = clients_repo.known_action_types(db)
+        clients = [clients_repo.to_summary_dict(c) for c in clients_repo.list_active_clients(db)]
+    actor_options = [(email.lower(), info["name"]) for email, info in USERS.items()]
+    filters = {
+        "client_id": client_id, "actor_email": actor_email,
+        "action_type": action_type, "days": days, "q": q,
+    }
+    filters_applied = any([client_id, actor_email, action_type, days and days != 30, q])
+    csv_query = "&".join(
+        f"{k}={v}" for k, v in filters.items() if v not in (None, "", 0)
+    )
+    return templates.TemplateResponse("partials/activity.html", {
+        "request": request,
+        "rows": rows,
+        "total_count": len(rows),
+        "filters": filters,
+        "filters_applied": filters_applied,
+        "csv_query": csv_query,
+        "actor_options": actor_options,
+        "action_options": action_options,
+        "clients": clients,
+    })
+
+
+@app.get("/api/activity.csv")
+async def activity_csv(
+    request: Request,
+    client_id: str = "",
+    actor_email: str = "",
+    action_type: str = "",
+    days: int = 30,
+    q: str = "",
+):
+    import csv
+    from io import StringIO
+    with SessionLocal() as db:
+        rows_raw = clients_repo.query_actions(
+            db,
+            client_id=client_id or None,
+            actor_email=actor_email or None,
+            action_type=action_type or None,
+            days=days,
+            q=q or None,
+            limit=5000,
+        )
+        client_name_by_id, actor_name_by_email = _activity_query_lookups(db)
+    buf = StringIO()
+    writer = csv.writer(buf, quoting=csv.QUOTE_MINIMAL)
+    writer.writerow([
+        "id", "created_utc", "actor_email", "actor_name",
+        "client_id", "client_name", "action_type", "payload_json",
+    ])
+    for a in rows_raw:
+        writer.writerow([
+            a.id,
+            a.created_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            a.actor_email or "",
+            actor_name_by_email.get((a.actor_email or "").lower(), ""),
+            a.client_id or "",
+            client_name_by_id.get(a.client_id, ""),
+            a.action_type,
+            a.payload_json or "",
+        ])
+    filename = f"teroxx_activity_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.csv"
+    return Response(
+        content=buf.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 # ── Client Review (calm screen-share surface) ────────────────────────

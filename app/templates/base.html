@@ -102,6 +102,7 @@
     <button class="tab-btn{% if app_mode == 'research' %} active{% endif %}" data-tab="tab-portfolio" data-modes="advisor,research" onclick="switchTab('tab-portfolio')">Portfolio</button>
     <button class="tab-btn" data-tab="tab-clients" data-modes="advisor,client_view" onclick="switchTab('tab-clients')">Client Portfolios</button>
     <button class="tab-btn" data-tab="tab-rebalance-pnl" data-modes="advisor" onclick="switchTab('tab-rebalance-pnl')">Rebalancing &amp; P&L</button>
+    <button class="tab-btn" data-tab="tab-activity" data-modes="advisor" onclick="switchTab('tab-activity')">Activity</button>
     <button class="tab-btn" data-tab="tab-market-context" data-modes="advisor,research" onclick="switchTab('tab-market-context')">Market Context</button>
     <button class="tab-btn" data-tab="tab-scoring" data-modes="research" onclick="switchTab('tab-scoring')">Scoring</button>
     <button class="tab-btn" data-tab="tab-data" data-modes="research" onclick="switchTab('tab-data')">Data</button>
@@ -115,6 +116,10 @@
 
     <!-- ═══ Tab 0: Workspace (Advisor mode default landing) ═══ -->
     <div id="tab-workspace" class="tab-panel{% if app_mode == 'advisor' %} active{% endif %}">
+        <div id="client-overview-results"
+             hx-get="/api/client-overview"
+             hx-trigger="load once">
+        </div>
         <div id="workspace-results"
              hx-get="/api/workspace"
              hx-trigger="load once"
@@ -137,6 +142,20 @@
             <div class="card"><div class="card-header">Client Review</div>
                 <p style="padding:12px 32px;color:var(--text-muted);font-size:0.8rem;">
                     <span id="client-review-loading"><span class="spinner"></span> Loading client review...</span>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ Tab: Activity (audit log, Advisor mode) ═══ -->
+    <div id="tab-activity" class="tab-panel">
+        <div id="activity-results"
+             hx-get="/api/activity"
+             hx-trigger="load once"
+             hx-indicator="#activity-loading">
+            <div class="card"><div class="card-header">Activity</div>
+                <p style="padding:12px 32px;color:var(--text-muted);font-size:0.8rem;">
+                    <span id="activity-loading"><span class="spinner"></span> Loading audit log...</span>
                 </p>
             </div>
         </div>

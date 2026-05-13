@@ -7,6 +7,7 @@ P3 model: protocol performance pillar (TVL/borrowed/fee growth, network activity
 from __future__ import annotations
 
 import math
+from typing import Optional
 from app.data import (
     ASSET_UNIVERSE, ASSET_BY_TICKER, ASSET_UNIVERSES,
     FIXED_STRATEGIC, TIER_ALLOCATIONS,
@@ -1650,6 +1651,63 @@ def compute_workspace_allocation(
     # tickers with 0 target but holdings get pushed below.
     rows.sort(key=lambda r: (-r["target_pct"], -r["current_pct"]))
     return rows
+
+
+def compute_client_drift(client: dict, profile: Optional[str] = None, universe: str = "Teroxx Core (9)") -> dict:
+    """Compute per-ticker drift between the client's current mix and the
+    profile target. Returns:
+
+        {
+          "max_drift_pp": <float>,
+          "max_drift_ticker": <str | None>,
+          "rows": [{ticker, current_pct, target_pct, drift_pp}, ...],
+          "profile": <str>,
+          "universe": <str>,
+          "threshold_pp": <profile-specific threshold>,
+          "attention": <bool>,
+        }
+
+    Uses live mark-to-market for current values (so the drift is
+    actionable today, not at entry). Stable pegs default to $1 if no
+    live price is available.
+    """
+    prof = profile or client.get("profile") or "Balanced"
+    rows_alloc = compute_workspace_allocation(client, prof, universe)
+    max_drift_abs = 0.0
+    max_ticker = None
+    rows = []
+    for r in rows_alloc:
+        ad = abs(float(r.get("drift_pp") or 0))
+        rows.append({
+            "ticker": r["ticker"],
+            "current_pct": r["current_pct"],
+            "target_pct": r["target_pct"],
+            "drift_pp": r["drift_pp"],
+        })
+        if ad > max_drift_abs:
+            max_drift_abs = ad
+            max_ticker = r["ticker"]
+    threshold = DRIFT_THRESHOLDS_PP.get(prof, 5.0)
+    return {
+        "profile": prof,
+        "universe": universe,
+        "max_drift_pp": round(max_drift_abs, 2),
+        "max_drift_ticker": max_ticker,
+        "threshold_pp": threshold,
+        "attention": max_drift_abs >= threshold,
+        "rows": rows,
+    }
+
+
+# Per-risk-profile drift thresholds (absolute, percentage points).
+# A position whose current weight differs from the target by at least the
+# threshold flags the client for advisor attention. Tunable via env later.
+DRIFT_THRESHOLDS_PP = {
+    "Conservative": 3.0,
+    "Balanced":     5.0,
+    "Growth":       7.0,
+    "Aggressive":   10.0,
+}
 
 
 def macro_one_line(macro_state: dict) -> str:

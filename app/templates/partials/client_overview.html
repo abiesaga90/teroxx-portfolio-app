@@ -1,0 +1,52 @@
+<!-- Client overview: rolls up all clients ordered by max-drift desc. -->
+<div class="card client-overview">
+    <div class="card-header">
+        Clients
+        <span style="font-size:0.7rem;color:var(--text-muted);font-family:'Sohne',sans-serif;font-weight:400;margin-left:8px;">
+            sorted by drift · {{ rows|length }} clients
+        </span>
+    </div>
+    {% if rows %}
+    <div class="table-wrap">
+        <table class="client-overview-table">
+            <thead>
+                <tr>
+                    <th>Client</th>
+                    <th>Profile</th>
+                    <th>Domicile</th>
+                    <th class="right">Value</th>
+                    <th class="right">Return</th>
+                    <th>Worst drift</th>
+                    <th class="right">Δ pp</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for r in rows %}
+                <tr class="{% if r.attention %}attention{% endif %}">
+                    <td class="name">
+                        <strong>{{ r.name }}</strong>
+                        {% if r.attention %}<span class="attention-badge" title="Drift exceeds the {{ r.threshold_pp }}pp threshold for {{ r.profile }} profile.">Attention</span>{% endif %}
+                    </td>
+                    <td><span class="tag tag-{{ r.profile|lower }}">{{ r.profile }}</span></td>
+                    <td style="color:var(--text-muted);font-size:0.75rem;">{{ r.domicile }}</td>
+                    <td class="right">${{ "{:,.0f}".format(r.total_value) }}</td>
+                    <td class="right {{ 'pos' if r.total_pnl_pct >= 0 else 'neg' }}">
+                        {{ '+' if r.total_pnl_pct >= 0 else '' }}{{ "{:.1f}".format(r.total_pnl_pct) }}%
+                    </td>
+                    <td>{{ r.max_drift_ticker or '—' }}</td>
+                    <td class="right {{ 'neg' if r.attention else '' }}">
+                        {{ "{:+.1f}".format(r.max_drift_pp) if r.max_drift_pp is not none else '—' }}
+                    </td>
+                    <td class="right">
+                        <button class="btn-ghost-sm" onclick="openClientInWorkspace('{{ r.id }}')">Open</button>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p style="padding:18px 32px;color:var(--text-muted);font-size:0.8rem;">No clients yet.</p>
+    {% endif %}
+</div>

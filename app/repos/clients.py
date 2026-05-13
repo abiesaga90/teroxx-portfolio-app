@@ -224,3 +224,44 @@ def recent_actions(db: Session, *, client_id: Optional[str] = None, limit: int =
             .limit(limit)
         )
     return list(db.execute(stmt).scalars().all())
+
+
+def query_actions(
+    db: Session,
+    *,
+    client_id: Optional[str] = None,
+    actor_email: Optional[str] = None,
+    action_type: Optional[str] = None,
+    days: Optional[int] = 30,
+    q: Optional[str] = None,
+    limit: int = 500,
+) -> list[AdvisorAction]:
+    """Filterable activity-log query used by the Activity tab + CSV export."""
+    from datetime import datetime, timedelta, timezone
+    stmt = select(AdvisorAction)
+    if client_id:
+        stmt = stmt.where(AdvisorAction.client_id == client_id)
+    if actor_email:
+        stmt = stmt.where(AdvisorAction.actor_email == actor_email)
+    if action_type:
+        stmt = stmt.where(AdvisorAction.action_type == action_type)
+    if days and days > 0:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        stmt = stmt.where(AdvisorAction.created_at >= cutoff)
+    if q:
+        # SQLite LIKE; payload_json holds rendered JSON so substring search
+        # is good enough for compliance lookups without a full-text index.
+        like = f"%{q}%"
+        stmt = stmt.where(AdvisorAction.payload_json.like(like))
+    stmt = stmt.order_by(AdvisorAction.created_at.desc()).limit(limit)
+    return list(db.execute(stmt).scalars().all())
+
+
+def known_action_types(db: Session) -> list[str]:
+    rows = db.execute(select(AdvisorAction.action_type).distinct()).all()
+    return sorted({r[0] for r in rows if r and r[0]})
+
+
+def known_actor_emails(db: Session) -> list[str]:
+    rows = db.execute(select(AdvisorAction.actor_email).distinct()).all()
+    return sorted({r[0] for r in rows if r and r[0]})

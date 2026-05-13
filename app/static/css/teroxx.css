@@ -1645,3 +1645,97 @@ body[data-mode="client_view"] .tab-nav { display: none; }
     background: var(--bg-card-alt);
     border-left: 3px solid var(--nightblue);
 }
+
+/* ── Activity tab (Phase 6) ────────────────────────────────────── */
+.activity-filters {
+    display: flex; flex-wrap: wrap; gap: 14px;
+    padding: 14px 32px 18px;
+    align-items: flex-end;
+    border-bottom: 1px solid var(--border);
+}
+.activity-filters label {
+    display: flex; flex-direction: column; gap: 4px;
+    font-size: 0.65rem; text-transform: uppercase;
+    letter-spacing: 0.08em; color: var(--text-muted);
+}
+.activity-filters select, .activity-filters input[type="search"] {
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: var(--bg-card-alt);
+    font-family: 'Sohne', Arial, sans-serif;
+    font-size: 0.85rem;
+    color: var(--text-body);
+    min-width: 160px;
+}
+.activity-filters .search-label input { min-width: 220px; }
+
+.activity-table { width: 100%; }
+.activity-table th, .activity-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+    vertical-align: top;
+    font-size: 0.78rem;
+}
+.activity-table thead th {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    background: var(--bg-card-alt);
+}
+.activity-table td.when {
+    font-family: 'Sohne', monospace, sans-serif;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+.activity-table td.detail {
+    color: var(--text-muted);
+    max-width: 380px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: 'Sohne', monospace, sans-serif;
+}
+.activity-table .tag {
+    font-family: 'Sohne', monospace, sans-serif;
+    font-size: 0.7rem;
+}
+
+/* ── Client overview + attention badge (Phase 7) ───────────────── */
+.client-overview { margin-bottom: 18px; }
+.client-overview-table { width: 100%; }
+.client-overview-table th, .client-overview-table td {
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.82rem;
+}
+.client-overview-table thead th {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    background: var(--bg-card-alt);
+    text-align: left;
+}
+.client-overview-table th.right, .client-overview-table td.right { text-align: right; }
+.client-overview-table tr.attention {
+    background: rgba(208, 102, 67, 0.06);
+}
+.client-overview-table tr.attention td.name strong { color: var(--sunset-ember); }
+.attention-badge {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 2px 8px;
+    background: var(--sunset-ember);
+    color: #fff;
+    border-radius: 2px;
+    font-family: 'Sohne', Arial, sans-serif;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+}
+.client-overview-table .pos { color: var(--success); font-weight: 600; }
+.client-overview-table .neg { color: var(--danger); font-weight: 600; }

@@ -1,3 +1,18 @@
+// Jump to the Workspace tab and load the given client.
+function openClientInWorkspace(clientId) {
+    if (typeof switchTab === 'function') switchTab('tab-workspace');
+    if (window.htmx && clientId) {
+        window.htmx.ajax(
+            'GET',
+            '/api/workspace?client_id=' + encodeURIComponent(clientId),
+            { target: '#workspace-results', swap: 'innerHTML' }
+        );
+    }
+    if (window.teroxx && window.teroxx.session && clientId) {
+        window.teroxx.session.patch({ client_id: clientId });
+    }
+}
+
 // ── Tab switching ──
 function switchTab(tabId) {
     const btn = document.querySelector(`[data-tab="${tabId}"]`);
