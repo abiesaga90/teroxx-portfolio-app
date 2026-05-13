@@ -97,9 +97,30 @@ const MODE_HOME_TABS = {
     client_view: 'tab-client-review',
 };
 
-function setAppMode(mode) {
+async function setAppMode(mode) {
     const valid = ['advisor', 'research', 'client_view'];
     if (!valid.includes(mode)) return;
+
+    // Detect the very-first-mode transition from the landing screen.
+    // The server renders different markup when app_mode is null (the
+    // tab strip and panels are gated behind {% if app_mode %}), so a
+    // full reload is the cleanest way to swap in the real shell.
+    const wasLanding = document.body.hasAttribute('data-landing');
+    if (wasLanding) {
+        try {
+            await fetch('/api/session', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ mode }),
+            });
+        } catch (_) {}
+        const home = MODE_HOME_TABS[mode];
+        if (home) localStorage.setItem('activeTab', home);
+        window.location.reload();
+        return;
+    }
+
     document.body.setAttribute('data-mode', mode);
     const sw = document.querySelector('.mode-switch');
     if (sw) sw.setAttribute('data-mode', mode);
@@ -138,12 +159,16 @@ function modeForTab(tabId) {
     return btn?.getAttribute('data-primary-mode') || null;
 }
 
-// On first paint, reconcile the seeded mode against the user's last
-// active tab. If the saved tab belongs to a different mode, switch the
-// master mode first so the strip lines up with the tab being restored.
+// On first paint with a chosen mode, reconcile the seeded mode against
+// the user's last active tab. On the landing (no mode yet), we leave
+// the body alone so the institutional landing renders unimpeded.
 (function () {
     function init() {
-        const ctxMode = (window.__INITIAL_CTX__ && window.__INITIAL_CTX__.mode) || 'advisor';
+        const ctxMode = (window.__INITIAL_CTX__ && window.__INITIAL_CTX__.mode) || null;
+        if (!ctxMode) {
+            // Landing screen path: nothing to reconcile, no tabs to filter.
+            return;
+        }
         const savedTab = (function () {
             try { return localStorage.getItem('activeTab'); } catch (_) { return null; }
         })();

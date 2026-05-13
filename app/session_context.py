@@ -29,7 +29,9 @@ class SessionContext(BaseModel):
     """The single source of truth for "who is doing what, where, with which assumptions"."""
 
     user_email: Optional[str] = None
-    mode: Mode = "advisor"
+    # None on the very first visit so the UI can show the institutional
+    # landing card. The first explicit mode pick by the advisor persists.
+    mode: Optional[Mode] = None
     client_id: Optional[str] = None
     universe: str = "Teroxx Core (9)"
     profile: str = "Balanced"
