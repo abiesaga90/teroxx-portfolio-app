@@ -155,6 +155,13 @@
 </div>
 {% endif %}
 
+<!-- 4b. Scenario comparison (side-by-side what-if) -->
+<div id="scenario-compare-results"
+     hx-get="/api/scenarios/compare?client_id={{ c.id }}"
+     hx-trigger="load once"
+     hx-swap="innerHTML">
+</div>
+
 <!-- 5. Activity history -->
 {% if disclaimer %}
 <div class="card workspace-disclaimer">

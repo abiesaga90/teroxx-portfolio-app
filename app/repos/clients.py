@@ -14,7 +14,7 @@ from typing import Optional
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session, selectinload
 
-from app.db import AdvisorAction, Client, ClientLot, log_action
+from app.db import AdvisorAction, Client, ClientLot, Scenario, log_action
 
 
 # ── Conversion helpers ───────────────────────────────────────────────
@@ -265,3 +265,56 @@ def known_action_types(db: Session) -> list[str]:
 def known_actor_emails(db: Session) -> list[str]:
     rows = db.execute(select(AdvisorAction.actor_email).distinct()).all()
     return sorted({r[0] for r in rows if r and r[0]})
+
+
+# ── Scenarios ────────────────────────────────────────────────────────
+
+
+def list_scenarios(db: Session, client_id: str) -> list[Scenario]:
+    stmt = (
+        select(Scenario)
+        .where(Scenario.client_id == client_id)
+        .order_by(Scenario.created_at.desc())
+        .limit(20)
+    )
+    return list(db.execute(stmt).scalars().all())
+
+
+def create_scenario(
+    db: Session,
+    *,
+    actor_email: Optional[str],
+    client_id: str,
+    label: str,
+    a_profile: str,
+    a_universe: str,
+    b_profile: str,
+    b_universe: str,
+    notes: Optional[str] = None,
+) -> Scenario:
+    s = Scenario(
+        client_id=client_id,
+        label=label.strip()[:160] or "Untitled scenario",
+        a_profile=a_profile,
+        a_universe=a_universe,
+        b_profile=b_profile,
+        b_universe=b_universe,
+        notes=notes,
+        created_by=actor_email,
+    )
+    db.add(s)
+    log_action(
+        db, actor_email=actor_email, action_type="scenario_saved",
+        client_id=client_id,
+        payload={"label": s.label, "a": [a_profile, a_universe], "b": [b_profile, b_universe]},
+    )
+    db.flush()
+    return s
+
+
+def delete_scenario(db: Session, *, actor_email: Optional[str], scenario: Scenario) -> None:
+    log_action(
+        db, actor_email=actor_email, action_type="scenario_deleted",
+        client_id=scenario.client_id, payload={"id": scenario.id, "label": scenario.label},
+    )
+    db.delete(scenario)

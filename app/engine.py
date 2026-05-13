@@ -1710,6 +1710,97 @@ DRIFT_THRESHOLDS_PP = {
 }
 
 
+def compute_scenario_comparison(
+    client: dict,
+    *,
+    a_profile: str,
+    a_universe: str,
+    b_profile: str,
+    b_universe: str,
+) -> dict:
+    """Compare two (profile, universe) combinations for the same client.
+
+    Returns a dict with:
+      - a, b: each is {profile, universe, rows: [{ticker, target_pct, target_value}]}
+      - diff: [{ticker, a_pct, b_pct, delta_pp, delta_value}] sorted by abs(delta_pp) desc
+      - portfolio_value: the live mark-to-market value used as the
+        diff denominator (so $ deltas are actionable)
+      - summary: defensive / growth tier rollups for each side
+    """
+    # 1. Anchor the dollar diff to the client's *current* MTM value so
+    # the table reads as "moves needed today". Falls back to starting
+    # capital if no live prices yet.
+    pnl = compute_client_portfolio_pnl(client)
+    portfolio_value = float(pnl["summary"]["total_value"] or client.get("starting_capital_usd") or 100_000)
+
+    def _rollup(profile: str, universe: str) -> dict:
+        allocs = [a for a in compute_allocations(profile, universe) if (a.get("alloc_pct") or 0) > 0]
+        rows = []
+        defensive_pct = 0.0
+        growth_pct = 0.0
+        for a in allocs:
+            pct = float(a.get("alloc_pct") or 0) * 100
+            tier = a.get("tier") or ""
+            if tier == "Fixed":
+                defensive_pct += pct
+            elif tier in ("Mid Cap", "Small Cap"):
+                growth_pct += pct
+            rows.append({
+                "ticker": a["ticker"],
+                "name": a.get("name", a["ticker"]),
+                "tier": tier,
+                "target_pct": round(pct, 2),
+                "target_value": round((pct / 100) * portfolio_value, 2),
+            })
+        rows.sort(key=lambda r: -r["target_pct"])
+        return {
+            "profile": profile,
+            "universe": universe,
+            "rows": rows,
+            "n_assets": len(rows),
+            "defensive_pct": round(defensive_pct, 2),
+            "growth_pct": round(growth_pct, 2),
+        }
+
+    a = _rollup(a_profile, a_universe)
+    b = _rollup(b_profile, b_universe)
+
+    # 2. Diff: union of tickers, A vs B percentage points, dollar move.
+    a_pct = {r["ticker"]: r["target_pct"] for r in a["rows"]}
+    b_pct = {r["ticker"]: r["target_pct"] for r in b["rows"]}
+    name_by_ticker = {r["ticker"]: r["name"] for r in (a["rows"] + b["rows"])}
+    tickers = sorted(set(a_pct.keys()) | set(b_pct.keys()))
+    diff = []
+    for t in tickers:
+        ap = a_pct.get(t, 0.0)
+        bp = b_pct.get(t, 0.0)
+        delta = bp - ap
+        diff.append({
+            "ticker": t,
+            "name": name_by_ticker.get(t, t),
+            "a_pct": ap,
+            "b_pct": bp,
+            "delta_pp": round(delta, 2),
+            "delta_value": round((delta / 100) * portfolio_value, 2),
+        })
+    # Sort by absolute delta desc so the biggest changes land at top.
+    diff.sort(key=lambda d: -abs(d["delta_pp"]))
+
+    return {
+        "client_id": client.get("id"),
+        "client_name": client.get("name"),
+        "portfolio_value": portfolio_value,
+        "a": a,
+        "b": b,
+        "diff": diff,
+        "summary": {
+            "defensive_delta_pp": round(b["defensive_pct"] - a["defensive_pct"], 2),
+            "growth_delta_pp": round(b["growth_pct"] - a["growth_pct"], 2),
+            "n_movers": sum(1 for d in diff if abs(d["delta_pp"]) >= 0.1),
+        },
+    }
+
+
 def macro_one_line(macro_state: dict) -> str:
     """Build a single-line plain-English narrative from the macro regime state.
 

@@ -1739,3 +1739,98 @@ body[data-mode="client_view"] .tab-nav { display: none; }
 }
 .client-overview-table .pos { color: var(--success); font-weight: 600; }
 .client-overview-table .neg { color: var(--danger); font-weight: 600; }
+
+/* ── Scenario comparison (Phase 8) ─────────────────────────────── */
+.scenario-controls {
+    display: flex; flex-wrap: wrap; gap: 18px;
+    padding: 14px 32px 16px;
+    align-items: flex-end;
+    border-bottom: 1px solid var(--border);
+}
+.scenario-side {
+    display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end;
+    padding-right: 18px; border-right: 1px solid var(--border);
+}
+.scenario-side:last-of-type { border-right: none; }
+.scenario-label {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 2px;
+    font-family: 'Sohne', Arial, sans-serif;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+    color: #fff;
+}
+.scenario-a { background: var(--electric-sky); }
+.scenario-b { background: var(--sunset-ember); }
+.scenario-controls label {
+    display: flex; flex-direction: column; gap: 4px;
+    font-size: 0.65rem; text-transform: uppercase;
+    letter-spacing: 0.08em; color: var(--text-muted);
+}
+.scenario-controls select {
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: var(--bg-card-alt);
+    font-family: 'Sohne', Arial, sans-serif;
+    font-size: 0.85rem;
+    color: var(--text-body);
+    min-width: 150px;
+}
+
+.scenario-summary {
+    display: flex; flex-wrap: wrap; gap: 32px;
+    padding: 14px 32px;
+    border-bottom: 1px solid var(--border);
+}
+.scenario-stat .stat-label {
+    display: block;
+    font-size: 0.62rem;
+    text-transform: uppercase;
+    letter-spacing: 0.10em;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+.scenario-stat .stat-value {
+    font-family: 'SometimesTimes', Georgia, serif;
+    font-size: 1.2rem;
+    color: var(--text-heading);
+}
+.scenario-stat .stat-value.pos { color: var(--success); }
+.scenario-stat .stat-value.neg { color: var(--danger); }
+
+.scenario-table { width: 100%; }
+.scenario-table th, .scenario-table td {
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.8rem;
+}
+.scenario-table thead th {
+    background: var(--bg-card-alt);
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    text-align: left;
+}
+.scenario-table .right { text-align: right; }
+.scenario-table .pos { color: var(--success); font-weight: 600; }
+.scenario-table .neg { color: var(--danger); font-weight: 600; }
+.scenario-table .neutral { color: var(--text-muted); }
+
+.scenario-saved {
+    padding: 12px 32px 16px;
+    display: flex; flex-wrap: wrap; gap: 8px;
+    align-items: center;
+    border-top: 1px solid var(--border);
+}
+.scenario-saved-label {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-right: 8px;
+}

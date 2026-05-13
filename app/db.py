@@ -115,6 +115,54 @@ class ClientLot(Base):
     client: Mapped[Client] = relationship(back_populates="lots")
 
 
+class ApiToken(Base):
+    """Long-lived bearer token for CRM / external integrations.
+
+    Tokens are stored hashed (sha256 + per-token salt); the plaintext
+    is only ever returned at creation time. `scopes` is a comma-
+    separated list of capabilities ("clients:read", "clients:write",
+    "webhooks:receive"), `provider` tags which external system the
+    token is meant for ("hubspot", "salesforce", "internal").
+    """
+
+    __tablename__ = "api_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    provider: Mapped[Optional[str]] = mapped_column(String(64))
+    token_prefix: Mapped[str] = mapped_column(String(12), nullable=False, index=True)
+    salt: Mapped[str] = mapped_column(String(32), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    scopes: Mapped[str] = mapped_column(String(240), default="clients:read")
+    created_by: Mapped[Optional[str]] = mapped_column(String(160))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utc_now, nullable=False)
+    last_used_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+
+
+class Scenario(Base):
+    """A saved what-if comparison input prepared by an advisor.
+
+    Phase 8 lets the advisor stage "Conservative on Core" vs
+    "Balanced on Expanded" for a specific client ahead of a meeting.
+    Only the inputs are persisted; the allocation rollups are
+    recomputed on each render so signal changes stay reflected.
+    """
+
+    __tablename__ = "scenarios"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    client_id: Mapped[str] = mapped_column(String(64), ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True)
+    label: Mapped[str] = mapped_column(String(160), nullable=False)
+    a_profile: Mapped[str] = mapped_column(String(32), nullable=False)
+    a_universe: Mapped[str] = mapped_column(String(64), nullable=False)
+    b_profile: Mapped[str] = mapped_column(String(32), nullable=False)
+    b_universe: Mapped[str] = mapped_column(String(64), nullable=False)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    created_by: Mapped[Optional[str]] = mapped_column(String(160))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utc_now, nullable=False)
+
+
 class AdvisorAction(Base):
     """Every state-changing action made by an advisor is logged here.
 

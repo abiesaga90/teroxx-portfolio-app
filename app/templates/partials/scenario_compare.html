@@ -1,0 +1,157 @@
+<!-- Side-by-side scenario comparison for one client. -->
+<div class="card scenario-card">
+    <div class="card-header">
+        Scenario comparison
+        <span style="font-size:0.7rem;color:var(--text-muted);font-family:'Sohne',sans-serif;font-weight:400;margin-left:8px;">
+            {{ comp.client_name }} · live mark ${{ "{:,.0f}".format(comp.portfolio_value) }}
+        </span>
+    </div>
+
+    <form class="scenario-controls"
+          hx-get="/api/scenarios/compare"
+          hx-target="#scenario-compare-results"
+          hx-trigger="change"
+          hx-swap="innerHTML">
+        <input type="hidden" name="client_id" value="{{ comp.client_id }}">
+        <div class="scenario-side">
+            <span class="scenario-label scenario-a">Scenario A</span>
+            <label>Profile
+                <select name="a_profile">
+                    {% for p in profiles %}
+                    <option value="{{ p }}" {% if p == comp.a.profile %}selected{% endif %}>{{ p }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label>Universe
+                <select name="a_universe">
+                    {% for u in universes %}
+                    <option value="{{ u }}" {% if u == comp.a.universe %}selected{% endif %}>{{ u }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+        </div>
+        <div class="scenario-side">
+            <span class="scenario-label scenario-b">Scenario B</span>
+            <label>Profile
+                <select name="b_profile">
+                    {% for p in profiles %}
+                    <option value="{{ p }}" {% if p == comp.b.profile %}selected{% endif %}>{{ p }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label>Universe
+                <select name="b_universe">
+                    {% for u in universes %}
+                    <option value="{{ u }}" {% if u == comp.b.universe %}selected{% endif %}>{{ u }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+        </div>
+        <button type="button" class="btn-ghost-sm"
+                onclick="saveScenario('{{ comp.client_id }}')">Save scenario</button>
+    </form>
+
+    <div class="scenario-summary">
+        <div class="scenario-stat">
+            <span class="stat-label">A → B defensive shift</span>
+            <span class="stat-value {{ 'pos' if comp.summary.defensive_delta_pp > 0 else ('neg' if comp.summary.defensive_delta_pp < 0 else '') }}">
+                {{ "{:+.1f}".format(comp.summary.defensive_delta_pp) }} pp
+            </span>
+        </div>
+        <div class="scenario-stat">
+            <span class="stat-label">A → B growth shift</span>
+            <span class="stat-value {{ 'pos' if comp.summary.growth_delta_pp > 0 else ('neg' if comp.summary.growth_delta_pp < 0 else '') }}">
+                {{ "{:+.1f}".format(comp.summary.growth_delta_pp) }} pp
+            </span>
+        </div>
+        <div class="scenario-stat">
+            <span class="stat-label">Positions changed</span>
+            <span class="stat-value">{{ comp.summary.n_movers }} of {{ comp.diff|length }}</span>
+        </div>
+        <div class="scenario-stat">
+            <span class="stat-label">Asset count</span>
+            <span class="stat-value">{{ comp.a.n_assets }} → {{ comp.b.n_assets }}</span>
+        </div>
+    </div>
+
+    <div class="table-wrap">
+        <table class="scenario-table">
+            <thead>
+                <tr>
+                    <th>Asset</th>
+                    <th class="right">Scenario A %</th>
+                    <th class="right">Scenario B %</th>
+                    <th class="right">Δ pp</th>
+                    <th class="right">$ move</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for r in comp.diff %}
+            {% if r.delta_pp != 0 or r.a_pct > 0 or r.b_pct > 0 %}
+                <tr>
+                    <td><strong>{{ r.ticker }}</strong>
+                        <span style="color:var(--text-muted);font-size:0.7rem;">{{ r.name }}</span></td>
+                    <td class="right">{{ "{:.2f}".format(r.a_pct) }}%</td>
+                    <td class="right">{{ "{:.2f}".format(r.b_pct) }}%</td>
+                    <td class="right {{ 'pos' if r.delta_pp > 0 else ('neg' if r.delta_pp < 0 else 'neutral') }}">
+                        {{ "{:+.2f}".format(r.delta_pp) }}
+                    </td>
+                    <td class="right {{ 'pos' if r.delta_value > 0 else ('neg' if r.delta_value < 0 else 'neutral') }}">
+                        {% if r.delta_value >= 0 %}+${{ "{:,.0f}".format(r.delta_value) }}{% else %}-${{ "{:,.0f}".format(-r.delta_value) }}{% endif %}
+                    </td>
+                </tr>
+            {% endif %}
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if saved_scenarios %}
+    <div class="scenario-saved">
+        <span class="scenario-saved-label">Saved scenarios for this client:</span>
+        {% for s in saved_scenarios %}
+        <button type="button" class="btn-ghost-sm"
+                onclick="loadScenario('{{ s.id }}','{{ s.a_profile }}','{{ s.a_universe }}','{{ s.b_profile }}','{{ s.b_universe }}')">
+            {{ s.label }}
+        </button>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+
+<script>
+window.loadScenario = function(id, ap, au, bp, bu) {
+    var form = document.querySelector('#scenario-compare-results form');
+    if (!form) return;
+    form.elements['a_profile'].value = ap;
+    form.elements['a_universe'].value = au;
+    form.elements['b_profile'].value = bp;
+    form.elements['b_universe'].value = bu;
+    htmx.trigger(form, 'change');
+};
+window.saveScenario = async function(clientId) {
+    var form = document.querySelector('#scenario-compare-results form');
+    if (!form || !clientId) return;
+    var label = window.prompt('Name this scenario:', '');
+    if (!label) return;
+    var payload = {
+        label: label,
+        a_profile: form.elements['a_profile'].value,
+        a_universe: form.elements['a_universe'].value,
+        b_profile: form.elements['b_profile'].value,
+        b_universe: form.elements['b_universe'].value,
+    };
+    try {
+        var resp = await fetch('/api/clients/' + encodeURIComponent(clientId) + '/scenarios', {
+            method: 'POST', credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        // Refresh the panel so the saved row appears under "Saved scenarios".
+        htmx.trigger(form, 'change');
+    } catch (e) {
+        alert('Save failed: ' + e.message);
+    }
+};
+</script>

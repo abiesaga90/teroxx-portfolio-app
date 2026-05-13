@@ -5,7 +5,7 @@ import asyncio
 import json
 import logging
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import FastAPI, Request, Form
@@ -30,7 +30,7 @@ from app.engine import (
     compute_dca_backtest, compute_client_portfolio_pnl,
     compute_client_portfolio_history,
     compute_workspace_allocation, macro_one_line,
-    compute_client_drift,
+    compute_client_drift, compute_scenario_comparison,
 )
 from app.macro_regime import get_macro_regime, refresh_macro_regime
 from app.session_context import SessionContext, load_context, patch_context
@@ -139,6 +139,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
         path = request.url.path
         if path.startswith("/static") or path in ("/health", "/login", "/favicon.ico"):
             return await call_next(request)
+        # CRM-facing surfaces have their own bearer-token auth.
+        if path.startswith("/api/v1/") or path.startswith("/webhooks/"):
+            return await call_next(request)
         user = get_current_user(request)
         if not user and path != "/logout":
             if path.startswith("/api/"):
@@ -152,6 +155,10 @@ app.add_middleware(AuthMiddleware)
 app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET, max_age=86400 * 7)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
+
+# Mount the stable v1 API (bearer-token auth).
+from app.api_v1 import router as api_v1_router
+app.include_router(api_v1_router)
 
 
 def fmt_pct(value):
@@ -836,6 +843,182 @@ async def workspace_partial(request: Request, client_id: str = ""):
         "mica_banner": banner_text,
         "disclaimer": disclaimer_block,
     })
+
+
+# ── Admin: API token management (Phase 9) ────────────────────────────
+
+
+@app.get("/api/admin/api-tokens")
+async def list_api_tokens(request: Request):
+    """List API tokens (no secrets, only prefixes / metadata)."""
+    from sqlalchemy import select
+    from app.db import ApiToken
+    with SessionLocal() as db:
+        rows = db.execute(select(ApiToken).order_by(ApiToken.created_at.desc())).scalars().all()
+        return [
+            {
+                "id": t.id, "name": t.name, "provider": t.provider,
+                "prefix": t.token_prefix, "scopes": t.scopes,
+                "created_at": t.created_at.isoformat(timespec="seconds"),
+                "last_used_at": t.last_used_at.isoformat(timespec="seconds") if t.last_used_at else None,
+                "revoked_at": t.revoked_at.isoformat(timespec="seconds") if t.revoked_at else None,
+            }
+            for t in rows
+        ]
+
+
+@app.post("/api/admin/api-tokens")
+async def create_api_token(request: Request):
+    """Mint a new API token. The plaintext value is returned only once."""
+    from app.api_v1 import _new_token
+    from app.db import ApiToken
+    payload = await request.json()
+    if not isinstance(payload, dict) or not payload.get("name"):
+        return JSONResponse({"error": "name_required"}, status_code=400)
+    plaintext, prefix, salt, token_hash = _new_token()
+    actor = _actor_email(request) or "unknown"
+    with SessionLocal() as db:
+        row = ApiToken(
+            name=str(payload["name"])[:160],
+            provider=(payload.get("provider") or "internal")[:64],
+            token_prefix=prefix,
+            salt=salt,
+            token_hash=token_hash,
+            scopes=str(payload.get("scopes") or "clients:read")[:240],
+            created_by=actor,
+        )
+        db.add(row)
+        log_action(
+            db, actor_email=actor, action_type="api_token_created",
+            client_id=None,
+            payload={"id": None, "name": row.name, "provider": row.provider, "scopes": row.scopes},
+        )
+        db.commit()
+        db.refresh(row)
+    return {
+        "id": row.id,
+        "name": row.name,
+        "provider": row.provider,
+        "scopes": row.scopes,
+        "prefix": row.token_prefix,
+        "plaintext_token": plaintext,
+        "warning": "Store this token now. It will not be shown again.",
+    }
+
+
+@app.delete("/api/admin/api-tokens/{token_id}")
+async def revoke_api_token(request: Request, token_id: int):
+    from app.db import ApiToken
+    actor = _actor_email(request) or "unknown"
+    with SessionLocal() as db:
+        row = db.get(ApiToken, token_id)
+        if not row:
+            return JSONResponse({"error": "not_found"}, status_code=404)
+        row.revoked_at = datetime.now(timezone.utc)
+        log_action(
+            db, actor_email=actor, action_type="api_token_revoked",
+            client_id=None, payload={"id": token_id, "name": row.name},
+        )
+        db.commit()
+        return {"ok": True}
+
+
+# ── Scenarios (side-by-side comparison) ──────────────────────────────
+
+
+@app.get("/api/scenarios/compare", response_class=HTMLResponse)
+async def scenarios_compare_partial(
+    request: Request,
+    client_id: str = "",
+    a_profile: str = "",
+    a_universe: str = "",
+    b_profile: str = "",
+    b_universe: str = "",
+):
+    """Render the side-by-side scenario card for one client.
+
+    Defaults: A = client's current target (profile + active universe);
+    B = the same profile on the other available universe. Both can be
+    overridden via query params.
+    """
+    ctx = load_context(request)
+    if not client_id:
+        client_id = ctx.client_id or ""
+    if not client_id:
+        return HTMLResponse(
+            '<p style="padding:24px;color:var(--text-muted);">Select a client to compare scenarios.</p>'
+        )
+    c = get_client(client_id)
+    if not c:
+        return HTMLResponse('<p style="padding:24px;color:var(--text-muted);">Client not found.</p>')
+
+    # Defaults: A = client's stated profile on the active universe;
+    # B = same profile on the other universe so the diff has signal.
+    universes = list(UNIVERSE_OPTIONS)
+    default_universe = ctx.universe or universes[0]
+    other_universe = next((u for u in universes if u != default_universe), default_universe)
+    a_profile = a_profile or c.get("profile") or "Balanced"
+    a_universe = a_universe or default_universe
+    b_profile = b_profile or c.get("profile") or "Balanced"
+    b_universe = b_universe or other_universe
+
+    comp = compute_scenario_comparison(
+        c,
+        a_profile=a_profile, a_universe=a_universe,
+        b_profile=b_profile, b_universe=b_universe,
+    )
+    with SessionLocal() as db:
+        saved = clients_repo.list_scenarios(db, client_id)
+        saved_payload = [{
+            "id": s.id, "label": s.label,
+            "a_profile": s.a_profile, "a_universe": s.a_universe,
+            "b_profile": s.b_profile, "b_universe": s.b_universe,
+        } for s in saved]
+
+    return templates.TemplateResponse("partials/scenario_compare.html", {
+        "request": request,
+        "comp": comp,
+        "profiles": RISK_PROFILES,
+        "universes": universes,
+        "saved_scenarios": saved_payload,
+    })
+
+
+@app.post("/api/clients/{client_id}/scenarios")
+async def create_scenario_endpoint(request: Request, client_id: str):
+    payload = await request.json()
+    if not isinstance(payload, dict) or not payload.get("label"):
+        return JSONResponse({"error": "label_required"}, status_code=400)
+    with SessionLocal() as db:
+        c = clients_repo.get_client(db, client_id)
+        if not c:
+            return JSONResponse({"error": "not_found"}, status_code=404)
+        s = clients_repo.create_scenario(
+            db,
+            actor_email=_actor_email(request),
+            client_id=client_id,
+            label=payload.get("label", ""),
+            a_profile=payload.get("a_profile", ""),
+            a_universe=payload.get("a_universe", ""),
+            b_profile=payload.get("b_profile", ""),
+            b_universe=payload.get("b_universe", ""),
+            notes=payload.get("notes"),
+        )
+        db.commit()
+        db.refresh(s)
+        return {"id": s.id, "label": s.label}
+
+
+@app.delete("/api/clients/{client_id}/scenarios/{scenario_id}")
+async def delete_scenario_endpoint(request: Request, client_id: str, scenario_id: int):
+    with SessionLocal() as db:
+        from app.db import Scenario
+        s = db.get(Scenario, scenario_id)
+        if not s or s.client_id != client_id:
+            return JSONResponse({"error": "not_found"}, status_code=404)
+        clients_repo.delete_scenario(db, actor_email=_actor_email(request), scenario=s)
+        db.commit()
+        return {"ok": True}
 
 
 # ── Client overview (drift roll-up) ──────────────────────────────────
