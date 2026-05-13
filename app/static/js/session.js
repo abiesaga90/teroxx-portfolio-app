@@ -85,13 +85,11 @@
 
 // ── Mode switch handler ───────────────────────────────────────────────
 //
-// The mode selector no longer hides tabs. Every tab is always visible
-// (grouped by mode in the tab strip). Clicking a mode acts as a quick
-// jump to that group's primary tab and applies the body[data-mode]
-// attribute so per-mode theming (e.g. the calm Client View) takes
-// effect. Returning users who closed the app on, say, the Scoring tab
-// will see Scoring exactly where it was; the JS reconciles the data
-// without dropping them into a different mode.
+// Three master modes (Advisor / Research / Client View) drive what
+// sub-tabs are visible. Each tab has a single canonical mode via
+// data-primary-mode; tabs whose mode doesn't match the current master
+// are hidden. Switching modes also jumps to that mode's home tab so
+// the panel below the strip stays in step.
 
 const MODE_HOME_TABS = {
     advisor: 'tab-workspace',
@@ -105,29 +103,64 @@ function setAppMode(mode) {
     document.body.setAttribute('data-mode', mode);
     const sw = document.querySelector('.mode-switch');
     if (sw) sw.setAttribute('data-mode', mode);
-    const home = MODE_HOME_TABS[mode];
-    if (home && typeof switchTab === 'function') {
-        switchTab(home);
+    applyTabVisibility(mode);
+    // If the currently active tab is hidden in the new mode, jump to
+    // that mode's home tab so the user is never left looking at a panel
+    // they cannot navigate back to.
+    const activeBtn = document.querySelector('.tab-btn.active');
+    const stillVisible = activeBtn && !activeBtn.classList.contains('mode-hidden');
+    if (!stillVisible) {
+        const home = MODE_HOME_TABS[mode];
+        if (home && typeof switchTab === 'function') switchTab(home);
     }
     if (window.teroxx && window.teroxx.session) {
         window.teroxx.session.patch({ mode: mode });
     }
 }
 
-// No-op kept for backward compatibility with older base.html builds; the
-// new design relies on always-visible tabs grouped by mode.
-function applyTabVisibility(_mode) {
-    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('mode-hidden'));
+function applyTabVisibility(mode) {
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        const primary = btn.getAttribute('data-primary-mode') || '';
+        if (!primary || primary === mode) {
+            btn.classList.remove('mode-hidden');
+        } else {
+            btn.classList.add('mode-hidden');
+        }
+    });
 }
 
-// On first paint, seed the body[data-mode] from the saved SessionContext
-// so the calm theme is right for Client View. We do not touch the active
-// tab here — switchTab() in app.js restores the user's last-used tab.
+// Pick the right master mode for a given tab. Used by smart restore so
+// returning users who closed the app on, say, the Scoring tab are
+// dropped into Research mode automatically rather than into an empty
+// Advisor screen.
+function modeForTab(tabId) {
+    const btn = document.querySelector(`[data-tab="${tabId}"]`);
+    return btn?.getAttribute('data-primary-mode') || null;
+}
+
+// On first paint, reconcile the seeded mode against the user's last
+// active tab. If the saved tab belongs to a different mode, switch the
+// master mode first so the strip lines up with the tab being restored.
 (function () {
     function init() {
-        const initial = (window.__INITIAL_CTX__ && window.__INITIAL_CTX__.mode) || 'advisor';
-        document.body.setAttribute('data-mode', initial);
-        applyTabVisibility(initial);
+        const ctxMode = (window.__INITIAL_CTX__ && window.__INITIAL_CTX__.mode) || 'advisor';
+        const savedTab = (function () {
+            try { return localStorage.getItem('activeTab'); } catch (_) { return null; }
+        })();
+        let mode = ctxMode;
+        if (savedTab) {
+            const owner = modeForTab(savedTab);
+            if (owner && owner !== mode) {
+                mode = owner;
+                if (window.teroxx && window.teroxx.session) {
+                    window.teroxx.session.patch({ mode: mode });
+                }
+            }
+        }
+        document.body.setAttribute('data-mode', mode);
+        const sw = document.querySelector('.mode-switch');
+        if (sw) sw.setAttribute('data-mode', mode);
+        applyTabVisibility(mode);
     }
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);

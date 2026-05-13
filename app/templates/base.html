@@ -95,18 +95,17 @@
     </button>
 </nav>
 
-<!-- Tab Navigation — every tab is always visible, grouped by primary mode. -->
-<!-- The mode switch above acts as a jump-to + theme selector; clicking any -->
-<!-- tab is allowed regardless of the currently-selected mode. -->
+<!-- Tab Navigation — only sub-tabs for the current master mode are visible. -->
+<!-- Mode is set by the master switch above; clicking a tab keeps body[data-mode] -->
+<!-- in sync with that tab's canonical mode. -->
 <nav class="tab-nav">
-    <span class="tab-group-label" data-mode="advisor">Advisor</span>
+    <!-- Advisor mode -->
     <button class="tab-btn{% if app_mode == 'advisor' %} active{% endif %}" data-tab="tab-workspace" data-primary-mode="advisor" onclick="switchTab('tab-workspace')">Workspace</button>
     <button class="tab-btn" data-tab="tab-clients" data-primary-mode="advisor" onclick="switchTab('tab-clients')">Client Portfolios</button>
     <button class="tab-btn" data-tab="tab-rebalance-pnl" data-primary-mode="advisor" onclick="switchTab('tab-rebalance-pnl')">Rebalancing &amp; P&L</button>
     <button class="tab-btn" data-tab="tab-activity" data-primary-mode="advisor" onclick="switchTab('tab-activity')">Activity</button>
 
-    <span class="tab-group-sep"></span>
-    <span class="tab-group-label" data-mode="research">Research</span>
+    <!-- Research mode -->
     <button class="tab-btn{% if app_mode == 'research' %} active{% endif %}" data-tab="tab-portfolio" data-primary-mode="research" onclick="switchTab('tab-portfolio')">Portfolio</button>
     <button class="tab-btn" data-tab="tab-scoring" data-primary-mode="research" onclick="switchTab('tab-scoring')">Scoring</button>
     <button class="tab-btn" data-tab="tab-data" data-primary-mode="research" onclick="switchTab('tab-data')">Data</button>
@@ -116,8 +115,7 @@
     <button class="tab-btn" data-tab="tab-methodology" data-primary-mode="research" onclick="switchTab('tab-methodology')">Methodology</button>
     <button class="tab-btn" data-tab="tab-apis" data-primary-mode="research" onclick="switchTab('tab-apis')">APIs</button>
 
-    <span class="tab-group-sep"></span>
-    <span class="tab-group-label" data-mode="client_view">Client View</span>
+    <!-- Client View mode -->
     <button class="tab-btn{% if app_mode == 'client_view' %} active{% endif %}" data-tab="tab-client-review" data-primary-mode="client_view" onclick="switchTab('tab-client-review')">Client Review</button>
 </nav>
 

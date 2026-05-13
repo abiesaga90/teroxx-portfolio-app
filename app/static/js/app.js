@@ -15,29 +15,32 @@ function openClientInWorkspace(clientId) {
 
 // ── Tab switching ──
 //
-// All tabs are always visible (grouped by mode in the tab strip).
-// Switching to a tab keeps body[data-mode] in sync with that tab's
-// primary mode so the calm Client View theme follows the tab the user
-// is actually looking at, not the mode switch they clicked five minutes
-// ago.
+// Tabs live under their canonical master mode. Switching to a tab
+// always switches the master mode to match, so the visible strip below
+// the mode switch stays in sync with whatever the user just clicked.
 function switchTab(tabId) {
-    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    document.getElementById(tabId)?.classList.add('active');
     const btn = document.querySelector(`[data-tab="${tabId}"]`);
-    btn?.classList.add('active');
-    localStorage.setItem('activeTab', tabId);
-
-    // Sync mode visuals + SessionContext to the tab's primary mode.
     const primary = btn?.getAttribute('data-primary-mode');
-    if (primary) {
+
+    // If the tab belongs to a different mode than the one currently
+    // active, flip the master first. setAppMode() will hide/reveal
+    // sub-tabs accordingly.
+    const currentMode = document.body.getAttribute('data-mode');
+    if (primary && primary !== currentMode) {
         document.body.setAttribute('data-mode', primary);
         const sw = document.querySelector('.mode-switch');
         if (sw) sw.setAttribute('data-mode', primary);
+        if (typeof applyTabVisibility === 'function') applyTabVisibility(primary);
         if (window.teroxx && window.teroxx.session) {
             window.teroxx.session.patch({ mode: primary });
         }
     }
+
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById(tabId)?.classList.add('active');
+    btn?.classList.add('active');
+    localStorage.setItem('activeTab', tabId);
 }
 
 // Restore last tab on load

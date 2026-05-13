@@ -157,43 +157,10 @@ body {
     color: rgba(255, 255, 255, 0.65);
 }
 
-/* Every tab is always visible (grouped by mode via .tab-group-label /
-   .tab-group-sep in the markup). The .mode-hidden class is kept as a
-   no-op so older inline scripts that toggled it do not crash. */
-.tab-btn.mode-hidden { /* deliberately empty: always visible */ }
-
-.tab-group-label {
-    display: inline-flex;
-    align-items: center;
-    padding: 0 14px 0 18px;
-    font-family: 'Sohne', Arial, sans-serif;
-    font-size: 0.58rem;
-    font-weight: 600;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    color: rgba(255, 255, 255, 0.35);
-    align-self: center;
-    flex: 0 0 auto;
-    white-space: nowrap;
-    pointer-events: none;
-}
-.tab-group-label[data-mode="advisor"]      { color: var(--white); }
-.tab-group-label[data-mode="research"]     { color: rgba(255, 255, 255, 0.55); }
-.tab-group-label[data-mode="client_view"]  { color: rgba(255, 255, 255, 0.55); }
-.tab-group-sep {
-    display: inline-block;
-    width: 1px;
-    height: 22px;
-    background: rgba(255, 255, 255, 0.18);
-    margin: 0 2px;
-    align-self: center;
-    flex: 0 0 auto;
-}
-/* Subtle highlight on the group label matching the active mode so the
-   selected mode reads in both the switch above and the strip below. */
-body[data-mode="advisor"]      .tab-group-label[data-mode="advisor"]      { color: var(--sunset-ember); }
-body[data-mode="research"]     .tab-group-label[data-mode="research"]     { color: var(--sunset-ember); }
-body[data-mode="client_view"]  .tab-group-label[data-mode="client_view"]  { color: var(--sunset-ember); }
+/* Sub-tabs are hidden when their data-primary-mode does not match the
+   master mode set on body[data-mode]. JS toggles .mode-hidden on each
+   .tab-btn via applyTabVisibility(). */
+.tab-btn.mode-hidden { display: none !important; }
 
 /* ── Tab Navigation — dark strip below header ── */
 .tab-nav {
