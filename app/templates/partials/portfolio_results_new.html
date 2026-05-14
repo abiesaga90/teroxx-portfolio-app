@@ -250,25 +250,8 @@
     </form>
 </div>
 
-<script>
-window.exportProposal = function (kind, pv, profile, universe) {
-    var sel = document.getElementById('proposal-export-client');
-    var status = document.getElementById('proposal-export-status');
-    var cid = sel && sel.value;
-    if (!cid) {
-        if (status) status.textContent = 'Pick a client first.';
-        return;
-    }
-    var qs = new URLSearchParams({
-        profile: profile || '',
-        universe: universe || '',
-        portfolio_value: String(pv || ''),
-    }).toString();
-    var path = '/api/clients/' + encodeURIComponent(cid) + '/proposal.' + (kind === 'pdf' ? 'pdf' : 'html');
-    window.open(path + '?' + qs, '_blank', 'noopener');
-    if (status) status.textContent = '';
-};
-</script>
+<!-- exportProposal() is defined globally in /static/js/app.js so it
+     persists across HTMX swaps. -->
 
 <div class="sources">
     <div class="sources-title">Sources</div>

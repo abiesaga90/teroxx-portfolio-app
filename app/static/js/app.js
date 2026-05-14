@@ -1,3 +1,34 @@
+// Proposal export — Generate proposal PDF / Preview in browser.
+//
+// Defined globally (not inside the HTMX-swapped portfolio partial) so it
+// survives /api/portfolio swaps. Uses a synchronously-clicked anchor
+// rather than window.open() to avoid silent popup-blocker suppression.
+window.exportProposal = function (kind, pv, profile, universe) {
+    var sel = document.getElementById('proposal-export-client');
+    var status = document.getElementById('proposal-export-status');
+    var cid = sel && sel.value;
+    if (!cid) {
+        if (status) status.textContent = 'Pick a client first.';
+        return;
+    }
+    if (status) status.textContent = 'Opening…';
+    var qs = new URLSearchParams({
+        profile: profile || '',
+        universe: universe || '',
+        portfolio_value: String(pv == null ? '' : pv),
+    }).toString();
+    var path = '/api/clients/' + encodeURIComponent(cid) +
+               '/proposal.' + (kind === 'pdf' ? 'pdf' : 'html');
+    var a = document.createElement('a');
+    a.href = path + '?' + qs;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    if (status) setTimeout(function () { status.textContent = ''; }, 1500);
+};
+
 // Jump to the Workspace tab and load the given client.
 function openClientInWorkspace(clientId) {
     if (typeof switchTab === 'function') switchTab('tab-workspace');
