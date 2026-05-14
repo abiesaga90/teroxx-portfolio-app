@@ -420,7 +420,15 @@
         };
         function v(id) {
             var el = document.getElementById(ids[id]);
-            return el && el.value ? el.value : '';
+            if (!el) return '';
+            var val = el.value;
+            // Defensive: reject literal "undefined" / "null" strings
+            // that can sneak in when JS state was loaded from a stale
+            // browser cache. Treat them as empty.
+            if (val === undefined || val === null || val === 'undefined' || val === 'null') {
+                return '';
+            }
+            return String(val);
         }
         function build(kind) {
             var ptype = v('proposalType') || 'new';
@@ -493,18 +501,25 @@
             el.addEventListener('change', refresh);
             el.addEventListener('input', refresh);
         });
-        ['anchorDocx', 'anchorPdf', 'anchorHtml'].forEach(function (k) {
+        // Anchor kinds → format. Computed on click so we never rely on
+        // a stale href that someone else (incl. an old cached JS
+        // version) might have left behind.
+        var anchorKinds = { anchorDocx: 'docx', anchorPdf: 'pdf', anchorHtml: 'html' };
+        Object.keys(anchorKinds).forEach(function (k) {
             var a = document.getElementById(ids[k]);
             if (!a) return;
             a.addEventListener('click', function (e) {
-                if (a.getAttribute('href') === '#') {
+                var fresh = build(anchorKinds[k]);
+                if (!fresh || fresh === '#') {
                     var s = document.getElementById(ids.status);
                     var ptype = v('proposalType') || 'new';
                     if (s) s.textContent = ptype === 'review'
                         ? 'Pick an existing client first.'
                         : 'Enter a client name first.';
                     e.preventDefault();
+                    return;
                 }
+                a.href = fresh;
             });
         });
         refresh();

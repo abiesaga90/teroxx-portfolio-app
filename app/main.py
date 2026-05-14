@@ -297,7 +297,7 @@ async def index(request: Request):
     defensive_pct = sum(p["alloc_pct"] for p in positions if p["ticker"] in ("USDC", "EURC", "PAXG"))
     crypto_pct = sum(p["alloc_pct"] for p in positions if p["ticker"] not in ("USDC", "EURC", "PAXG"))
     dd_50 = DRAWDOWN_IMPACT["Crypto -50%"].get(profile, 0)
-    return templates.TemplateResponse("base.html", {
+    response = templates.TemplateResponse("base.html", {
         "request": request,
         "current_user": user,
         "profiles": RISK_PROFILES,
@@ -326,6 +326,12 @@ async def index(request: Request):
         "ctx": ctx.model_dump(),
         "app_mode": ctx.mode,
     })
+    # Never let the browser reuse a stale shell. The page embeds the
+    # Proposal-card partial inline; if it sticks in the HTTP cache,
+    # advisors keep seeing the old form layout + JS even after a deploy.
+    response.headers["Cache-Control"] = "no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    return response
 
 
 # ── HTMX Partial Endpoints ──────────────────────────────────────────────
