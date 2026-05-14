@@ -470,7 +470,7 @@
                 params.set('dca_horizon', v('dcaHorizon') || '6');
                 params.set('dca_scope', 'all');
             }
-            return '/api/clients/' + encodeURIComponent(cid) + '/proposal.' + kind + '?' + params.toString();
+            return basePath + '?' + params.toString();
         }
         function syncProposalTypeUI() {
             var ptype = v('proposalType') || 'new';
