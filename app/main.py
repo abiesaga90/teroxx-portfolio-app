@@ -1276,6 +1276,14 @@ def _parse_proposal_query(
     dca_horizon: Optional[int],
     dca_scope: Optional[str],
     dca_min_order: Optional[float],
+    salutation: Optional[str] = None,
+    welcome: Optional[str] = None,
+    market_analysis: Optional[str] = None,
+    conclusion: Optional[str] = None,
+    status_level: Optional[str] = None,
+    consultation_date: Optional[str] = None,
+    advisor_email: Optional[str] = None,
+    advisor_phone: Optional[str] = None,
 ) -> tuple[Optional[str], Optional[dict], Optional[dict]]:
     """Translate query params into the override + DCA payloads.
 
@@ -1287,12 +1295,28 @@ def _parse_proposal_query(
         overrides["excluded_tickers"] = [
             s.strip().upper() for s in excluded.split(",") if s.strip()
         ]
-    if wishes:
-        overrides["wishes_md"] = wishes
+    if salutation:
+        overrides["salutation"] = salutation
+    if welcome:
+        overrides["welcome_md"] = welcome
     if summary:
         overrides["summary_md"] = summary
+    if market_analysis:
+        overrides["market_analysis_md"] = market_analysis
     if execution_plan:
         overrides["execution_plan_md"] = execution_plan
+    if conclusion:
+        overrides["conclusion_md"] = conclusion
+    if wishes:
+        overrides["wishes_md"] = wishes
+    if status_level:
+        overrides["status_level"] = status_level
+    if consultation_date:
+        overrides["consultation_date"] = consultation_date
+    if advisor_email:
+        overrides["advisor_email"] = advisor_email
+    if advisor_phone:
+        overrides["advisor_phone"] = advisor_phone
     overrides_out = overrides or None
 
     dca_out = None
@@ -1323,10 +1347,22 @@ async def client_proposal_pdf(
     dca_horizon: Optional[int] = None,
     dca_scope: Optional[str] = None,
     dca_min_order: Optional[float] = None,
+    salutation: Optional[str] = None,
+    welcome: Optional[str] = None,
+    market_analysis: Optional[str] = None,
+    conclusion: Optional[str] = None,
+    status_level: Optional[str] = None,
+    consultation_date: Optional[str] = None,
+    advisor_email: Optional[str] = None,
+    advisor_phone: Optional[str] = None,
 ):
     lang_v, overrides_v, dca_v = _parse_proposal_query(
         lang, excluded, wishes, summary, execution_plan,
         dca_monthly, dca_horizon, dca_scope, dca_min_order,
+        salutation=salutation, welcome=welcome,
+        market_analysis=market_analysis, conclusion=conclusion,
+        status_level=status_level, consultation_date=consultation_date,
+        advisor_email=advisor_email, advisor_phone=advisor_phone,
     )
     inp = _proposal_inputs_for(
         request, client_id, profile=profile, universe=universe,
@@ -1381,10 +1417,22 @@ async def client_proposal_html(
     dca_horizon: Optional[int] = None,
     dca_scope: Optional[str] = None,
     dca_min_order: Optional[float] = None,
+    salutation: Optional[str] = None,
+    welcome: Optional[str] = None,
+    market_analysis: Optional[str] = None,
+    conclusion: Optional[str] = None,
+    status_level: Optional[str] = None,
+    consultation_date: Optional[str] = None,
+    advisor_email: Optional[str] = None,
+    advisor_phone: Optional[str] = None,
 ):
     lang_v, overrides_v, dca_v = _parse_proposal_query(
         lang, excluded, wishes, summary, execution_plan,
         dca_monthly, dca_horizon, dca_scope, dca_min_order,
+        salutation=salutation, welcome=welcome,
+        market_analysis=market_analysis, conclusion=conclusion,
+        status_level=status_level, consultation_date=consultation_date,
+        advisor_email=advisor_email, advisor_phone=advisor_phone,
     )
     inp = _proposal_inputs_for(
         request, client_id, profile=profile, universe=universe,
@@ -1418,12 +1466,24 @@ async def client_proposal_docx(
     dca_horizon: Optional[int] = None,
     dca_scope: Optional[str] = None,
     dca_min_order: Optional[float] = None,
+    salutation: Optional[str] = None,
+    welcome: Optional[str] = None,
+    market_analysis: Optional[str] = None,
+    conclusion: Optional[str] = None,
+    status_level: Optional[str] = None,
+    consultation_date: Optional[str] = None,
+    advisor_email: Optional[str] = None,
+    advisor_phone: Optional[str] = None,
 ):
     """Editable Word-document version of the proposal — the primary
     advisor working format per Jannick Bröring."""
     lang_v, overrides_v, dca_v = _parse_proposal_query(
         lang, excluded, wishes, summary, execution_plan,
         dca_monthly, dca_horizon, dca_scope, dca_min_order,
+        salutation=salutation, welcome=welcome,
+        market_analysis=market_analysis, conclusion=conclusion,
+        status_level=status_level, consultation_date=consultation_date,
+        advisor_email=advisor_email, advisor_phone=advisor_phone,
     )
     inp = _proposal_inputs_for(
         request, client_id, profile=profile, universe=universe,

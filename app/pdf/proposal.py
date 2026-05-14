@@ -65,6 +65,56 @@ class ProposalInputs:
     dca: Optional[dict] = None
 
 
+# Asset-class buckets for the directional summary table. The mapping
+# is deliberately coarse to match what an HNW client sees in a paper
+# proposal (Jannick's template table 4): six buckets, not the full
+# per-ticker list. Any ticker not mapped lands in "Small-cap / thematic".
+_ASSET_CLASS_BUCKETS = (
+    ("stablecoins", "assetclass.stablecoins",
+     ("USDC", "USDT", "EURC", "DAI", "FDUSD", "PYUSD")),
+    ("gold", "assetclass.gold", ("PAXG", "XAUT")),
+    ("sov", "assetclass.sov", ("BTC",)),
+    ("large_cap", "assetclass.large_cap",
+     ("ETH", "BNB", "XRP", "ADA", "SOL", "DOGE", "TRX", "LINK", "TON")),
+    ("mid_cap", "assetclass.mid_cap",
+     ("POL", "AVAX", "DOT", "LTC", "SUI", "ATOM", "NEAR", "APT", "HBAR",
+      "ICP", "ARB", "OP", "FIL", "AAVE", "UNI", "MKR", "RNDR", "FET",
+      "TAO", "PENDLE", "ENA", "ONDO", "QNT", "MNT", "HYPE")),
+)
+
+
+def _aggregate_asset_classes(rows: list[dict], *, lang: str) -> list[dict]:
+    """Bucket per-ticker rows into the six asset-class summary rows."""
+    from app.pdf.i18n import t as _t
+    totals: dict[str, float] = {key: 0.0 for key, _, _ in _ASSET_CLASS_BUCKETS}
+    totals["small_cap"] = 0.0
+    ticker_to_bucket: dict[str, str] = {}
+    for key, _, tickers in _ASSET_CLASS_BUCKETS:
+        for tk in tickers:
+            ticker_to_bucket[tk] = key
+    for r in rows:
+        tk = (r.get("ticker") or "").upper()
+        bucket = ticker_to_bucket.get(tk, "small_cap")
+        totals[bucket] += float(r.get("target_pct") or 0)
+    labels = {
+        "stablecoins": "assetclass.stablecoins",
+        "gold": "assetclass.gold",
+        "sov": "assetclass.sov",
+        "large_cap": "assetclass.large_cap",
+        "mid_cap": "assetclass.mid_cap",
+        "small_cap": "assetclass.small_cap",
+    }
+    out = []
+    for key in ("stablecoins", "gold", "sov", "large_cap", "mid_cap", "small_cap"):
+        share = totals.get(key, 0.0)
+        out.append({
+            "key": key,
+            "label": _t(labels[key], lang),
+            "share_pct": share,
+        })
+    return out
+
+
 def _abs_static_path(rel: str) -> str:
     """Return a file:// URL pointing into app/static/.
 
@@ -330,12 +380,35 @@ def build_proposal_context(inp: ProposalInputs) -> dict[str, Any]:
         "disclaimer": disclaimer,
         "teroxx_mark": teroxx_mark,
         # Overrides: cleaned-up versions ready for the renderer.
+        # All free-form *_md blocks are markdown strings; empty when
+        # the advisor has not yet drafted that section.
         "overrides": {
             "excluded_tickers": sorted(excluded_tickers),
-            "wishes_md": (overrides.get("wishes_md") or "").strip(),
+            # Personal welcome (Jannick template: 4-paragraph welcome
+            # block opening with "Sehr geehrter Herr X,").
+            "salutation": (overrides.get("salutation") or "").strip(),
+            "welcome_md": (overrides.get("welcome_md") or "").strip(),
+            # Advisor-narrative slots arranged in Jannick's flow.
             "summary_md": (overrides.get("summary_md") or "").strip(),
+            "market_analysis_md": (overrides.get("market_analysis_md") or "").strip(),
             "execution_plan_md": (overrides.get("execution_plan_md") or "").strip(),
+            "conclusion_md": (overrides.get("conclusion_md") or "").strip(),
+            # Wishes is the "what the client asked for" block.
+            "wishes_md": (overrides.get("wishes_md") or "").strip(),
+            # Client-info metadata.
+            "status_level": (overrides.get("status_level") or "").strip(),
+            "consultation_date": (overrides.get("consultation_date") or "").strip(),
+            # Structured fee components: [{name, value}]. Stored as a
+            # list so the advisor can add/remove rows. Defaults are
+            # injected by the renderer if the list is empty.
+            "fees": overrides.get("fees") or [],
+            # Advisor contact card.
+            "advisor_email": (overrides.get("advisor_email") or "").strip(),
+            "advisor_phone": (overrides.get("advisor_phone") or "").strip(),
         },
+        # Asset-class aggregation for the directional summary table
+        # (Jannick's template table 4). Each entry: {key, label, share_pct}.
+        "asset_class_rows": _aggregate_asset_classes(alloc_rows, lang=lang),
         # DCA section payload (empty when no DCA params supplied).
         "dca_rows": dca_rows,
         "dca_meta": dca_meta,

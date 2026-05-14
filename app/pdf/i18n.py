@@ -306,6 +306,186 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "Diagrams and exhibits are available in the PDF version of this proposal.",
         "de": "Diagramme und Grafiken finden Sie in der PDF-Fassung dieses Vorschlags.",
     },
+
+    # ── Welcome / salutation (directional from Jannick's template) ──
+    "welcome.salutation_default": {
+        "en": "Dear {name},",
+        "de": "Sehr geehrte/r {name},",
+    },
+    # Four-paragraph default welcome. Tone: formal Sie-Form, advisor-
+    # to-private-client, no superlatives. Advisors override per client
+    # via the `welcome_md` field.
+    "welcome.body_default": {
+        "en": (
+            "Welcome to Teroxx Investment Advisory. We are glad to count you among our clients "
+            "and look forward to accompanying you on the path to durable capital preservation and "
+            "considered wealth growth.\n\n"
+            "At Teroxx, your financial goals stand at the centre of every decision. Our team "
+            "combines deep market knowledge with disciplined, transparent execution so the strategy "
+            "we agree on can be carried out precisely as defined.\n\n"
+            "Transparency and trust are non-negotiable. We take the time to understand your needs "
+            "and we work with you on a wealth strategy that fits your circumstances rather than a "
+            "one-size-fits-all template.\n\n"
+            "Below you will find an overview of your personal investment information and your "
+            "individual investor profile."
+        ),
+        "de": (
+            "Willkommen bei Teroxx Investment Advisory. Wir freuen uns, Sie als Kundin oder Kunden "
+            "begrüßen zu dürfen, und begleiten Sie gerne auf Ihrem Weg zu langfristiger "
+            "Vermögenssicherung und nachhaltigem Vermögensaufbau.\n\n"
+            "Bei Teroxx Investment Advisory stehen Ihre finanziellen Ziele und Interessen stets im "
+            "Mittelpunkt unseres Handelns. Unser Team verbindet fundiertes Marktwissen mit einer "
+            "disziplinierten und transparenten Umsetzung, sodass die gemeinsam vereinbarte Strategie "
+            "präzise und nachvollziehbar realisiert werden kann.\n\n"
+            "Transparenz und Vertrauen stehen bei uns an erster Stelle. Wir nehmen uns die Zeit, "
+            "Ihre Bedürfnisse zu verstehen, und arbeiten gemeinsam mit Ihnen an einer Strategie, "
+            "die zu Ihrer persönlichen Situation passt – statt einer Standardlösung.\n\n"
+            "Nachfolgend finden Sie eine Übersicht Ihrer persönlichen Anlageinformationen sowie "
+            "Ihres individuellen Investorenprofils."
+        ),
+    },
+
+    # ── Client information table ──
+    "client_info.heading": {"en": "Client information", "de": "Kundeninformationen"},
+    "client_info.prepared_by": {"en": "Prepared by", "de": "Erstellt von"},
+    "client_info.prepared_by_team": {
+        "en": "Teroxx Advisory & Research Department",
+        "de": "Teroxx Advisory & Research Department",
+    },
+    "client_info.consultation_date": {
+        "en": "Investment analysis date",
+        "de": "Datum der Investitionsanalyse",
+    },
+    "client_info.client_name": {"en": "Client name", "de": "Name des Kunden"},
+    "client_info.country": {"en": "Country", "de": "Land"},
+    "client_info.status_level": {"en": "Teroxx status level", "de": "Teroxx Status Level"},
+
+    # ── Risk profile table (Jannick's table 2) ──
+    "risk_profile.heading": {"en": "Risk profile", "de": "Risikoprofil"},
+    "risk_profile.tolerance": {"en": "Risk tolerance", "de": "Risiko-Toleranz"},
+    "risk_profile.horizon": {"en": "Investment horizon", "de": "Anlagehorizont"},
+    "risk_profile.objective": {"en": "Primary investment objective", "de": "Primäres Ziel der Investitionen"},
+    "risk_profile.tolerance_default.Conservative": {
+        "en": "Conservative · focus on long-term capital preservation",
+        "de": "Konservativ · Fokus: langfristiger Kapitalerhalt",
+    },
+    "risk_profile.tolerance_default.Balanced": {
+        "en": "Balanced · capital preservation with measured growth",
+        "de": "Ausgewogen · Kapitalerhalt mit moderatem Wachstum",
+    },
+    "risk_profile.tolerance_default.Growth": {
+        "en": "Growth · long-term capital appreciation",
+        "de": "Wachstumsorientiert · langfristiger Kapitalzuwachs",
+    },
+    "risk_profile.tolerance_default.Aggressive": {
+        "en": "Aggressive · maximum long-term growth, higher volatility tolerated",
+        "de": "Aggressiv · maximaler langfristiger Zuwachs, höhere Volatilität toleriert",
+    },
+    "risk_profile.horizon_default": {
+        "en": "Long-term · 5 years and beyond",
+        "de": "Langfristig · 5 Jahre und mehr",
+    },
+    "risk_profile.objective_default": {
+        "en": "High-quality digital assets with focus on market leaders.",
+        "de": "Hochwertige digitale Anlagen mit Fokus auf Marktführern.",
+    },
+
+    # ── Section headers (Jannick's flow) ──
+    "page.welcome": {"en": "Welcome", "de": "Willkommen"},
+    "page.consultation": {
+        "en": "Consultation summary",
+        "de": "Zusammenfassung der Beratung",
+    },
+    "page.market_analysis": {"en": "Market analysis", "de": "Marktanalyse"},
+    "page.portfolio_detail": {
+        "en": "Your portfolio in detail",
+        "de": "Ihr Portfolio im Detail",
+    },
+    "page.your_new_portfolio": {
+        "en": "Your new portfolio",
+        "de": "Ihr neues Portfolio",
+    },
+    "page.strategy": {
+        "en": "Investment strategy",
+        "de": "Anlagestrategie",
+    },
+    "page.fazit": {"en": "Conclusion", "de": "Fazit"},
+    "page.fees": {"en": "Fee structure", "de": "Gebührenstruktur"},
+    "page.contact": {"en": "Contact", "de": "Kontaktinformationen"},
+    "page.legal": {"en": "Legal notice", "de": "Rechtlicher Hinweis"},
+
+    # ── Market analysis defaults (left empty when no override; we
+    #     don't fabricate market commentary). ──
+    "market_analysis.subheading": {
+        "en": "Tailored commentary for the current digital-asset market environment.",
+        "de": "Individuelle Einordnung des aktuellen Marktumfelds digitaler Vermögenswerte.",
+    },
+    "market_analysis.placeholder": {
+        "en": (
+            "_Market analysis to be added by the advisor before sending. "
+            "Cover Bitcoin context, Ethereum positioning, institutional flows and stablecoin liquidity "
+            "as relevant to this client's mandate._"
+        ),
+        "de": (
+            "_Marktanalyse wird vor dem Versand vom Berater ergänzt. "
+            "Behandeln Sie Bitcoin-Kontext, Ethereum-Positionierung, institutionelle Mittelflüsse "
+            "und Stablecoin-Liquidität, soweit für das Mandat dieses Kunden relevant._"
+        ),
+    },
+
+    # ── Conclusion (Fazit) ──
+    "fazit.subheading": {
+        "en": "Strategic summary and forward view.",
+        "de": "Strategische Zusammenfassung und Ausblick.",
+    },
+
+    # ── Fees structure (directional from Jannick's table 6) ──
+    "fees.subheading": {
+        "en": "Fee components applicable to this engagement.",
+        "de": "Im Rahmen dieses Mandats anwendbare Gebührenkomponenten.",
+    },
+    "fees.col_component": {"en": "Component", "de": "Komponente"},
+    "fees.col_value": {"en": "Amount", "de": "Betrag"},
+    "fees.default_initial": {
+        "en": "Initial advisory fee",
+        "de": "Initiale Beratungsgebühr",
+    },
+    "fees.default_trading": {
+        "en": "Trading execution fee",
+        "de": "Ausführungsgebühr",
+    },
+    "fees.default_aum": {
+        "en": "New assets under management fee",
+        "de": "Gebühr auf neu verwaltetes Vermögen",
+    },
+
+    # ── Advisor contact ──
+    "contact.subheading": {
+        "en": "For further information on this proposal, please contact:",
+        "de": "Für weitere Informationen zu diesem Vorschlag wenden Sie sich bitte an:",
+    },
+    "contact.col_advisor": {"en": "Advisor", "de": "Berater"},
+    "contact.col_email": {"en": "E-mail", "de": "E-Mail"},
+    "contact.col_phone": {"en": "Mobile", "de": "Mobil"},
+
+    # ── Asset-class aggregation table ──
+    "assetclass.heading": {
+        "en": "Allocation by asset class",
+        "de": "Allokation nach Anlageklasse",
+    },
+    "assetclass.subheading": {
+        "en": "Aggregated view across the recommended position list.",
+        "de": "Aggregierte Sicht über die empfohlene Positionsliste.",
+    },
+    "assetclass.col_class": {"en": "Asset class", "de": "Anlageklasse"},
+    "assetclass.col_share": {"en": "Allocation %", "de": "Anteil %"},
+    "assetclass.total": {"en": "Total", "de": "Gesamt"},
+    "assetclass.stablecoins": {"en": "Stablecoins (USDC / EURC)", "de": "Stablecoins (USDC / EURC)"},
+    "assetclass.gold": {"en": "Gold hedge (PAXG)", "de": "Gold-Absicherung (PAXG)"},
+    "assetclass.sov": {"en": "Store of value (BTC)", "de": "Wertspeicher (BTC)"},
+    "assetclass.large_cap": {"en": "Large-cap crypto", "de": "Large-Cap-Crypto"},
+    "assetclass.mid_cap": {"en": "Mid-cap crypto", "de": "Mid-Cap-Crypto"},
+    "assetclass.small_cap": {"en": "Small-cap / thematic", "de": "Small-Cap / Thematisch"},
 }
 
 

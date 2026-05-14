@@ -208,11 +208,61 @@ def _T(ctx: dict, key: str, **fmt) -> str:
     return t(key, lang, **fmt)
 
 
+def _money(ctx: dict, amount: float) -> str:
+    """Currency-aware formatter. Reads client.currency and lang from ctx.
+
+    USD → "$50,000"
+    EUR + lang=de → "50.000 €" (German thousand-separator convention)
+    EUR + lang=en → "€50,000"
+    Other → "{X,XXX} {ccy}"
+    """
+    if amount is None:
+        return "-"
+    ccy = (ctx.get("client", {}).get("currency") or "USD").upper()
+    lang = ctx.get("lang") or I18N_DEFAULT
+    val = float(amount)
+    if ccy == "USD":
+        return f"${val:,.0f}"
+    if ccy == "EUR":
+        if lang == "de":
+            s = f"{val:,.0f}".replace(",", ".")
+            return f"{s} €"
+        return f"€{val:,.0f}"
+    return f"{val:,.0f} {ccy}"
+
+
+def _country_label(client: dict, lang: str) -> str:
+    """Best-effort country display string.
+
+    Prefer the long ``domicile`` ("Berlin, DE") but fall back to the
+    ISO ``domicile_country`` if the long form is missing.
+    """
+    return (client.get("domicile") or client.get("domicile_country") or "").strip()
+
+
+def _md_or_placeholder(doc: Document, ctx: dict, md_value: str, placeholder_key: str) -> None:
+    """Drop ``md_value`` as a paragraph block, or a muted placeholder
+    instructing the advisor to fill the section in. The placeholder is
+    italicised so it's visually obvious it needs editing before sending."""
+    if md_value:
+        _add_md_block(doc, md_value)
+        return
+    p = doc.add_paragraph()
+    r = p.add_run(_T(ctx, placeholder_key).strip("_ ").strip())
+    r.font.italic = True
+    r.font.color.rgb = TEXT_MUTED
+    r.font.size = Pt(10)
+
+
 # ── Section builders ────────────────────────────────────────────────
 
 
 def _cover(doc: Document, ctx: dict) -> None:
-    client = ctx["client"]
+    """Minimal cover: brand mark, headline, confidentiality strip.
+
+    Detailed client/advisor metadata moved into a dedicated Client
+    Information section directly after the welcome paragraphs (matches
+    Jannick's template flow)."""
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.LEFT
     run = p.add_run(_T(ctx, "cover.brand"))
@@ -225,13 +275,12 @@ def _cover(doc: Document, ctx: dict) -> None:
     run.font.size = Pt(9.5)
     run.font.color.rgb = TEXT_MUTED
 
-    # Add some vertical room before the title.
-    for _ in range(4):
+    for _ in range(5):
         doc.add_paragraph()
 
     title_p = doc.add_paragraph()
     title_run = title_p.add_run(_T(ctx, "cover.title"))
-    title_run.font.size = Pt(34)
+    title_run.font.size = Pt(36)
     title_run.font.bold = True
     title_run.font.color.rgb = NIGHTBLUE
     title_run.font.name = "SometimesTimes"
@@ -242,36 +291,431 @@ def _cover(doc: Document, ctx: dict) -> None:
     sub_run.font.color.rgb = TEXT_BODY
     sub_run.font.italic = True
 
-    for _ in range(2):
-        doc.add_paragraph()
-
-    # Client meta block as a 2x4 table for tidy alignment.
-    rows = [
-        (_T(ctx, "cover.lbl_client"), client.get("name", "")),
-        (
-            _T(ctx, "cover.lbl_profile"),
-            (profile_label(ctx.get("client", {}).get("profile", ""), ctx.get("lang", I18N_DEFAULT))
-             + (f" · {client.get('domicile')}" if client.get("domicile") else "")),
-        ),
-        (_T(ctx, "cover.lbl_prepared_by"), ctx.get("prepared_by", "")),
-        (_T(ctx, "cover.lbl_date"), ctx.get("prepared_date", "")),
-    ]
-    table = doc.add_table(rows=len(rows), cols=2)
-    table.autofit = False
-    table.columns[0].width = Cm(4.5)
-    table.columns[1].width = Cm(12)
-    for i, (lbl, val) in enumerate(rows):
-        _set_cell_text(table.rows[i].cells[0], lbl, bold=True, color=TEXT_MUTED, size_pt=8.5)
-        _set_cell_text(table.rows[i].cells[1], val, size_pt=11)
-
-    for _ in range(2):
+    for _ in range(8):
         doc.add_paragraph()
 
     foot = doc.add_paragraph()
+    foot.alignment = WD_ALIGN_PARAGRAPH.LEFT
     foot_run = foot.add_run(_T(ctx, "cover.confidential"))
     foot_run.font.size = Pt(8.5)
     foot_run.font.color.rgb = TEXT_MUTED
     foot_run.font.italic = True
+
+    doc.add_page_break()
+
+
+def _welcome(doc: Document, ctx: dict) -> None:
+    """Personal salutation + welcome paragraphs.
+
+    Directional from Jannick's template: every IA proposal opens with
+    "Sehr geehrter Herr {Lastname}," and a four-paragraph welcome.
+    Advisor can fully override via the salutation / welcome_md fields
+    on the client record; defaults are provided so the auto-generated
+    DOCX still looks finished out of the box.
+    """
+    lang = ctx.get("lang", I18N_DEFAULT)
+    ov = ctx.get("overrides") or {}
+    client = ctx.get("client", {})
+
+    # Salutation: explicit override > default with client name.
+    salutation = ov.get("salutation") or _T(
+        ctx, "welcome.salutation_default",
+        name=client.get("name", "")
+    )
+    p = doc.add_paragraph()
+    pr = p.add_run(salutation)
+    pr.font.size = Pt(11)
+
+    welcome_body = ov.get("welcome_md") or _T(ctx, "welcome.body_default")
+    _add_md_block(doc, welcome_body)
+    doc.add_page_break()
+
+
+def _client_info(doc: Document, ctx: dict) -> None:
+    """Two stacked tables: client information + risk profile.
+
+    Mirrors Jannick's tables 1 + 2. Status level and consultation
+    date come from per-client overrides; risk-tolerance defaults are
+    derived from the configured profile when no override is set.
+    """
+    lang = ctx.get("lang", I18N_DEFAULT)
+    client = ctx.get("client", {})
+    ov = ctx.get("overrides") or {}
+
+    _section_header(doc, ctx, "client_info.heading", _T(ctx, "client_info.heading"))
+
+    # ── Client information table ──
+    rows = [
+        (_T(ctx, "client_info.prepared_by"), _T(ctx, "client_info.prepared_by_team")),
+        (
+            _T(ctx, "client_info.consultation_date"),
+            ov.get("consultation_date") or ctx.get("prepared_date", ""),
+        ),
+        (_T(ctx, "client_info.client_name"), client.get("name", "")),
+        (_T(ctx, "client_info.country"), _country_label(client, lang)),
+    ]
+    if ov.get("status_level"):
+        rows.append((_T(ctx, "client_info.status_level"), ov["status_level"]))
+
+    table = doc.add_table(rows=len(rows), cols=2)
+    table.autofit = False
+    table.columns[0].width = Cm(6.0)
+    table.columns[1].width = Cm(10.5)
+    for i, (lbl, val) in enumerate(rows):
+        _set_cell_text(table.rows[i].cells[0], lbl, bold=True, color=TEXT_MUTED, size_pt=9)
+        _set_cell_text(table.rows[i].cells[1], val, size_pt=10.5)
+        if i % 2 == 0:
+            _shade_cell(table.rows[i].cells[0], "F6F4F0")
+            _shade_cell(table.rows[i].cells[1], "F6F4F0")
+
+    doc.add_paragraph()
+
+    # ── Risk profile mini-table ──
+    h = doc.add_paragraph()
+    hr = h.add_run(_T(ctx, "risk_profile.heading"))
+    hr.font.bold = True
+    hr.font.size = Pt(12)
+    hr.font.color.rgb = NIGHTBLUE
+
+    tolerance = t(
+        f"risk_profile.tolerance_default.{client.get('profile', '')}",
+        lang,
+    ) or profile_label(client.get("profile", ""), lang)
+    risk_rows = [
+        (_T(ctx, "risk_profile.tolerance"), tolerance),
+        (_T(ctx, "risk_profile.horizon"), _T(ctx, "risk_profile.horizon_default")),
+        (_T(ctx, "risk_profile.objective"), _T(ctx, "risk_profile.objective_default")),
+    ]
+    rtable = doc.add_table(rows=len(risk_rows), cols=2)
+    rtable.autofit = False
+    rtable.columns[0].width = Cm(6.0)
+    rtable.columns[1].width = Cm(10.5)
+    for i, (lbl, val) in enumerate(risk_rows):
+        _set_cell_text(rtable.rows[i].cells[0], lbl, bold=True, color=TEXT_MUTED, size_pt=9)
+        _set_cell_text(rtable.rows[i].cells[1], val, size_pt=10.5)
+        if i % 2 == 0:
+            _shade_cell(rtable.rows[i].cells[0], "F6F4F0")
+            _shade_cell(rtable.rows[i].cells[1], "F6F4F0")
+
+    doc.add_page_break()
+
+
+def _consultation_summary(doc: Document, ctx: dict) -> None:
+    """Advisor's account of the meeting + agreed positioning.
+
+    Maps to Jannick's "Zusammenfassung der Beratung / des Gesprächs"
+    heading. Sourced from overrides.summary_md; left out entirely when
+    the advisor has not yet drafted the section (no placeholder, since
+    inventing a summary would be misleading).
+    """
+    ov = ctx.get("overrides") or {}
+    body = ov.get("summary_md")
+    if not (body and body.strip()):
+        return
+    _section_header(doc, ctx, "page.consultation", _T(ctx, "page.consultation"))
+    sub = doc.add_paragraph()
+    sr = sub.add_run(_T(ctx, "overrides.summary_sub"))
+    sr.font.size = Pt(9.5)
+    sr.font.italic = True
+    sr.font.color.rgb = TEXT_MUTED
+    _add_md_block(doc, body)
+    doc.add_page_break()
+
+
+def _market_analysis(doc: Document, ctx: dict) -> None:
+    """Long-form market commentary slot — the section Jannick invests
+    the most time in. Renders the advisor's market_analysis_md, or a
+    visible italic placeholder if empty (advisor knows what to fill).
+    """
+    _section_header(doc, ctx, "page.market_analysis", _T(ctx, "page.market_analysis"))
+    sub = doc.add_paragraph()
+    sr = sub.add_run(_T(ctx, "market_analysis.subheading"))
+    sr.font.size = Pt(9.5)
+    sr.font.italic = True
+    sr.font.color.rgb = TEXT_MUTED
+    ov = ctx.get("overrides") or {}
+    _md_or_placeholder(doc, ctx, ov.get("market_analysis_md", ""), "market_analysis.placeholder")
+    doc.add_page_break()
+
+
+def _portfolio_detail(doc: Document, ctx: dict) -> None:
+    """Combined portfolio section: parameters → asset-class summary →
+    per-ticker target weights → tier-bar exhibit → donut exhibit.
+
+    Folds the prior _exec_summary KPI strip into the parameters table
+    here so the proposal reads as a single coherent "your portfolio"
+    block rather than two thinly-separated pages."""
+    _section_header(doc, ctx, "page.portfolio_detail", ctx.get("allocation_title", _T(ctx, "page.your_new_portfolio")))
+
+    client = ctx.get("client", {})
+    lang = ctx.get("lang", I18N_DEFAULT)
+
+    # ── Parameters block (Jannick table 3) ──
+    params = [
+        (_T(ctx, "kpi.risk_profile"), profile_label(client.get("profile", ""), lang)),
+        (_T(ctx, "table.asset"), ctx.get("universe", "")),
+        (_T(ctx, "kpi.portfolio_value"), _money(ctx, ctx.get("portfolio_value", 0))),
+        (_T(ctx, "kpi.defensive_sleeve"), f"{ctx.get('defensive_pct', 0):.0f}%"),
+        (_T(ctx, "kpi.positions"), str(ctx.get("allocation_count", 0))),
+    ]
+    h = doc.add_paragraph()
+    hr = h.add_run(_T(ctx, "exhibit.what_this_means"))
+    hr.font.bold = True
+    hr.font.size = Pt(12)
+    hr.font.color.rgb = NIGHTBLUE
+    ptable = doc.add_table(rows=len(params), cols=2)
+    ptable.autofit = False
+    ptable.columns[0].width = Cm(6.0)
+    ptable.columns[1].width = Cm(10.5)
+    for i, (lbl, val) in enumerate(params):
+        _set_cell_text(ptable.rows[i].cells[0], lbl, bold=True, color=TEXT_MUTED, size_pt=9)
+        _set_cell_text(ptable.rows[i].cells[1], val, size_pt=10.5)
+        if i % 2 == 0:
+            _shade_cell(ptable.rows[i].cells[0], "F6F4F0")
+            _shade_cell(ptable.rows[i].cells[1], "F6F4F0")
+
+    doc.add_paragraph()
+
+    # ── "What this means" bullets ──
+    bullets = ctx.get("exec_bullets") or []
+    if bullets:
+        for b in bullets:
+            doc.add_paragraph(b, style="List Bullet")
+        doc.add_paragraph()
+
+    # ── Asset-class aggregation table (directional from Jannick) ──
+    ac_rows = ctx.get("asset_class_rows") or []
+    nonzero = [r for r in ac_rows if (r.get("share_pct") or 0) > 0]
+    if nonzero:
+        h2 = doc.add_paragraph()
+        hr2 = h2.add_run(_T(ctx, "assetclass.heading"))
+        hr2.font.bold = True
+        hr2.font.size = Pt(12)
+        hr2.font.color.rgb = NIGHTBLUE
+        sub2 = doc.add_paragraph()
+        sr2 = sub2.add_run(_T(ctx, "assetclass.subheading"))
+        sr2.font.size = Pt(9)
+        sr2.font.italic = True
+        sr2.font.color.rgb = TEXT_MUTED
+        ac_table = doc.add_table(rows=1 + len(nonzero) + 1, cols=2)
+        headers = [_T(ctx, "assetclass.col_class"), _T(ctx, "assetclass.col_share")]
+        for i, hd in enumerate(headers):
+            _set_cell_text(ac_table.rows[0].cells[i], hd, bold=True, color=WHITE, size_pt=9.5)
+            _shade_cell(ac_table.rows[0].cells[i], "010626")
+        total = 0.0
+        for i, row in enumerate(nonzero, start=1):
+            cells = ac_table.rows[i].cells
+            _set_cell_text(cells[0], row["label"], size_pt=10)
+            _set_cell_text(cells[1], f"{row['share_pct']:.1f}%",
+                           align=WD_ALIGN_PARAGRAPH.RIGHT, size_pt=10)
+            total += float(row.get("share_pct") or 0)
+            if i % 2 == 0:
+                for cell in cells:
+                    _shade_cell(cell, "F6F4F0")
+        tcells = ac_table.rows[-1].cells
+        _set_cell_text(tcells[0], _T(ctx, "assetclass.total"), bold=True, size_pt=10)
+        _set_cell_text(tcells[1], f"{total:.1f}%", bold=True,
+                       align=WD_ALIGN_PARAGRAPH.RIGHT, size_pt=10)
+        _shade_cell(tcells[0], "BFB3A8")
+        _shade_cell(tcells[1], "BFB3A8")
+
+        doc.add_paragraph()
+
+    # ── Donut exhibit ──
+    png = _svg_to_png(ctx.get("donut_svg") or "", width_px=600)
+    if png:
+        p = doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p.add_run().add_picture(io.BytesIO(png), width=Cm(10))
+        cap = doc.add_paragraph()
+        cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        cr = cap.add_run(_T(ctx, "exhibit.recommended_alloc"))
+        cr.font.size = Pt(8.5)
+        cr.font.italic = True
+        cr.font.color.rgb = TEXT_MUTED
+
+    doc.add_page_break()
+
+
+def _wishes_section(doc: Document, ctx: dict) -> None:
+    """Optional client-wishes section. Rendered only when the advisor
+    has explicitly drafted it; no placeholder so the auto-PDF stays
+    quiet for clients without specific requests."""
+    ov = ctx.get("overrides") or {}
+    body = ov.get("wishes_md", "")
+    if not (body and body.strip()):
+        return
+    _section_header(doc, ctx, "page.wishes", _T(ctx, "page.wishes"))
+    sub = doc.add_paragraph()
+    sr = sub.add_run(_T(ctx, "overrides.wishes_sub"))
+    sr.font.size = Pt(9.5)
+    sr.font.italic = True
+    sr.font.color.rgb = TEXT_MUTED
+    _add_md_block(doc, body)
+    doc.add_page_break()
+
+
+def _strategy_section(doc: Document, ctx: dict) -> None:
+    """Strategy / phased build. Falls back to PAM's default implementation
+    paragraph when no execution plan is drafted, keeping the section
+    informative for fresh clients."""
+    ov = ctx.get("overrides") or {}
+    plan_md = ov.get("execution_plan_md", "")
+    rows = ctx.get("dca_rows") or []
+    if not (plan_md or rows):
+        # Use the auto-generated implementation paragraph + review cadence
+        # to ensure the strategy page is never blank.
+        _implementation_section(doc, ctx)
+        return
+
+    _section_header(doc, ctx, "page.strategy", _T(ctx, "exhibit.phased_build"))
+
+    if plan_md:
+        sub = doc.add_paragraph()
+        sr = sub.add_run(_T(ctx, "overrides.execution_sub"))
+        sr.font.size = Pt(9.5)
+        sr.font.italic = True
+        sr.font.color.rgb = TEXT_MUTED
+        _add_md_block(doc, plan_md)
+        doc.add_paragraph()
+
+    if rows:
+        meta = ctx.get("dca_meta") or {}
+        h = doc.add_paragraph()
+        hr = h.add_run(_T(ctx, "exhibit.phased_build"))
+        hr.font.bold = True
+        hr.font.size = Pt(12)
+        hr.font.color.rgb = NIGHTBLUE
+        sub2 = doc.add_paragraph()
+        sr2 = sub2.add_run(_T(ctx, "exhibit.phased_build_sub",
+                              horizon_months=meta.get("horizon_months", 0)))
+        sr2.font.size = Pt(9.5)
+        sr2.font.italic = True
+        sr2.font.color.rgb = TEXT_MUTED
+
+        table = doc.add_table(rows=1 + len(rows), cols=4)
+        headers = [
+            _T(ctx, "table.asset"),
+            _T(ctx, "table.weight_pct"),
+            _T(ctx, "table.monthly_buy"),
+            _T(ctx, "table.horizon_total"),
+        ]
+        for i, hd in enumerate(headers):
+            _set_cell_text(table.rows[0].cells[i], hd, bold=True, color=WHITE, size_pt=9.5)
+            _shade_cell(table.rows[0].cells[i], "010626")
+        for i, r in enumerate(rows, start=1):
+            cells = table.rows[i].cells
+            c = cells[0]
+            c.text = ""
+            p = c.paragraphs[0]
+            rt = p.add_run(r.get("ticker", ""))
+            rt.font.bold = True
+            rt.font.size = Pt(10)
+            rn = p.add_run(f"  {r.get('name', '')}")
+            rn.font.size = Pt(9)
+            rn.font.color.rgb = TEXT_MUTED
+            _set_cell_text(cells[1], f"{(r.get('portfolio_pct', 0) * 100):.2f}%",
+                           align=WD_ALIGN_PARAGRAPH.RIGHT, size_pt=9.5)
+            _set_cell_text(cells[2], _money(ctx, r.get("monthly_buy", 0)),
+                           align=WD_ALIGN_PARAGRAPH.RIGHT, size_pt=9.5)
+            _set_cell_text(cells[3], _money(ctx, r.get("horizon_total", 0)),
+                           align=WD_ALIGN_PARAGRAPH.RIGHT, size_pt=9.5)
+            if i % 2 == 0:
+                for cell in cells:
+                    _shade_cell(cell, "F6F4F0")
+
+    doc.add_page_break()
+
+
+def _fazit_section(doc: Document, ctx: dict) -> None:
+    """Conclusion / Fazit. Optional; placeholder absent so empty
+    proposals don't carry a stub heading."""
+    ov = ctx.get("overrides") or {}
+    body = ov.get("conclusion_md", "")
+    if not (body and body.strip()):
+        return
+    _section_header(doc, ctx, "page.fazit", _T(ctx, "page.fazit"))
+    sub = doc.add_paragraph()
+    sr = sub.add_run(_T(ctx, "fazit.subheading"))
+    sr.font.size = Pt(9.5)
+    sr.font.italic = True
+    sr.font.color.rgb = TEXT_MUTED
+    _add_md_block(doc, body)
+    doc.add_page_break()
+
+
+def _fees_section(doc: Document, ctx: dict) -> None:
+    """Fee structure table (directional from Jannick template table 6).
+
+    Renders only when the advisor supplied at least one fee row; the
+    table headers/cells are translated, but the values come verbatim
+    from the override so the advisor can phrase exemptions, %s, or
+    explanatory notes however the engagement requires.
+    """
+    ov = ctx.get("overrides") or {}
+    fees = ov.get("fees") or []
+    if not isinstance(fees, list) or not fees:
+        return
+    cleaned = [
+        f for f in fees
+        if isinstance(f, dict) and (f.get("name") or f.get("value"))
+    ]
+    if not cleaned:
+        return
+
+    _section_header(doc, ctx, "page.fees", _T(ctx, "page.fees"))
+    sub = doc.add_paragraph()
+    sr = sub.add_run(_T(ctx, "fees.subheading"))
+    sr.font.size = Pt(9.5)
+    sr.font.italic = True
+    sr.font.color.rgb = TEXT_MUTED
+
+    table = doc.add_table(rows=1 + len(cleaned), cols=2)
+    headers = [_T(ctx, "fees.col_component"), _T(ctx, "fees.col_value")]
+    for i, hd in enumerate(headers):
+        _set_cell_text(table.rows[0].cells[i], hd, bold=True, color=WHITE, size_pt=9.5)
+        _shade_cell(table.rows[0].cells[i], "010626")
+    for i, f in enumerate(cleaned, start=1):
+        cells = table.rows[i].cells
+        _set_cell_text(cells[0], f.get("name", ""), size_pt=10)
+        _set_cell_text(cells[1], f.get("value", ""), size_pt=10)
+        if i % 2 == 0:
+            for cell in cells:
+                _shade_cell(cell, "F6F4F0")
+
+    doc.add_page_break()
+
+
+def _contact_section(doc: Document, ctx: dict) -> None:
+    """Advisor contact table. Always rendered (every IA proposal needs
+    one); falls back to the document author when override fields are
+    empty."""
+    ov = ctx.get("overrides") or {}
+    advisor_name = (ctx.get("prepared_by") or "").strip()
+    advisor_email = ov.get("advisor_email") or ""
+    advisor_phone = ov.get("advisor_phone") or ""
+    if not (advisor_name or advisor_email or advisor_phone):
+        return
+
+    _section_header(doc, ctx, "page.contact", _T(ctx, "page.contact"))
+    sub = doc.add_paragraph()
+    sr = sub.add_run(_T(ctx, "contact.subheading"))
+    sr.font.size = Pt(9.5)
+    sr.font.italic = True
+    sr.font.color.rgb = TEXT_MUTED
+
+    table = doc.add_table(rows=2, cols=3)
+    headers = [
+        _T(ctx, "contact.col_advisor"),
+        _T(ctx, "contact.col_email"),
+        _T(ctx, "contact.col_phone"),
+    ]
+    for i, hd in enumerate(headers):
+        _set_cell_text(table.rows[0].cells[i], hd, bold=True, color=WHITE, size_pt=9.5)
+        _shade_cell(table.rows[0].cells[i], "010626")
+    row_vals = [advisor_name, advisor_email, advisor_phone]
+    for i, v in enumerate(row_vals):
+        _set_cell_text(table.rows[1].cells[i], v, size_pt=10.5)
 
     doc.add_page_break()
 
@@ -653,6 +1097,13 @@ def _appendix(doc: Document, ctx: dict) -> None:
 def render_docx(ctx: dict[str, Any]) -> bytes:
     """Build the proposal as a Word document from a proposal context dict.
 
+    Section order mirrors Jannick Bröring's WIP IA template (directional,
+    not literal): personal welcome → client info → consultation summary
+    → market analysis → portfolio detail (with PAM's quantitative
+    exhibits) → strategy / phased build → macro framing → conclusion →
+    optional client wishes → fees → advisor contact → appendix with
+    methodology + disclaimers.
+
     The returned bytes are a complete .docx archive suitable for the
     response body of a FastAPI handler.
     """
@@ -661,12 +1112,18 @@ def render_docx(ctx: dict[str, Any]) -> bytes:
     _page_setup(doc)
 
     _cover(doc, ctx)
-    _exec_summary(doc, ctx)
+    _welcome(doc, ctx)
+    _client_info(doc, ctx)
+    _consultation_summary(doc, ctx)
+    _market_analysis(doc, ctx)
+    _portfolio_detail(doc, ctx)
     _allocation_table(doc, ctx)
-    _overrides_sections(doc, ctx)
-    _dca_section(doc, ctx)
+    _strategy_section(doc, ctx)
     _macro_section(doc, ctx)
-    _implementation_section(doc, ctx)
+    _fazit_section(doc, ctx)
+    _wishes_section(doc, ctx)
+    _fees_section(doc, ctx)
+    _contact_section(doc, ctx)
     _appendix(doc, ctx)
 
     buf = io.BytesIO()

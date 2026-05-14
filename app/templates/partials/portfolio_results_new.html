@@ -269,12 +269,35 @@
 
     {# Per-client overrides — surface on the same card so advisors can
        compose the artifact in one place. Free-form fields land in the
-       DOCX as dedicated sections; advisors then refine in Word. #}
+       DOCX as dedicated sections; advisors then refine in Word.
+
+       Section order follows Jannick's WIP IA template flow: client info
+       → consultation summary → market analysis → portfolio detail →
+       strategy → conclusion → fees / contact. Each free-form block
+       below maps 1:1 onto the corresponding DOCX section. #}
     <details id="proposal-overrides-details" style="padding:0 32px 18px;">
         <summary style="cursor:pointer;font-size:0.78rem;color:var(--text-muted);padding:6px 0;">
-            Per-client overrides — wishes, summary, execution plan, excluded tickers, phased build
+            Per-client content — salutation, summary, market analysis, execution plan, conclusion, advisor details
         </summary>
         <div class="controls" style="flex-wrap:wrap;gap:12px;margin-top:8px;align-items:flex-start;">
+            <div class="control-group" style="flex:1 1 280px;">
+                <span class="control-label">Salutation</span>
+                <input type="text" id="proposal-salutation"
+                       placeholder="Sehr geehrter Herr Schmidt,"
+                       style="width:100%;">
+            </div>
+            <div class="control-group" style="flex:1 1 160px;">
+                <span class="control-label">Status level</span>
+                <input type="text" id="proposal-status-level"
+                       placeholder="Gold"
+                       style="width:100%;">
+            </div>
+            <div class="control-group" style="flex:1 1 200px;">
+                <span class="control-label">Consultation date</span>
+                <input type="text" id="proposal-consultation-date"
+                       placeholder="10. April 2026"
+                       style="width:100%;">
+            </div>
             <div class="control-group" style="flex:1 1 220px;">
                 <span class="control-label">Excluded tickers</span>
                 <input type="text" id="proposal-excluded"
@@ -282,7 +305,7 @@
                        style="width:100%;">
             </div>
             <div class="control-group" style="flex:1 1 220px;">
-                <span class="control-label">Phased build · monthly ($)</span>
+                <span class="control-label">Phased build · monthly</span>
                 <input type="number" id="proposal-dca-monthly"
                        min="0" step="1000" placeholder="0 = single purchase">
             </div>
@@ -292,15 +315,15 @@
                        min="1" max="36" step="1" value="6">
             </div>
             <div class="control-group" style="flex:1 1 100%;">
-                <span class="control-label">Client wishes — markdown (DE/EN)</span>
-                <textarea id="proposal-wishes" rows="3"
-                          placeholder="- Keine Memecoins&#10;- BTC nicht unter 10% Gewichtung"
+                <span class="control-label">Consultation summary — markdown (DE/EN)</span>
+                <textarea id="proposal-summary" rows="3"
+                          placeholder="Im Rahmen unseres Gesprächs vom 10. April 2026 wurde Folgendes festgelegt..."
                           style="width:100%;font-family:inherit;font-size:0.85rem;"></textarea>
             </div>
             <div class="control-group" style="flex:1 1 100%;">
-                <span class="control-label">Advisor summary — markdown (DE/EN)</span>
-                <textarea id="proposal-summary" rows="3"
-                          placeholder="Konservatives Vermögen, Zwei-Jahres-Horizont. Bevorzugung von Majors und Gold-Bridge."
+                <span class="control-label">Market analysis — markdown (DE/EN)</span>
+                <textarea id="proposal-market-analysis" rows="5"
+                          placeholder="Der Markt für digitale Vermögenswerte befindet sich derzeit..."
                           style="width:100%;font-family:inherit;font-size:0.85rem;"></textarea>
             </div>
             <div class="control-group" style="flex:1 1 100%;">
@@ -308,6 +331,30 @@
                 <textarea id="proposal-execution" rows="4"
                           placeholder="1. Tranche 1 (Woche 1): defensive Komponenten + BTC.&#10;2. Tranche 2 (Woche 3): ETH, BNB.&#10;3. Tranche 3 (Woche 6): Restallokation."
                           style="width:100%;font-family:inherit;font-size:0.85rem;"></textarea>
+            </div>
+            <div class="control-group" style="flex:1 1 100%;">
+                <span class="control-label">Conclusion / Fazit — markdown (DE/EN)</span>
+                <textarea id="proposal-conclusion" rows="3"
+                          placeholder="Dieser gezielte Einsatz stellt einen langfristigen Ansatz dar..."
+                          style="width:100%;font-family:inherit;font-size:0.85rem;"></textarea>
+            </div>
+            <div class="control-group" style="flex:1 1 100%;">
+                <span class="control-label">Client wishes — markdown (optional)</span>
+                <textarea id="proposal-wishes" rows="2"
+                          placeholder="- Keine Memecoins&#10;- BTC nicht unter 10% Gewichtung"
+                          style="width:100%;font-family:inherit;font-size:0.85rem;"></textarea>
+            </div>
+            <div class="control-group" style="flex:1 1 320px;">
+                <span class="control-label">Advisor email</span>
+                <input type="email" id="proposal-advisor-email"
+                       placeholder="jannick.broering@teroxx.com"
+                       style="width:100%;">
+            </div>
+            <div class="control-group" style="flex:1 1 200px;">
+                <span class="control-label">Advisor phone</span>
+                <input type="text" id="proposal-advisor-phone"
+                       placeholder="+49 152 29420760"
+                       style="width:100%;">
             </div>
         </div>
     </details>
@@ -327,7 +374,14 @@
             excluded: 'proposal-excluded',
             wishes: 'proposal-wishes',
             summary: 'proposal-summary',
+            marketAnalysis: 'proposal-market-analysis',
             execution: 'proposal-execution',
+            conclusion: 'proposal-conclusion',
+            salutation: 'proposal-salutation',
+            statusLevel: 'proposal-status-level',
+            consultationDate: 'proposal-consultation-date',
+            advisorEmail: 'proposal-advisor-email',
+            advisorPhone: 'proposal-advisor-phone',
             dcaMonthly: 'proposal-dca-monthly',
             dcaHorizon: 'proposal-dca-horizon',
             anchorDocx: 'proposal-export-docx',
@@ -350,7 +404,14 @@
             if (v('excluded')) params.set('excluded', v('excluded'));
             if (v('wishes')) params.set('wishes', v('wishes'));
             if (v('summary')) params.set('summary', v('summary'));
+            if (v('marketAnalysis')) params.set('market_analysis', v('marketAnalysis'));
             if (v('execution')) params.set('execution_plan', v('execution'));
+            if (v('conclusion')) params.set('conclusion', v('conclusion'));
+            if (v('salutation')) params.set('salutation', v('salutation'));
+            if (v('statusLevel')) params.set('status_level', v('statusLevel'));
+            if (v('consultationDate')) params.set('consultation_date', v('consultationDate'));
+            if (v('advisorEmail')) params.set('advisor_email', v('advisorEmail'));
+            if (v('advisorPhone')) params.set('advisor_phone', v('advisorPhone'));
             if (v('dcaMonthly')) {
                 params.set('dca_monthly', v('dcaMonthly'));
                 params.set('dca_horizon', v('dcaHorizon') || '6');
@@ -365,7 +426,12 @@
             var s = document.getElementById(ids.status);
             if (s) s.textContent = v('client') ? '' : '';
         }
-        ['client', 'lang', 'excluded', 'wishes', 'summary', 'execution', 'dcaMonthly', 'dcaHorizon'].forEach(function (k) {
+        [
+            'client', 'lang', 'excluded', 'wishes', 'summary', 'marketAnalysis',
+            'execution', 'conclusion', 'salutation', 'statusLevel',
+            'consultationDate', 'advisorEmail', 'advisorPhone',
+            'dcaMonthly', 'dcaHorizon',
+        ].forEach(function (k) {
             var el = document.getElementById(ids[k]);
             if (!el) return;
             el.addEventListener('change', refresh);
