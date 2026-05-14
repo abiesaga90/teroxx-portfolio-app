@@ -1208,6 +1208,91 @@ async def client_review_partial(request: Request, client_id: str = ""):
 # ── Proposal PDF ─────────────────────────────────────────────────────
 
 
+def _prospect_inputs_for(
+    request: Request, *,
+    name: str,
+    country: Optional[str] = None,
+    currency: Optional[str] = None,
+    portfolio_value: Optional[float] = None,
+    profile: Optional[str] = None,
+    universe: Optional[str] = None,
+    lang: Optional[str] = None,
+    overrides: Optional[dict] = None,
+    dca: Optional[dict] = None,
+) -> ProposalInputs:
+    """Assemble ProposalInputs for a brand-new prospect (no DB record).
+
+    The advisor types a name (and optionally country / currency) on the
+    Proposal card; we synthesise the client dict in memory so the rest
+    of the pipeline (build_proposal_context, render_pdf, render_docx)
+    is unchanged. proposal_type is forced to "new" here — prospects by
+    definition have no holdings, so the review flow does not apply.
+    """
+    user = get_current_user(request) or {}
+    ctx = load_context(request)
+    profile_use = profile or "Balanced"
+    universe_use = universe or ctx.universe or "Teroxx Core (9)"
+    pv = portfolio_value if portfolio_value is not None else (ctx.portfolio_value or 100_000)
+
+    country_raw = (country or "").strip()
+    # Heuristic: a 2-letter input is an ISO code (DE/AT/CH); anything
+    # longer is the full "City, CC" form Jannick's template uses.
+    if len(country_raw) == 2 and country_raw.isalpha():
+        domicile_country = country_raw.upper()
+        domicile_label = country_raw.upper()
+    elif country_raw:
+        domicile_country = country_raw.rsplit(",", 1)[-1].strip().upper()[:2] or None
+        domicile_label = country_raw
+    else:
+        domicile_country = None
+        domicile_label = ""
+
+    synthetic_client = {
+        "id": "_prospect",
+        "name": (name or "").strip() or "Prospective client",
+        "profile": profile_use,
+        "domicile": domicile_label,
+        "domicile_country": domicile_country,
+        "tagline": "",
+        "inception_date": "",
+        "currency": (currency or "USD").upper(),
+        "starting_capital_usd": float(pv or 0),
+        "risk_notes": "",
+        "implementation_note": "",
+        "proposal_language": None,
+        "proposal_overrides_json": None,
+        "positions": [],
+    }
+
+    # Live spot prices for the universe (kept in sync with the
+    # existing-client path so prospects see the same numbers).
+    spot: dict[str, float] = {}
+    try:
+        from app.market_data import get_price
+        from app.engine import get_universe_tickers
+        for t in get_universe_tickers(universe_use):
+            p = get_price(t)
+            if p:
+                spot[t] = float(p)
+    except Exception:
+        spot = {}
+
+    return ProposalInputs(
+        client=synthetic_client,
+        profile=profile_use,
+        universe=universe_use,
+        portfolio_value=float(pv),
+        prepared_by=user.get("name") or user.get("email") or "Teroxx Advisory",
+        prepared_date=datetime.utcnow().strftime("%d %B %Y"),
+        macro_state=get_macro_regime(),
+        spot_prices=spot,
+        lang=lang,
+        overrides=overrides,
+        dca=dca,
+        proposal_type="new",
+    )
+
+
 def _proposal_inputs_for(
     request: Request, client_id: str, *,
     portfolio_value: Optional[float] = None,
@@ -1530,6 +1615,202 @@ async def client_proposal_docx(
         content=docx_bytes,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         headers=headers,
+    )
+
+
+# ── Prospect (no-DB-record) proposal endpoints ──────────────────────
+#
+# Triggered when the advisor picks "New client" on the Proposal card.
+# No client record exists yet, so the client dict is synthesised from
+# query params (name + optional country + currency). proposal_type is
+# always "new" here; review mode is only meaningful for existing
+# clients with live holdings.
+
+
+def _prospect_filename(name: str) -> str:
+    safe = "".join(ch if ch.isalnum() else "_" for ch in (name or "Prospect"))
+    return f"Teroxx_Proposal_{safe}_{datetime.utcnow().strftime('%Y%m%d')}"
+
+
+@app.get("/api/prospect/proposal.pdf")
+async def prospect_proposal_pdf(
+    request: Request,
+    name: str = "",
+    country: Optional[str] = None,
+    currency: Optional[str] = None,
+    profile: Optional[str] = None,
+    universe: Optional[str] = None,
+    portfolio_value: Optional[float] = None,
+    lang: Optional[str] = None,
+    excluded: Optional[str] = None,
+    wishes: Optional[str] = None,
+    summary: Optional[str] = None,
+    execution_plan: Optional[str] = None,
+    dca_monthly: Optional[float] = None,
+    dca_horizon: Optional[int] = None,
+    dca_scope: Optional[str] = None,
+    dca_min_order: Optional[float] = None,
+    salutation: Optional[str] = None,
+    welcome: Optional[str] = None,
+    market_analysis: Optional[str] = None,
+    conclusion: Optional[str] = None,
+    status_level: Optional[str] = None,
+    consultation_date: Optional[str] = None,
+    advisor_email: Optional[str] = None,
+    advisor_phone: Optional[str] = None,
+):
+    lang_v, overrides_v, dca_v = _parse_proposal_query(
+        lang, excluded, wishes, summary, execution_plan,
+        dca_monthly, dca_horizon, dca_scope, dca_min_order,
+        salutation=salutation, welcome=welcome,
+        market_analysis=market_analysis, conclusion=conclusion,
+        status_level=status_level, consultation_date=consultation_date,
+        advisor_email=advisor_email, advisor_phone=advisor_phone,
+    )
+    inp = _prospect_inputs_for(
+        request, name=name, country=country, currency=currency,
+        profile=profile, universe=universe, portfolio_value=portfolio_value,
+        lang=lang_v, overrides=overrides_v, dca=dca_v,
+    )
+    try:
+        ctx = build_proposal_context(inp)
+        pdf_bytes = render_proposal_pdf(ctx, html_only=False)
+    except Exception as e:
+        logger.exception("Prospect PDF render failed: %s", e)
+        return JSONResponse({"error": "render_failed", "detail": str(e)}, status_code=500)
+    try:
+        with SessionLocal() as db:
+            log_action(
+                db, actor_email=_actor_email(request),
+                action_type="prospect_proposal_generated", client_id=None,
+                payload={"name": name, "format": "pdf", "lang": ctx.get("lang"),
+                         "portfolio_value": inp.portfolio_value,
+                         "size_bytes": len(pdf_bytes)},
+            )
+            db.commit()
+    except Exception as e:
+        logger.warning("Audit log for prospect proposal failed: %s", e)
+    filename = f"{_prospect_filename(name)}.pdf"
+    return Response(
+        content=pdf_bytes, media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"',
+                 "Cache-Control": "private, no-store"},
+    )
+
+
+@app.get("/api/prospect/proposal.html", response_class=HTMLResponse)
+async def prospect_proposal_html(
+    request: Request,
+    name: str = "",
+    country: Optional[str] = None,
+    currency: Optional[str] = None,
+    profile: Optional[str] = None,
+    universe: Optional[str] = None,
+    portfolio_value: Optional[float] = None,
+    lang: Optional[str] = None,
+    excluded: Optional[str] = None,
+    wishes: Optional[str] = None,
+    summary: Optional[str] = None,
+    execution_plan: Optional[str] = None,
+    dca_monthly: Optional[float] = None,
+    dca_horizon: Optional[int] = None,
+    dca_scope: Optional[str] = None,
+    dca_min_order: Optional[float] = None,
+    salutation: Optional[str] = None,
+    welcome: Optional[str] = None,
+    market_analysis: Optional[str] = None,
+    conclusion: Optional[str] = None,
+    status_level: Optional[str] = None,
+    consultation_date: Optional[str] = None,
+    advisor_email: Optional[str] = None,
+    advisor_phone: Optional[str] = None,
+):
+    lang_v, overrides_v, dca_v = _parse_proposal_query(
+        lang, excluded, wishes, summary, execution_plan,
+        dca_monthly, dca_horizon, dca_scope, dca_min_order,
+        salutation=salutation, welcome=welcome,
+        market_analysis=market_analysis, conclusion=conclusion,
+        status_level=status_level, consultation_date=consultation_date,
+        advisor_email=advisor_email, advisor_phone=advisor_phone,
+    )
+    inp = _prospect_inputs_for(
+        request, name=name, country=country, currency=currency,
+        profile=profile, universe=universe, portfolio_value=portfolio_value,
+        lang=lang_v, overrides=overrides_v, dca=dca_v,
+    )
+    try:
+        ctx = build_proposal_context(inp)
+        html = render_proposal_pdf(ctx, html_only=True)
+    except Exception as e:
+        logger.exception("Prospect HTML render failed: %s", e)
+        return JSONResponse({"error": "render_failed", "detail": str(e)}, status_code=500)
+    return HTMLResponse(html)
+
+
+@app.get("/api/prospect/proposal.docx")
+async def prospect_proposal_docx(
+    request: Request,
+    name: str = "",
+    country: Optional[str] = None,
+    currency: Optional[str] = None,
+    profile: Optional[str] = None,
+    universe: Optional[str] = None,
+    portfolio_value: Optional[float] = None,
+    lang: Optional[str] = None,
+    excluded: Optional[str] = None,
+    wishes: Optional[str] = None,
+    summary: Optional[str] = None,
+    execution_plan: Optional[str] = None,
+    dca_monthly: Optional[float] = None,
+    dca_horizon: Optional[int] = None,
+    dca_scope: Optional[str] = None,
+    dca_min_order: Optional[float] = None,
+    salutation: Optional[str] = None,
+    welcome: Optional[str] = None,
+    market_analysis: Optional[str] = None,
+    conclusion: Optional[str] = None,
+    status_level: Optional[str] = None,
+    consultation_date: Optional[str] = None,
+    advisor_email: Optional[str] = None,
+    advisor_phone: Optional[str] = None,
+):
+    lang_v, overrides_v, dca_v = _parse_proposal_query(
+        lang, excluded, wishes, summary, execution_plan,
+        dca_monthly, dca_horizon, dca_scope, dca_min_order,
+        salutation=salutation, welcome=welcome,
+        market_analysis=market_analysis, conclusion=conclusion,
+        status_level=status_level, consultation_date=consultation_date,
+        advisor_email=advisor_email, advisor_phone=advisor_phone,
+    )
+    inp = _prospect_inputs_for(
+        request, name=name, country=country, currency=currency,
+        profile=profile, universe=universe, portfolio_value=portfolio_value,
+        lang=lang_v, overrides=overrides_v, dca=dca_v,
+    )
+    try:
+        ctx = build_proposal_context(inp)
+        docx_bytes = render_proposal_docx(ctx)
+    except Exception as e:
+        logger.exception("Prospect DOCX render failed: %s", e)
+        return JSONResponse({"error": "render_failed", "detail": str(e)}, status_code=500)
+    try:
+        with SessionLocal() as db:
+            log_action(
+                db, actor_email=_actor_email(request),
+                action_type="prospect_proposal_generated", client_id=None,
+                payload={"name": name, "format": "docx", "lang": ctx.get("lang"),
+                         "portfolio_value": inp.portfolio_value,
+                         "size_bytes": len(docx_bytes)},
+            )
+            db.commit()
+    except Exception as e:
+        logger.warning("Audit log for prospect proposal failed: %s", e)
+    filename = f"{_prospect_filename(name)}.docx"
+    return Response(
+        content=docx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"',
+                 "Cache-Control": "private, no-store"},
     )
 
 

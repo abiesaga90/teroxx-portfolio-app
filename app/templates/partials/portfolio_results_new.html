@@ -238,7 +238,17 @@
     <form id="proposal-export-form" class="controls" onsubmit="return false;"
           style="padding:0 32px 8px;flex-wrap:wrap;align-items:flex-end;gap:12px;">
         <div class="control-group">
-            <span class="control-label">Client</span>
+            <span class="control-label">Proposal type</span>
+            <select id="proposal-export-type">
+                <option value="new">New client (no holdings)</option>
+                <option value="review">Existing client (review)</option>
+            </select>
+        </div>
+        {# Existing-client picker: only shown for review mode. The
+           options always render so the runtime switch can show/hide
+           them without an HTMX round trip. #}
+        <div class="control-group" id="proposal-existing-group" style="display:none;">
+            <span class="control-label">Existing client</span>
             <select id="proposal-export-client">
                 <option value="">— pick a client —</option>
                 {% for c in clients %}
@@ -249,12 +259,19 @@
                 {% endfor %}
             </select>
         </div>
-        <div class="control-group">
-            <span class="control-label">Proposal type</span>
-            <select id="proposal-export-type">
-                <option value="new">New client (no holdings)</option>
-                <option value="review">Existing client (review)</option>
-            </select>
+        {# Prospect picker: name + optional country. Shown by default
+           since "New client" is the default proposal_type. #}
+        <div class="control-group" id="proposal-prospect-name-group" style="flex:1 1 240px;">
+            <span class="control-label">Client name</span>
+            <input type="text" id="proposal-export-name"
+                   placeholder="e.g. Thomas Schmidt"
+                   style="width:100%;">
+        </div>
+        <div class="control-group" id="proposal-prospect-country-group" style="flex:1 1 140px;">
+            <span class="control-label">Country</span>
+            <input type="text" id="proposal-export-country"
+                   placeholder="DE / AT / CH …"
+                   style="width:100%;">
         </div>
         <div class="control-group">
             <span class="control-label">Language</span>
@@ -380,6 +397,8 @@
         var ids = {
             client: 'proposal-export-client',
             proposalType: 'proposal-export-type',
+            prospectName: 'proposal-export-name',
+            prospectCountry: 'proposal-export-country',
             lang: 'proposal-export-lang',
             excluded: 'proposal-excluded',
             wishes: 'proposal-wishes',
@@ -404,14 +423,27 @@
             return el && el.value ? el.value : '';
         }
         function build(kind) {
-            var cid = v('client');
-            if (!cid) return '#';
+            var ptype = v('proposalType') || 'new';
+            var basePath;
+            if (ptype === 'review') {
+                var cid = v('client');
+                if (!cid) return '#';
+                basePath = '/api/clients/' + encodeURIComponent(cid) + '/proposal.' + kind;
+            } else {
+                // New-client / prospect path. Name is required so we
+                // can title the artifact; everything else is optional.
+                if (!v('prospectName')) return '#';
+                basePath = '/api/prospect/proposal.' + kind;
+            }
             var params = new URLSearchParams();
             params.set('profile', BASE_QS.profile || '');
             params.set('universe', BASE_QS.universe || '');
             params.set('portfolio_value', String(BASE_QS.portfolio_value || ''));
-            if (v('proposalType') && v('proposalType') !== 'new') {
-                params.set('proposal_type', v('proposalType'));
+            if (ptype === 'review') {
+                params.set('proposal_type', 'review');
+            } else {
+                params.set('name', v('prospectName'));
+                if (v('prospectCountry')) params.set('country', v('prospectCountry'));
             }
             if (v('lang')) params.set('lang', v('lang'));
             if (v('excluded')) params.set('excluded', v('excluded'));
@@ -432,15 +464,26 @@
             }
             return '/api/clients/' + encodeURIComponent(cid) + '/proposal.' + kind + '?' + params.toString();
         }
+        function syncProposalTypeUI() {
+            var ptype = v('proposalType') || 'new';
+            var isReview = ptype === 'review';
+            var existing = document.getElementById('proposal-existing-group');
+            var nameG = document.getElementById('proposal-prospect-name-group');
+            var countryG = document.getElementById('proposal-prospect-country-group');
+            if (existing) existing.style.display = isReview ? '' : 'none';
+            if (nameG) nameG.style.display = isReview ? 'none' : '';
+            if (countryG) countryG.style.display = isReview ? 'none' : '';
+        }
+
         function refresh() {
+            syncProposalTypeUI();
             document.getElementById(ids.anchorDocx).href = build('docx');
             document.getElementById(ids.anchorPdf).href = build('pdf');
             document.getElementById(ids.anchorHtml).href = build('html');
-            var s = document.getElementById(ids.status);
-            if (s) s.textContent = v('client') ? '' : '';
         }
         [
-            'client', 'proposalType', 'lang', 'excluded', 'wishes', 'summary', 'marketAnalysis',
+            'client', 'proposalType', 'prospectName', 'prospectCountry', 'lang',
+            'excluded', 'wishes', 'summary', 'marketAnalysis',
             'execution', 'conclusion', 'salutation', 'statusLevel',
             'consultationDate', 'advisorEmail', 'advisorPhone',
             'dcaMonthly', 'dcaHorizon',
@@ -456,7 +499,10 @@
             a.addEventListener('click', function (e) {
                 if (a.getAttribute('href') === '#') {
                     var s = document.getElementById(ids.status);
-                    if (s) s.textContent = 'Pick a client first.';
+                    var ptype = v('proposalType') || 'new';
+                    if (s) s.textContent = ptype === 'review'
+                        ? 'Pick an existing client first.'
+                        : 'Enter a client name first.';
                     e.preventDefault();
                 }
             });
