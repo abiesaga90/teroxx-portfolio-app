@@ -229,9 +229,11 @@
     <p style="padding:0 32px 12px;font-size:0.78rem;color:var(--text-muted);line-height:1.5;">
         Generate the branded Teroxx proposal using the allocation above
         ({{ profile }} · {{ universe }} · {{ portfolio_value|fmt_usd }}).
-        DOCX is the editable format the advisor extends with client wishes,
-        custom summary and execution narrative before sending. PDF is a
-        read-only preview of the auto-rendered content.
+        Download the <strong>editable DOCX</strong> when the advisor will extend
+        the artifact with client wishes, custom summary and execution narrative
+        before sending. Download the <strong>PDF</strong> for a fixed, read-only
+        version of the same auto-rendered content. HTML preview opens in the
+        browser without downloading anything.
     </p>
     <form id="proposal-export-form" class="controls" onsubmit="return false;"
           style="padding:0 32px 8px;flex-wrap:wrap;align-items:flex-end;gap:12px;">
@@ -258,8 +260,8 @@
         <a id="proposal-export-docx" class="btn-accent" href="#" target="_blank" rel="noopener">
             Download editable DOCX
         </a>
-        <a id="proposal-export-pdf" class="btn-outline" href="#" target="_blank" rel="noopener">
-            PDF preview
+        <a id="proposal-export-pdf" class="btn-accent" href="#" target="_blank" rel="noopener">
+            Download PDF
         </a>
         <a id="proposal-export-html" class="btn-outline" href="#" target="_blank" rel="noopener">
             HTML preview
