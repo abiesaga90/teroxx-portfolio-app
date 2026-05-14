@@ -27,24 +27,9 @@ function switchTab(tabId) {
     localStorage.setItem('activeTab', tabId);
 }
 
-// Restore last tab on load
+// Always land on Portfolio when opening the app.
 document.addEventListener('DOMContentLoaded', () => {
-    const saved = localStorage.getItem('activeTab');
-    const tabMap = {
-        'tab-allocator': 'tab-portfolio',
-        'tab-factors': 'tab-scoring',
-        'tab-fundamentals': 'tab-scoring',
-        'tab-allocations': 'tab-portfolio',
-        'tab-rebalancing': 'tab-rebalance-pnl',
-        'tab-pnl': 'tab-rebalance-pnl',
-        'tab-workspace': 'tab-portfolio',
-    };
-    const mapped = tabMap[saved] || saved;
-    if (mapped && document.getElementById(mapped)) {
-        switchTab(mapped);
-    } else {
-        document.body.setAttribute('data-active-tab', 'tab-portfolio');
-    }
+    switchTab('tab-portfolio');
 });
 
 // ── Shared state: profile, universe, mode ──
