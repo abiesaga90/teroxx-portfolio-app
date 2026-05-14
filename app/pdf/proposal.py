@@ -17,7 +17,10 @@ from app.data import (
     ASSET_REGULATORY_FLAGS, DISCLAIMERS, RATIONALE_LIBRARY, RATIONALE_TAGS,
     ASSET_BY_TICKER, get_alloc_tier,
 )
-from app.engine import compute_allocations, compute_dca
+from app.engine import (
+    compute_allocations, compute_dca,
+    compute_client_portfolio_pnl, compute_client_drift, compute_rebalance_pnl,
+)
 from app.pdf.exhibits import (
     donut, donut_legend, tier_bar, regime_gauge,
 )
@@ -63,6 +66,14 @@ class ProposalInputs:
     # renders a "Phased build" section using compute_dca() output.
     #   {"monthly_amount": 10000, "scope": "all", "horizon_months": 6, "min_order": 100}
     dca: Optional[dict] = None
+    # Proposal flavour:
+    #   "new"    → onboarding allocation proposal (default, current
+    #               behaviour). Client.lots is ignored.
+    #   "review" → existing-client review. Pulls client.lots, computes
+    #               live mark-to-market P&L, drift vs target and a
+    #               rebalance trade list. Heading wording shifts from
+    #               "Recommended allocation" to "Target allocation".
+    proposal_type: str = "new"
 
 
 # Asset-class buckets for the directional summary table. The mapping
@@ -319,6 +330,57 @@ def build_proposal_context(inp: ProposalInputs) -> dict[str, Any]:
         or DISCLAIMERS["default"]
     )
 
+    # 9b. Review-flow payload: current holdings + P&L + drift +
+    #     recommended rebalance trades. Only computed when the proposal
+    #     is being rendered for an existing client (proposal_type=review)
+    #     so the new-client onboarding path stays lightweight.
+    proposal_type = (inp.proposal_type or "new").strip().lower()
+    if proposal_type not in ("new", "review"):
+        proposal_type = "new"
+    review_payload: dict = {}
+    if proposal_type == "review":
+        try:
+            pnl = compute_client_portfolio_pnl(client)
+        except Exception:
+            pnl = {"summary": {}, "rows": [], "by_ticker": []}
+        try:
+            drift = compute_client_drift(client, profile=profile, universe=universe)
+        except Exception:
+            drift = {"rows": [], "max_drift_pp": 0, "max_drift_ticker": None,
+                     "threshold_pp": 0, "attention": False}
+        # Build the {ticker → {current_usd, entry_price}} dict that
+        # compute_rebalance_pnl() expects. Aggregate across lots.
+        positions_agg: dict[str, dict] = {}
+        for r in (pnl.get("rows") or []):
+            tk = (r.get("ticker") or "").upper()
+            bucket = positions_agg.setdefault(tk, {"current_usd": 0.0, "cost": 0.0, "qty": 0.0})
+            bucket["current_usd"] += float(r.get("current_value") or 0)
+            bucket["cost"] += float(r.get("cost_basis") or 0)
+            bucket["qty"] += float(r.get("quantity") or 0)
+        for tk, bucket in positions_agg.items():
+            qty = bucket["qty"] or 0
+            bucket["entry_price"] = (bucket["cost"] / qty) if qty else 0
+        # The denominator the renderer should use for the review:
+        # whichever is bigger between the prospective portfolio_value
+        # and the client's live MTM. This way a partially-funded
+        # client still shows the full target.
+        live_value = float(pnl.get("summary", {}).get("total_value") or 0)
+        review_pv = max(portfolio_value, live_value) if live_value > 0 else portfolio_value
+        try:
+            rebal = compute_rebalance_pnl(
+                profile=profile, universe=universe, mode="Standard",
+                portfolio_value=review_pv, positions=positions_agg,
+            )
+        except Exception:
+            rebal = {"rows": [], "total_target": 0, "total_current": 0,
+                     "total_pnl": 0, "total_pnl_pct": 0, "net_rebalance": 0}
+        review_payload = {
+            "pnl": pnl,
+            "drift": drift,
+            "rebalance": rebal,
+            "live_value": live_value,
+        }
+
     # 10. Phased-build / DCA section (optional).
     dca_rows: list[dict] = []
     dca_meta: dict = {}
@@ -412,6 +474,10 @@ def build_proposal_context(inp: ProposalInputs) -> dict[str, Any]:
         # DCA section payload (empty when no DCA params supplied).
         "dca_rows": dca_rows,
         "dca_meta": dca_meta,
+        # Proposal flavour + the review payload. Empty dict when
+        # proposal_type=new so the renderer can branch on truthiness.
+        "proposal_type": proposal_type,
+        "review": review_payload,
         # i18n helpers for the template.
         "t": lambda key, **fmt: t(key, lang, **fmt),
         "tier_label_i18n": lambda label: _i18n_tier_label(label, lang),

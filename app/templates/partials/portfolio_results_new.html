@@ -250,6 +250,13 @@
             </select>
         </div>
         <div class="control-group">
+            <span class="control-label">Proposal type</span>
+            <select id="proposal-export-type">
+                <option value="new">New client (no holdings)</option>
+                <option value="review">Existing client (review)</option>
+            </select>
+        </div>
+        <div class="control-group">
             <span class="control-label">Language</span>
             <select id="proposal-export-lang">
                 <option value="">Auto (by domicile)</option>
@@ -372,6 +379,7 @@
         };
         var ids = {
             client: 'proposal-export-client',
+            proposalType: 'proposal-export-type',
             lang: 'proposal-export-lang',
             excluded: 'proposal-excluded',
             wishes: 'proposal-wishes',
@@ -402,6 +410,9 @@
             params.set('profile', BASE_QS.profile || '');
             params.set('universe', BASE_QS.universe || '');
             params.set('portfolio_value', String(BASE_QS.portfolio_value || ''));
+            if (v('proposalType') && v('proposalType') !== 'new') {
+                params.set('proposal_type', v('proposalType'));
+            }
             if (v('lang')) params.set('lang', v('lang'));
             if (v('excluded')) params.set('excluded', v('excluded'));
             if (v('wishes')) params.set('wishes', v('wishes'));
@@ -429,7 +440,7 @@
             if (s) s.textContent = v('client') ? '' : '';
         }
         [
-            'client', 'lang', 'excluded', 'wishes', 'summary', 'marketAnalysis',
+            'client', 'proposalType', 'lang', 'excluded', 'wishes', 'summary', 'marketAnalysis',
             'execution', 'conclusion', 'salutation', 'statusLevel',
             'consultationDate', 'advisorEmail', 'advisorPhone',
             'dcaMonthly', 'dcaHorizon',

@@ -1216,6 +1216,7 @@ def _proposal_inputs_for(
     lang: Optional[str] = None,
     overrides: Optional[dict] = None,
     dca: Optional[dict] = None,
+    proposal_type: Optional[str] = None,
 ) -> Optional[ProposalInputs]:
     """Common assembly for /proposal.pdf, /proposal.html, /proposal.docx."""
     c = get_client(client_id)
@@ -1263,6 +1264,7 @@ def _proposal_inputs_for(
         lang=lang_use,
         overrides=overrides,
         dca=dca,
+        proposal_type=(proposal_type or "new"),
     )
 
 
@@ -1355,6 +1357,7 @@ async def client_proposal_pdf(
     consultation_date: Optional[str] = None,
     advisor_email: Optional[str] = None,
     advisor_phone: Optional[str] = None,
+    proposal_type: Optional[str] = None,
 ):
     lang_v, overrides_v, dca_v = _parse_proposal_query(
         lang, excluded, wishes, summary, execution_plan,
@@ -1368,6 +1371,7 @@ async def client_proposal_pdf(
         request, client_id, profile=profile, universe=universe,
         portfolio_value=portfolio_value, lang=lang_v,
         overrides=overrides_v, dca=dca_v,
+        proposal_type=proposal_type,
     )
     if inp is None:
         return JSONResponse({"error": "not_found"}, status_code=404)
@@ -1425,6 +1429,7 @@ async def client_proposal_html(
     consultation_date: Optional[str] = None,
     advisor_email: Optional[str] = None,
     advisor_phone: Optional[str] = None,
+    proposal_type: Optional[str] = None,
 ):
     lang_v, overrides_v, dca_v = _parse_proposal_query(
         lang, excluded, wishes, summary, execution_plan,
@@ -1438,6 +1443,7 @@ async def client_proposal_html(
         request, client_id, profile=profile, universe=universe,
         portfolio_value=portfolio_value, lang=lang_v,
         overrides=overrides_v, dca=dca_v,
+        proposal_type=proposal_type,
     )
     if inp is None:
         return JSONResponse({"error": "not_found"}, status_code=404)
@@ -1474,6 +1480,7 @@ async def client_proposal_docx(
     consultation_date: Optional[str] = None,
     advisor_email: Optional[str] = None,
     advisor_phone: Optional[str] = None,
+    proposal_type: Optional[str] = None,
 ):
     """Editable Word-document version of the proposal — the primary
     advisor working format per Jannick Bröring."""
@@ -1489,6 +1496,7 @@ async def client_proposal_docx(
         request, client_id, profile=profile, universe=universe,
         portfolio_value=portfolio_value, lang=lang_v,
         overrides=overrides_v, dca=dca_v,
+        proposal_type=proposal_type,
     )
     if inp is None:
         return JSONResponse({"error": "not_found"}, status_code=404)

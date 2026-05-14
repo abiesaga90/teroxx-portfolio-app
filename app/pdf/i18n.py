@@ -486,6 +486,73 @@ _STRINGS: dict[str, dict[str, str]] = {
     "assetclass.large_cap": {"en": "Large-cap crypto", "de": "Large-Cap-Crypto"},
     "assetclass.mid_cap": {"en": "Mid-cap crypto", "de": "Mid-Cap-Crypto"},
     "assetclass.small_cap": {"en": "Small-cap / thematic", "de": "Small-Cap / Thematisch"},
+
+    # ── Review flow (existing-client proposals) ──
+    "page.current_portfolio": {
+        "en": "Current portfolio",
+        "de": "Aktuelles Portfolio",
+    },
+    "page.target_allocation": {
+        "en": "Target allocation",
+        "de": "Ziel-Allokation",
+    },
+    "page.drift_analysis": {
+        "en": "Drift vs target",
+        "de": "Abweichung zum Ziel",
+    },
+    "page.rebalance": {
+        "en": "Recommended rebalance trades",
+        "de": "Empfohlene Rebalancing-Trades",
+    },
+    "current_portfolio.subheading": {
+        "en": "Live mark-to-market view of the positions held with Teroxx today.",
+        "de": "Live-Marktbewertung der aktuell bei Teroxx gehaltenen Positionen.",
+    },
+    "current_portfolio.title_with_total": {
+        "en": "Total market value: {value}",
+        "de": "Gesamtwert: {value}",
+    },
+    "drift_analysis.subheading": {
+        "en": "Per-position deviation between current weight and {profile} target. Threshold for review: {threshold}pp.",
+        "de": "Abweichung der aktuellen Gewichtung vom Ziel im Profil {profile}. Überprüfungsgrenze: {threshold} Prozentpunkte.",
+    },
+    "drift_analysis.max_drift_callout": {
+        "en": "Largest deviation: {ticker} at {drift}pp from target. {status}",
+        "de": "Größte Abweichung: {ticker} mit {drift} Prozentpunkten zum Ziel. {status}",
+    },
+    "drift_analysis.attention_yes": {
+        "en": "Above the review threshold — rebalance proposal below.",
+        "de": "Oberhalb der Überprüfungsgrenze — Rebalancing-Vorschlag siehe unten.",
+    },
+    "drift_analysis.attention_no": {
+        "en": "Within the review threshold — no rebalance triggered.",
+        "de": "Innerhalb der Überprüfungsgrenze — kein Rebalancing erforderlich.",
+    },
+    "rebalance.subheading": {
+        "en": "Trades to bring the portfolio back to the {profile} target. Net movement: {net}.",
+        "de": "Trades zur Rückführung auf das Profil-Ziel {profile}. Nettobewegung: {net}.",
+    },
+    "rebalance.no_action": {
+        "en": "No material rebalancing trades required at current weights.",
+        "de": "Keine wesentlichen Rebalancing-Trades bei den aktuellen Gewichten erforderlich.",
+    },
+    # Table headers / cells specific to the review flow
+    "table.qty": {"en": "Quantity", "de": "Stückzahl"},
+    "table.entry_price": {"en": "Avg entry price", "de": "Ø Einstiegspreis"},
+    "table.live_price": {"en": "Live price", "de": "Live-Preis"},
+    "table.market_value": {"en": "Market value", "de": "Marktwert"},
+    "table.cost_basis": {"en": "Cost basis", "de": "Anschaffungskosten"},
+    "table.pnl_unrealized": {"en": "Unrealized P&L", "de": "Unrealisiertes Ergebnis"},
+    "table.pnl_pct": {"en": "P&L %", "de": "Ergebnis %"},
+    "table.weight_now": {"en": "Current %", "de": "Aktuell %"},
+    "table.weight_target": {"en": "Target %", "de": "Ziel %"},
+    "table.drift_pp": {"en": "Drift pp", "de": "Drift PP"},
+    "table.delta_usd": {"en": "Delta", "de": "Delta"},
+    "table.action": {"en": "Action", "de": "Aktion"},
+    "kpi.total_value": {"en": "Total market value", "de": "Gesamter Marktwert"},
+    "kpi.total_cost": {"en": "Total cost basis", "de": "Anschaffungskosten gesamt"},
+    "kpi.total_pnl": {"en": "Unrealized P&L", "de": "Unrealisiertes Ergebnis"},
+    "kpi.days_held": {"en": "Days held since first entry", "de": "Tage seit erster Position"},
 }
 
 

@@ -686,6 +686,266 @@ def _fees_section(doc: Document, ctx: dict) -> None:
     doc.add_page_break()
 
 
+# ── Review-flow sections (existing-client proposals) ───────────────
+
+
+def _current_holdings(doc: Document, ctx: dict) -> None:
+    """Current portfolio: KPI strip (cost basis / market value / P&L /
+    days held) + per-ticker holdings table with live mark-to-market."""
+    review = ctx.get("review") or {}
+    pnl = review.get("pnl") or {}
+    rows = pnl.get("ticker_summary") or pnl.get("by_ticker") or []
+    if not rows:
+        # Fall back to lot-level rows if the ticker rollup is missing.
+        rows = pnl.get("rows") or []
+    summary = pnl.get("summary") or {}
+    if not rows and not summary:
+        # Nothing to render — likely client has no lots; the renderer
+        # will switch the audience back to the new-client flow upstream
+        # but we still guard here.
+        return
+
+    _section_header(
+        doc, ctx, "page.current_portfolio",
+        _T(ctx, "current_portfolio.title_with_total",
+           value=_money(ctx, summary.get("total_value", 0))),
+    )
+    sub = doc.add_paragraph()
+    sr = sub.add_run(_T(ctx, "current_portfolio.subheading"))
+    sr.font.size = Pt(9.5)
+    sr.font.italic = True
+    sr.font.color.rgb = TEXT_MUTED
+
+    # KPI strip — uses the same shape as portfolio_detail's params block.
+    kpis = [
+        (_T(ctx, "kpi.total_value"), _money(ctx, summary.get("total_value", 0))),
+        (_T(ctx, "kpi.total_cost"), _money(ctx, summary.get("total_cost", 0))),
+        (_T(ctx, "kpi.total_pnl"),
+         f"{_money(ctx, summary.get('total_pnl', 0))} ({summary.get('total_pnl_pct', 0):.1f}%)"),
+        (_T(ctx, "kpi.days_held"), str(summary.get("days_since_entry", 0))),
+    ]
+    ktable = doc.add_table(rows=len(kpis), cols=2)
+    ktable.autofit = False
+    ktable.columns[0].width = Cm(7.0)
+    ktable.columns[1].width = Cm(9.5)
+    for i, (lbl, val) in enumerate(kpis):
+        _set_cell_text(ktable.rows[i].cells[0], lbl, bold=True, color=TEXT_MUTED, size_pt=9)
+        _set_cell_text(ktable.rows[i].cells[1], val, size_pt=10.5)
+        if i % 2 == 0:
+            _shade_cell(ktable.rows[i].cells[0], "F6F4F0")
+            _shade_cell(ktable.rows[i].cells[1], "F6F4F0")
+
+    doc.add_paragraph()
+
+    # Per-ticker holdings table.
+    headers = [
+        _T(ctx, "table.asset"),
+        _T(ctx, "table.qty"),
+        _T(ctx, "table.entry_price"),
+        _T(ctx, "table.live_price"),
+        _T(ctx, "table.market_value"),
+        _T(ctx, "table.pnl_unrealized"),
+        _T(ctx, "table.weight_now"),
+    ]
+    htable = doc.add_table(rows=1 + len(rows), cols=len(headers))
+    for i, hd in enumerate(headers):
+        _set_cell_text(htable.rows[0].cells[i], hd, bold=True, color=WHITE, size_pt=9.5)
+        _shade_cell(htable.rows[0].cells[i], "010626")
+    for i, r in enumerate(rows, start=1):
+        cells = htable.rows[i].cells
+        c = cells[0]
+        c.text = ""
+        p = c.paragraphs[0]
+        rt = p.add_run(r.get("ticker", ""))
+        rt.font.bold = True
+        rt.font.size = Pt(10)
+        rn = p.add_run(f"  {r.get('name', '')}")
+        rn.font.size = Pt(9)
+        rn.font.color.rgb = TEXT_MUTED
+        _set_cell_text(cells[1], f"{r.get('quantity', 0):,.4f}".rstrip("0").rstrip("."),
+                       align=WD_ALIGN_PARAGRAPH.RIGHT, size_pt=9.5)
+        _set_cell_text(cells[2], _money(ctx, r.get("avg_entry_price", r.get("entry_price", 0))),
+                       align=WD_ALIGN_PARAGRAPH.RIGHT, size_pt=9.5)
+        _set_cell_text(cells[3], _money(ctx, r.get("current_price", 0)),
+                       align=WD_ALIGN_PARAGRAPH.RIGHT, size_pt=9.5)
+        _set_cell_text(cells[4], _money(ctx, r.get("current_value", 0)),
+                       align=WD_ALIGN_PARAGRAPH.RIGHT, size_pt=9.5)
+        pnl_val = r.get("pnl", 0)
+        pnl_text = f"{_money(ctx, pnl_val)} ({r.get('pnl_pct', 0):.1f}%)"
+        # Colour the P&L cell green / red so the advisor can scan the
+        # row at a glance even before reading the value.
+        pnl_cell = cells[5]
+        pnl_cell.text = ""
+        pp = pnl_cell.paragraphs[0]
+        pp.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        pr = pp.add_run(pnl_text)
+        pr.font.size = Pt(9.5)
+        if pnl_val > 0:
+            pr.font.color.rgb = RGBColor(0x14, 0x6C, 0x43)
+        elif pnl_val < 0:
+            pr.font.color.rgb = RGBColor(0xB4, 0x3A, 0x3A)
+        _set_cell_text(cells[6], f"{r.get('weight', 0):.1f}%",
+                       align=WD_ALIGN_PARAGRAPH.RIGHT, size_pt=9.5)
+        if i % 2 == 0:
+            for cell in cells:
+                _shade_cell(cell, "F6F4F0")
+
+    doc.add_page_break()
+
+
+def _drift_analysis(doc: Document, ctx: dict) -> None:
+    """Per-position drift vs the configured profile target."""
+    review = ctx.get("review") or {}
+    drift = review.get("drift") or {}
+    rows = drift.get("rows") or []
+    if not rows:
+        return
+
+    lang = ctx.get("lang", I18N_DEFAULT)
+    profile = ctx.get("client", {}).get("profile", "")
+    threshold = drift.get("threshold_pp", 0)
+
+    _section_header(doc, ctx, "page.drift_analysis", _T(ctx, "page.drift_analysis"))
+
+    sub = doc.add_paragraph()
+    sr = sub.add_run(_T(
+        ctx, "drift_analysis.subheading",
+        profile=profile_label(profile, lang),
+        threshold=f"{threshold:.0f}",
+    ))
+    sr.font.size = Pt(9.5)
+    sr.font.italic = True
+    sr.font.color.rgb = TEXT_MUTED
+
+    # Callout for the largest drift.
+    max_ticker = drift.get("max_drift_ticker")
+    max_pp = drift.get("max_drift_pp", 0)
+    if max_ticker:
+        status_key = "drift_analysis.attention_yes" if drift.get("attention") else "drift_analysis.attention_no"
+        callout = doc.add_paragraph()
+        cr = callout.add_run(_T(
+            ctx, "drift_analysis.max_drift_callout",
+            ticker=max_ticker, drift=f"{max_pp:.1f}",
+            status=_T(ctx, status_key),
+        ))
+        cr.font.size = Pt(10)
+        cr.font.bold = True
+        cr.font.color.rgb = SUNSET_EMBER if drift.get("attention") else TEXT_BODY
+
+    headers = [
+        _T(ctx, "table.asset"),
+        _T(ctx, "table.weight_now"),
+        _T(ctx, "table.weight_target"),
+        _T(ctx, "table.drift_pp"),
+    ]
+    dtable = doc.add_table(rows=1 + len(rows), cols=len(headers))
+    for i, hd in enumerate(headers):
+        _set_cell_text(dtable.rows[0].cells[i], hd, bold=True, color=WHITE, size_pt=9.5)
+        _shade_cell(dtable.rows[0].cells[i], "010626")
+    for i, r in enumerate(rows, start=1):
+        cells = dtable.rows[i].cells
+        _set_cell_text(cells[0], r.get("ticker", ""), bold=True, size_pt=10)
+        _set_cell_text(cells[1], f"{r.get('current_pct', 0):.2f}%",
+                       align=WD_ALIGN_PARAGRAPH.RIGHT, size_pt=9.5)
+        _set_cell_text(cells[2], f"{r.get('target_pct', 0):.2f}%",
+                       align=WD_ALIGN_PARAGRAPH.RIGHT, size_pt=9.5)
+        drift_pp = float(r.get("drift_pp", 0) or 0)
+        sign = "+" if drift_pp > 0 else ""
+        drift_cell = cells[3]
+        drift_cell.text = ""
+        dp = drift_cell.paragraphs[0]
+        dp.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        dr = dp.add_run(f"{sign}{drift_pp:.2f}pp")
+        dr.font.size = Pt(9.5)
+        dr.font.bold = abs(drift_pp) >= float(threshold or 0)
+        if abs(drift_pp) >= float(threshold or 0):
+            dr.font.color.rgb = SUNSET_EMBER
+        if i % 2 == 0:
+            for cell in cells:
+                _shade_cell(cell, "F6F4F0")
+
+    doc.add_page_break()
+
+
+def _rebalance_actions(doc: Document, ctx: dict) -> None:
+    """Recommended BUY/SELL trades to bring the portfolio to target."""
+    review = ctx.get("review") or {}
+    rebal = review.get("rebalance") or {}
+    rows = rebal.get("rows") or []
+    actionable = [r for r in rows if (r.get("action") or "") and abs(float(r.get("difference") or 0)) > 1]
+    lang = ctx.get("lang", I18N_DEFAULT)
+    profile = ctx.get("client", {}).get("profile", "")
+    net = rebal.get("net_rebalance", 0)
+
+    _section_header(doc, ctx, "page.rebalance", _T(ctx, "page.rebalance"))
+
+    sub = doc.add_paragraph()
+    sr = sub.add_run(_T(
+        ctx, "rebalance.subheading",
+        profile=profile_label(profile, lang),
+        net=_money(ctx, net),
+    ))
+    sr.font.size = Pt(9.5)
+    sr.font.italic = True
+    sr.font.color.rgb = TEXT_MUTED
+
+    if not actionable:
+        p = doc.add_paragraph()
+        pr = p.add_run(_T(ctx, "rebalance.no_action"))
+        pr.font.italic = True
+        pr.font.color.rgb = TEXT_MUTED
+        pr.font.size = Pt(10.5)
+        doc.add_page_break()
+        return
+
+    headers = [
+        _T(ctx, "table.asset"),
+        _T(ctx, "table.weight_target"),
+        _T(ctx, "table.market_value"),
+        _T(ctx, "table.delta_usd"),
+        _T(ctx, "table.action"),
+    ]
+    rtable = doc.add_table(rows=1 + len(actionable), cols=len(headers))
+    for i, hd in enumerate(headers):
+        _set_cell_text(rtable.rows[0].cells[i], hd, bold=True, color=WHITE, size_pt=9.5)
+        _shade_cell(rtable.rows[0].cells[i], "010626")
+    for i, r in enumerate(actionable, start=1):
+        cells = rtable.rows[i].cells
+        c = cells[0]
+        c.text = ""
+        p = c.paragraphs[0]
+        rt = p.add_run(r.get("ticker", ""))
+        rt.font.bold = True
+        rt.font.size = Pt(10)
+        rn = p.add_run(f"  {r.get('name', '')}")
+        rn.font.size = Pt(9)
+        rn.font.color.rgb = TEXT_MUTED
+        _set_cell_text(cells[1], f"{(r.get('target_pct') or 0) * 100:.2f}%",
+                       align=WD_ALIGN_PARAGRAPH.RIGHT, size_pt=9.5)
+        _set_cell_text(cells[2], _money(ctx, r.get("current_usd", 0)),
+                       align=WD_ALIGN_PARAGRAPH.RIGHT, size_pt=9.5)
+        delta = float(r.get("difference") or 0)
+        sign = "+" if delta > 0 else ""
+        _set_cell_text(cells[3], f"{sign}{_money(ctx, delta)}",
+                       align=WD_ALIGN_PARAGRAPH.RIGHT, size_pt=9.5)
+        action_cell = cells[4]
+        action_cell.text = ""
+        ap = action_cell.paragraphs[0]
+        ap.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        ar = ap.add_run(r.get("action", ""))
+        ar.font.bold = True
+        ar.font.size = Pt(9.5)
+        if r.get("action") == "BUY":
+            ar.font.color.rgb = RGBColor(0x14, 0x6C, 0x43)
+        elif r.get("action") == "SELL":
+            ar.font.color.rgb = RGBColor(0xB4, 0x3A, 0x3A)
+        if i % 2 == 0:
+            for cell in cells:
+                _shade_cell(cell, "F6F4F0")
+
+    doc.add_page_break()
+
+
 def _contact_section(doc: Document, ctx: dict) -> None:
     """Advisor contact table. Always rendered (every IA proposal needs
     one); falls back to the document author when override fields are
@@ -813,7 +1073,14 @@ def _exec_summary(doc: Document, ctx: dict) -> None:
 
 
 def _allocation_table(doc: Document, ctx: dict) -> None:
-    _section_header(doc, ctx, "page.allocation", ctx.get("allocation_title", ""))
+    # In review mode the same per-ticker target table reads as "what we
+    # rebalance toward", so swap the kicker label to "Target allocation".
+    kicker_key = (
+        "page.target_allocation"
+        if (ctx.get("proposal_type") or "").lower() == "review"
+        else "page.allocation"
+    )
+    _section_header(doc, ctx, kicker_key, ctx.get("allocation_title", ""))
 
     rows = ctx.get("allocation_rows", [])
     h = doc.add_paragraph()
@@ -1097,12 +1364,19 @@ def _appendix(doc: Document, ctx: dict) -> None:
 def render_docx(ctx: dict[str, Any]) -> bytes:
     """Build the proposal as a Word document from a proposal context dict.
 
-    Section order mirrors Jannick Bröring's WIP IA template (directional,
-    not literal): personal welcome → client info → consultation summary
-    → market analysis → portfolio detail (with PAM's quantitative
-    exhibits) → strategy / phased build → macro framing → conclusion →
-    optional client wishes → fees → advisor contact → appendix with
-    methodology + disclaimers.
+    Two flavours, switched on ``ctx['proposal_type']``:
+
+    * ``"new"`` (default) — onboarding allocation proposal. Section
+      order mirrors Jannick Bröring's WIP IA template: cover → welcome
+      → client info → consultation summary → market analysis →
+      portfolio detail → recommended allocation → strategy → macro
+      framing → fazit → wishes → fees → contact → appendix.
+
+    * ``"review"`` — existing-client portfolio review. Inserts three
+      review-specific sections after market analysis: current
+      holdings + P&L, drift vs target, recommended rebalance trades.
+      The target-allocation section is still rendered but reads as
+      "what we are rebalancing toward", not "what we propose buying".
 
     The returned bytes are a complete .docx archive suitable for the
     response body of a FastAPI handler.
@@ -1111,13 +1385,21 @@ def render_docx(ctx: dict[str, Any]) -> bytes:
     _set_default_font(doc)
     _page_setup(doc)
 
+    proposal_type = (ctx.get("proposal_type") or "new").strip().lower()
+    is_review = proposal_type == "review"
+
     _cover(doc, ctx)
     _welcome(doc, ctx)
     _client_info(doc, ctx)
     _consultation_summary(doc, ctx)
     _market_analysis(doc, ctx)
+    if is_review:
+        _current_holdings(doc, ctx)
+        _drift_analysis(doc, ctx)
     _portfolio_detail(doc, ctx)
     _allocation_table(doc, ctx)
+    if is_review:
+        _rebalance_actions(doc, ctx)
     _strategy_section(doc, ctx)
     _macro_section(doc, ctx)
     _fazit_section(doc, ctx)
