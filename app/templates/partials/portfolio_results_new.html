@@ -218,48 +218,173 @@
 </div>
 {% endif %}
 
-<!-- Proposal PDF: branded artifact built from the allocation above -->
+<!-- Proposal export: editable DOCX (primary) + PDF/HTML previews.
+
+     Per Jannick Bröring 2026-05-14: the IA workflow requires per-client
+     advisor edits (wishes, custom summary, execution analysis, comments)
+     on top of the auto-rendered artifact. DOCX is the format Jannick
+     edits before sending; PDF is the read-only preview. -->
 <div class="card proposal-export">
     <div class="card-header">Proposal</div>
     <p style="padding:0 32px 12px;font-size:0.78rem;color:var(--text-muted);line-height:1.5;">
-        Generate the branded Teroxx proposal PDF using the allocation above
+        Generate the branded Teroxx proposal using the allocation above
         ({{ profile }} · {{ universe }} · {{ portfolio_value|fmt_usd }}).
-        Pick a client to anchor the cover, disclaimers and rationale; the
-        allocation, exhibits and macro framing come from this page.
+        DOCX is the editable format the advisor extends with client wishes,
+        custom summary and execution narrative before sending. PDF is a
+        read-only preview of the auto-rendered content.
     </p>
-    {# Pre-baked query string so the per-client links work without any JS
-       at click time. profile/universe/portfolio_value come from the
-       current page state; each <option> carries the full proposal URL
-       in data-* attributes. A tiny onchange swaps them onto the two
-       anchors — native anchor navigation can't be popup-blocked and
-       survives HTMX swaps. #}
-    {% set _qs = '?profile=' ~ (profile|urlencode) ~ '&universe=' ~ (universe|urlencode) ~ '&portfolio_value=' ~ (portfolio_value|round(2)) %}
     <form id="proposal-export-form" class="controls" onsubmit="return false;"
-          style="padding:0 32px 18px;align-items:flex-end;">
+          style="padding:0 32px 8px;flex-wrap:wrap;align-items:flex-end;gap:12px;">
         <div class="control-group">
             <span class="control-label">Client</span>
-            <select id="proposal-export-client"
-                    onchange="var o=this.options[this.selectedIndex],p=document.getElementById('proposal-export-pdf'),h=document.getElementById('proposal-export-html'),s=document.getElementById('proposal-export-status');p.href=o.dataset.hrefPdf||'#';h.href=o.dataset.hrefHtml||'#';if(s)s.textContent='';">
+            <select id="proposal-export-client">
                 <option value="">— pick a client —</option>
                 {% for c in clients %}
                 <option value="{{ c.id }}"
-                        data-href-pdf="/api/clients/{{ c.id }}/proposal.pdf{{ _qs }}"
-                        data-href-html="/api/clients/{{ c.id }}/proposal.html{{ _qs }}">
+                        data-domicile="{{ c.domicile or '' }}">
                     {{ c.name }} ({{ c.profile }}{% if c.domicile %} · {{ c.domicile }}{% endif %})
                 </option>
                 {% endfor %}
             </select>
         </div>
-        <a id="proposal-export-pdf" class="btn-accent" href="#" target="_blank" rel="noopener"
-           onclick="if(this.getAttribute('href')==='#'){var s=document.getElementById('proposal-export-status');if(s)s.textContent='Pick a client first.';return false;}">
-            Generate proposal PDF
+        <div class="control-group">
+            <span class="control-label">Language</span>
+            <select id="proposal-export-lang">
+                <option value="">Auto (by domicile)</option>
+                <option value="de">Deutsch</option>
+                <option value="en">English</option>
+            </select>
+        </div>
+        <a id="proposal-export-docx" class="btn-accent" href="#" target="_blank" rel="noopener">
+            Download editable DOCX
         </a>
-        <a id="proposal-export-html" class="btn-outline" href="#" target="_blank" rel="noopener"
-           onclick="if(this.getAttribute('href')==='#'){var s=document.getElementById('proposal-export-status');if(s)s.textContent='Pick a client first.';return false;}">
-            Preview in browser
+        <a id="proposal-export-pdf" class="btn-outline" href="#" target="_blank" rel="noopener">
+            PDF preview
         </a>
-        <span id="proposal-export-status" style="font-size:0.72rem;color:var(--text-muted);"></span>
+        <a id="proposal-export-html" class="btn-outline" href="#" target="_blank" rel="noopener">
+            HTML preview
+        </a>
+        <span id="proposal-export-status" style="font-size:0.72rem;color:var(--text-muted);width:100%;"></span>
     </form>
+
+    {# Per-client overrides — surface on the same card so advisors can
+       compose the artifact in one place. Free-form fields land in the
+       DOCX as dedicated sections; advisors then refine in Word. #}
+    <details id="proposal-overrides-details" style="padding:0 32px 18px;">
+        <summary style="cursor:pointer;font-size:0.78rem;color:var(--text-muted);padding:6px 0;">
+            Per-client overrides — wishes, summary, execution plan, excluded tickers, phased build
+        </summary>
+        <div class="controls" style="flex-wrap:wrap;gap:12px;margin-top:8px;align-items:flex-start;">
+            <div class="control-group" style="flex:1 1 220px;">
+                <span class="control-label">Excluded tickers</span>
+                <input type="text" id="proposal-excluded"
+                       placeholder="comma-separated, e.g. XRP, ADA"
+                       style="width:100%;">
+            </div>
+            <div class="control-group" style="flex:1 1 220px;">
+                <span class="control-label">Phased build · monthly ($)</span>
+                <input type="number" id="proposal-dca-monthly"
+                       min="0" step="1000" placeholder="0 = single purchase">
+            </div>
+            <div class="control-group" style="flex:1 1 160px;">
+                <span class="control-label">Horizon (months)</span>
+                <input type="number" id="proposal-dca-horizon"
+                       min="1" max="36" step="1" value="6">
+            </div>
+            <div class="control-group" style="flex:1 1 100%;">
+                <span class="control-label">Client wishes — markdown (DE/EN)</span>
+                <textarea id="proposal-wishes" rows="3"
+                          placeholder="- Keine Memecoins&#10;- BTC nicht unter 10% Gewichtung"
+                          style="width:100%;font-family:inherit;font-size:0.85rem;"></textarea>
+            </div>
+            <div class="control-group" style="flex:1 1 100%;">
+                <span class="control-label">Advisor summary — markdown (DE/EN)</span>
+                <textarea id="proposal-summary" rows="3"
+                          placeholder="Konservatives Vermögen, Zwei-Jahres-Horizont. Bevorzugung von Majors und Gold-Bridge."
+                          style="width:100%;font-family:inherit;font-size:0.85rem;"></textarea>
+            </div>
+            <div class="control-group" style="flex:1 1 100%;">
+                <span class="control-label">Execution plan — markdown (DE/EN)</span>
+                <textarea id="proposal-execution" rows="4"
+                          placeholder="1. Tranche 1 (Woche 1): defensive Komponenten + BTC.&#10;2. Tranche 2 (Woche 3): ETH, BNB.&#10;3. Tranche 3 (Woche 6): Restallokation."
+                          style="width:100%;font-family:inherit;font-size:0.85rem;"></textarea>
+            </div>
+        </div>
+    </details>
+
+    {# Build URLs live whenever any input changes — anchors must be real
+       <a> tags so native navigation works (no popup blocker). #}
+    <script>
+    (function () {
+        var BASE_QS = {
+            profile: {{ profile|tojson }},
+            universe: {{ universe|tojson }},
+            portfolio_value: {{ (portfolio_value or 0)|tojson }},
+        };
+        var ids = {
+            client: 'proposal-export-client',
+            lang: 'proposal-export-lang',
+            excluded: 'proposal-excluded',
+            wishes: 'proposal-wishes',
+            summary: 'proposal-summary',
+            execution: 'proposal-execution',
+            dcaMonthly: 'proposal-dca-monthly',
+            dcaHorizon: 'proposal-dca-horizon',
+            anchorDocx: 'proposal-export-docx',
+            anchorPdf: 'proposal-export-pdf',
+            anchorHtml: 'proposal-export-html',
+            status: 'proposal-export-status',
+        };
+        function v(id) {
+            var el = document.getElementById(ids[id]);
+            return el && el.value ? el.value : '';
+        }
+        function build(kind) {
+            var cid = v('client');
+            if (!cid) return '#';
+            var params = new URLSearchParams();
+            params.set('profile', BASE_QS.profile || '');
+            params.set('universe', BASE_QS.universe || '');
+            params.set('portfolio_value', String(BASE_QS.portfolio_value || ''));
+            if (v('lang')) params.set('lang', v('lang'));
+            if (v('excluded')) params.set('excluded', v('excluded'));
+            if (v('wishes')) params.set('wishes', v('wishes'));
+            if (v('summary')) params.set('summary', v('summary'));
+            if (v('execution')) params.set('execution_plan', v('execution'));
+            if (v('dcaMonthly')) {
+                params.set('dca_monthly', v('dcaMonthly'));
+                params.set('dca_horizon', v('dcaHorizon') || '6');
+                params.set('dca_scope', 'all');
+            }
+            return '/api/clients/' + encodeURIComponent(cid) + '/proposal.' + kind + '?' + params.toString();
+        }
+        function refresh() {
+            document.getElementById(ids.anchorDocx).href = build('docx');
+            document.getElementById(ids.anchorPdf).href = build('pdf');
+            document.getElementById(ids.anchorHtml).href = build('html');
+            var s = document.getElementById(ids.status);
+            if (s) s.textContent = v('client') ? '' : '';
+        }
+        ['client', 'lang', 'excluded', 'wishes', 'summary', 'execution', 'dcaMonthly', 'dcaHorizon'].forEach(function (k) {
+            var el = document.getElementById(ids[k]);
+            if (!el) return;
+            el.addEventListener('change', refresh);
+            el.addEventListener('input', refresh);
+        });
+        ['anchorDocx', 'anchorPdf', 'anchorHtml'].forEach(function (k) {
+            var a = document.getElementById(ids[k]);
+            if (!a) return;
+            a.addEventListener('click', function (e) {
+                if (a.getAttribute('href') === '#') {
+                    var s = document.getElementById(ids.status);
+                    if (s) s.textContent = 'Pick a client first.';
+                    e.preventDefault();
+                }
+            });
+        });
+        refresh();
+    })();
+    </script>
 </div>
 
 <div class="sources">

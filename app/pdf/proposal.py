@@ -17,9 +17,13 @@ from app.data import (
     ASSET_REGULATORY_FLAGS, DISCLAIMERS, RATIONALE_LIBRARY, RATIONALE_TAGS,
     ASSET_BY_TICKER, get_alloc_tier,
 )
-from app.engine import compute_allocations
+from app.engine import compute_allocations, compute_dca
 from app.pdf.exhibits import (
     donut, donut_legend, tier_bar, regime_gauge,
+)
+from app.pdf.i18n import (
+    resolve_lang, t, profile_label, tier_label as _i18n_tier_label,
+    regime_label as _i18n_regime_label,
 )
 from app.pdf.narrative import (
     cover_subtitle, exec_action_title, allocation_action_title, macro_action_title,
@@ -48,6 +52,17 @@ class ProposalInputs:
     prepared_date: str
     macro_state: dict
     spot_prices: dict[str, float]  # {ticker: live_price_or_None}
+    # Proposal language ("en"|"de"). When None, resolved from
+    # client.proposal_language → client.domicile_country → "en".
+    lang: Optional[str] = None
+    # Optional per-render overrides (also stored on the client record).
+    # Per-render values take precedence; missing fields fall through to
+    # whatever is on client["proposal_overrides"].
+    overrides: Optional[dict] = None
+    # Optional phased-build / DCA parameters. When set, the proposal
+    # renders a "Phased build" section using compute_dca() output.
+    #   {"monthly_amount": 10000, "scope": "all", "horizon_months": 6, "min_order": 100}
+    dca: Optional[dict] = None
 
 
 def _abs_static_path(rel: str) -> str:
@@ -66,10 +81,46 @@ def build_proposal_context(inp: ProposalInputs) -> dict[str, Any]:
     universe = inp.universe
     portfolio_value = float(inp.portfolio_value or 100_000)
 
-    # 1. Target allocation from the engine. Drop zero-weighted rows.
+    # 0a. Resolve language: explicit input > client record > domicile > EN.
+    lang = resolve_lang(
+        requested=inp.lang or client.get("proposal_language"),
+        domicile_country=client.get("domicile_country"),
+    )
+
+    # 0b. Per-client overrides. Per-render dict beats stored record.
+    stored_overrides = client.get("proposal_overrides") or {}
+    if isinstance(stored_overrides, str):
+        try:
+            import json as _json
+            stored_overrides = _json.loads(stored_overrides) or {}
+        except Exception:
+            stored_overrides = {}
+    overrides = {**stored_overrides, **(inp.overrides or {})}
+    excluded_tickers = {
+        (s or "").strip().upper()
+        for s in (overrides.get("excluded_tickers") or [])
+        if s
+    }
+
+    # 1. Target allocation from the engine. Drop zero-weighted rows and
+    #    any tickers excluded by the client.
     allocs_raw = compute_allocations(profile, universe, mode="Standard")
-    allocs = [a for a in allocs_raw if (a.get("alloc_pct") or 0) > 0]
+    allocs = [
+        a for a in allocs_raw
+        if (a.get("alloc_pct") or 0) > 0
+        and a.get("ticker", "").upper() not in excluded_tickers
+    ]
     allocs.sort(key=lambda a: -float(a.get("alloc_pct") or 0))
+
+    # If excluding any tickers materially shrinks the universe, renormalise
+    # so the remaining weights sum back to 100%. Otherwise the displayed
+    # alloc_pct values would not sum to 100% and the donut/exhibits would
+    # look broken.
+    if excluded_tickers and allocs:
+        total = sum(float(a.get("alloc_pct") or 0) for a in allocs)
+        if 0 < total < 1.0:
+            for a in allocs:
+                a["alloc_pct"] = float(a.get("alloc_pct") or 0) / total
 
     # 2. Tier rollup (for the tier_bar exhibit).
     tier_totals: dict[str, float] = {}
@@ -182,31 +233,68 @@ def build_proposal_context(inp: ProposalInputs) -> dict[str, Any]:
     if chunk:
         rationale_pages.append(chunk)
 
-    # 8. Narrative titles.
+    # 8. Narrative titles (lang-aware).
     exec_title = exec_action_title(
         profile=profile, n_assets=len(alloc_rows),
-        defensive_pct=defensive_pct, regime_label=regime_label,
+        defensive_pct=defensive_pct, regime_label=regime_label, lang=lang,
     )
     exec_bullets = exec_summary_bullets(
-        regime_label=regime_label, notable_holdings=top_names,
+        regime_label=regime_label, notable_holdings=top_names, lang=lang,
     )
     allocation_title = allocation_action_title(
         top_names=top_names, top_share_pct=top_share,
-        growth_tier_share_pct=growth_pct,
+        growth_tier_share_pct=growth_pct, lang=lang,
     )
     macro_title = macro_action_title(
-        regime_label=regime_label, score=score, bias=bias_word,
+        regime_label=regime_label, score=score, bias=bias_word, lang=lang,
     )
 
     cover_sub = cover_subtitle(
         client_name=client.get("name", ""),
         profile=profile, prepared_by=inp.prepared_by, date_str=inp.prepared_date,
+        lang=lang,
     )
-    implementation_text = client.get("implementation_note") or implementation_default(profile=profile)
+    implementation_text = client.get("implementation_note") or implementation_default(profile=profile, lang=lang)
 
-    # 9. Disclaimer block based on domicile.
+    # 9. Disclaimer block based on domicile + language. DISCLAIMERS may
+    # be keyed by either "DE" or ("DE", "de") depending on what's in
+    # data.py; we try the lang-aware key first, then the legacy key.
     domicile_key = (client.get("domicile_country") or "").upper()
-    disclaimer = DISCLAIMERS.get(domicile_key) or DISCLAIMERS["default"]
+    disclaimer = (
+        DISCLAIMERS.get((domicile_key, lang))
+        or DISCLAIMERS.get(f"{domicile_key}.{lang}")
+        or DISCLAIMERS.get(domicile_key)
+        or DISCLAIMERS.get(("default", lang))
+        or DISCLAIMERS.get(f"default.{lang}")
+        or DISCLAIMERS["default"]
+    )
+
+    # 10. Phased-build / DCA section (optional).
+    dca_rows: list[dict] = []
+    dca_meta: dict = {}
+    if inp.dca and (inp.dca.get("monthly_amount") or 0) > 0:
+        try:
+            dca_rows = compute_dca(
+                profile=profile,
+                universe=universe,
+                mode="Standard",
+                monthly_amount=float(inp.dca.get("monthly_amount") or 0),
+                dca_scope=str(inp.dca.get("scope") or "all"),
+                horizon_months=int(inp.dca.get("horizon_months") or 6),
+                min_order=float(inp.dca.get("min_order") or 0),
+            )
+            # Drop excluded tickers from the DCA plan too — keep it
+            # consistent with the displayed allocation.
+            if excluded_tickers:
+                dca_rows = [r for r in dca_rows if r["ticker"].upper() not in excluded_tickers]
+            dca_meta = {
+                "monthly_amount": float(inp.dca.get("monthly_amount") or 0),
+                "horizon_months": int(inp.dca.get("horizon_months") or 6),
+                "scope": str(inp.dca.get("scope") or "all"),
+                "min_order": float(inp.dca.get("min_order") or 0),
+            }
+        except Exception:
+            dca_rows = []
 
     # Read the brand mark SVG into the template so WeasyPrint embeds it
     # alongside the rest of the document.
@@ -218,6 +306,7 @@ def build_proposal_context(inp: ProposalInputs) -> dict[str, Any]:
 
     return {
         "client": client,
+        "lang": lang,
         "universe": universe,
         "portfolio_value": portfolio_value,
         "prepared_by": inp.prepared_by,
@@ -240,6 +329,21 @@ def build_proposal_context(inp: ProposalInputs) -> dict[str, Any]:
         "implementation_text": implementation_text,
         "disclaimer": disclaimer,
         "teroxx_mark": teroxx_mark,
+        # Overrides: cleaned-up versions ready for the renderer.
+        "overrides": {
+            "excluded_tickers": sorted(excluded_tickers),
+            "wishes_md": (overrides.get("wishes_md") or "").strip(),
+            "summary_md": (overrides.get("summary_md") or "").strip(),
+            "execution_plan_md": (overrides.get("execution_plan_md") or "").strip(),
+        },
+        # DCA section payload (empty when no DCA params supplied).
+        "dca_rows": dca_rows,
+        "dca_meta": dca_meta,
+        # i18n helpers for the template.
+        "t": lambda key, **fmt: t(key, lang, **fmt),
+        "tier_label_i18n": lambda label: _i18n_tier_label(label, lang),
+        "profile_label_i18n": lambda label: profile_label(label, lang),
+        "regime_label_i18n": lambda label: _i18n_regime_label(label, lang),
         # Helper for the template's <link rel="stylesheet" href="{{ static_url(...) }}">
         "static_url": lambda rel: _abs_static_path(rel),
     }

@@ -88,6 +88,19 @@ class Client(Base):
     tagline: Mapped[Optional[str]] = mapped_column(String(240))
     risk_notes: Mapped[Optional[str]] = mapped_column(Text)
     implementation_note: Mapped[Optional[str]] = mapped_column(Text)
+    # Proposal-PDF/DOCX language preference. ISO-639-1 ("en", "de"); falls
+    # back to a domicile_country mapping if NULL. See app/pdf/i18n.py.
+    proposal_language: Mapped[Optional[str]] = mapped_column(String(8))
+    # JSON blob of per-client overrides applied at proposal-render time:
+    #   {
+    #     "excluded_tickers": ["XRP", "ADA"],
+    #     "wishes_md":        "...",  # client preferences / constraints
+    #     "summary_md":       "...",  # custom advisor summary
+    #     "execution_plan_md":"...",  # phased-build narrative
+    #   }
+    # Stored as text so we don't bind ourselves to a specific JSON-column
+    # dialect; serialised/parsed at the repo boundary.
+    proposal_overrides_json: Mapped[Optional[str]] = mapped_column(Text)
     created_by: Mapped[Optional[str]] = mapped_column(String(160))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utc_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utc_now, onupdate=_utc_now, nullable=False)
@@ -184,6 +197,7 @@ class AdvisorAction(Base):
 def init_db() -> None:
     """Create tables and seed demo clients if the store is empty."""
     Base.metadata.create_all(engine)
+    _ensure_client_columns()
     with SessionLocal() as db:
         has_any = db.execute(select(func.count(Client.id))).scalar_one() > 0
         if not has_any:
@@ -192,6 +206,31 @@ def init_db() -> None:
             logger.info("Seeded demo clients into %s", DB_PATH)
         else:
             logger.info("Clients table already populated; skipping seed (%s)", DB_PATH)
+
+
+def _ensure_client_columns() -> None:
+    """Tiny forward-only SQLite migration for Client column additions.
+
+    SQLAlchemy's ``create_all`` does not ALTER existing tables, so when
+    we add a column to the Client model we need to add it to any
+    pre-existing SQLite database too. Idempotent: skips columns that are
+    already present. Add new column names + types to ``required`` below
+    when extending the model.
+    """
+    required = {
+        "proposal_language": "VARCHAR(8)",
+        "proposal_overrides_json": "TEXT",
+    }
+    try:
+        with engine.begin() as conn:
+            existing = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(clients)")}
+            for col_name, col_type in required.items():
+                if col_name in existing:
+                    continue
+                conn.exec_driver_sql(f"ALTER TABLE clients ADD COLUMN {col_name} {col_type}")
+                logger.info("Added missing column clients.%s", col_name)
+    except Exception as e:
+        logger.warning("Client-column migration failed (non-fatal): %s", e)
 
 
 def _seed_demo(db: Session) -> None:

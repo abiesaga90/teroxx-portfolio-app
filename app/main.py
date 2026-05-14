@@ -36,6 +36,7 @@ from app.session_context import SessionContext, load_context, patch_context
 from app.db import SessionLocal, get_db, log_action
 from app.repos import clients as clients_repo
 from app.pdf.proposal import ProposalInputs, build_proposal_context, render_pdf as render_proposal_pdf
+from app.pdf.proposal_docx import render_docx as render_proposal_docx
 from fastapi.responses import Response
 
 
@@ -1207,9 +1208,16 @@ async def client_review_partial(request: Request, client_id: str = ""):
 # ── Proposal PDF ─────────────────────────────────────────────────────
 
 
-def _proposal_inputs_for(request: Request, client_id: str, *, portfolio_value: Optional[float] = None,
-                         profile: Optional[str] = None, universe: Optional[str] = None) -> Optional[ProposalInputs]:
-    """Common assembly for both /proposal.pdf and /proposal.html endpoints."""
+def _proposal_inputs_for(
+    request: Request, client_id: str, *,
+    portfolio_value: Optional[float] = None,
+    profile: Optional[str] = None,
+    universe: Optional[str] = None,
+    lang: Optional[str] = None,
+    overrides: Optional[dict] = None,
+    dca: Optional[dict] = None,
+) -> Optional[ProposalInputs]:
+    """Common assembly for /proposal.pdf, /proposal.html, /proposal.docx."""
     c = get_client(client_id)
     if not c:
         return None
@@ -1230,6 +1238,19 @@ def _proposal_inputs_for(request: Request, client_id: str, *, portfolio_value: O
                 spot[t] = float(p)
     except Exception:
         spot = {}
+    # Pull stored proposal language and overrides off the client record
+    # so calls that don't pass them explicitly still benefit from any
+    # per-client setup. Per-request values still take precedence.
+    lang_use = lang or c.get("proposal_language")
+    stored_overrides_raw = c.get("proposal_overrides_json")
+    if stored_overrides_raw and isinstance(stored_overrides_raw, str):
+        try:
+            import json as _json
+            c["proposal_overrides"] = _json.loads(stored_overrides_raw) or {}
+        except Exception:
+            c["proposal_overrides"] = {}
+    elif "proposal_overrides" not in c:
+        c["proposal_overrides"] = {}
     return ProposalInputs(
         client=c,
         profile=profile_use,
@@ -1239,7 +1260,51 @@ def _proposal_inputs_for(request: Request, client_id: str, *, portfolio_value: O
         prepared_date=datetime.utcnow().strftime("%d %B %Y"),
         macro_state=get_macro_regime(),
         spot_prices=spot,
+        lang=lang_use,
+        overrides=overrides,
+        dca=dca,
     )
+
+
+def _parse_proposal_query(
+    lang: Optional[str],
+    excluded: Optional[str],
+    wishes: Optional[str],
+    summary: Optional[str],
+    execution_plan: Optional[str],
+    dca_monthly: Optional[float],
+    dca_horizon: Optional[int],
+    dca_scope: Optional[str],
+    dca_min_order: Optional[float],
+) -> tuple[Optional[str], Optional[dict], Optional[dict]]:
+    """Translate query params into the override + DCA payloads.
+
+    Returns (lang, overrides, dca). Returns None for any payload that
+    is fully empty so per-client stored values still apply.
+    """
+    overrides: dict = {}
+    if excluded:
+        overrides["excluded_tickers"] = [
+            s.strip().upper() for s in excluded.split(",") if s.strip()
+        ]
+    if wishes:
+        overrides["wishes_md"] = wishes
+    if summary:
+        overrides["summary_md"] = summary
+    if execution_plan:
+        overrides["execution_plan_md"] = execution_plan
+    overrides_out = overrides or None
+
+    dca_out = None
+    if dca_monthly and dca_monthly > 0:
+        dca_out = {
+            "monthly_amount": float(dca_monthly),
+            "horizon_months": int(dca_horizon or 6),
+            "scope": dca_scope or "all",
+            "min_order": float(dca_min_order or 0),
+        }
+
+    return (lang or None), overrides_out, dca_out
 
 
 @app.get("/api/clients/{client_id}/proposal.pdf")
@@ -1249,9 +1314,25 @@ async def client_proposal_pdf(
     profile: Optional[str] = None,
     universe: Optional[str] = None,
     portfolio_value: Optional[float] = None,
+    lang: Optional[str] = None,
+    excluded: Optional[str] = None,
+    wishes: Optional[str] = None,
+    summary: Optional[str] = None,
+    execution_plan: Optional[str] = None,
+    dca_monthly: Optional[float] = None,
+    dca_horizon: Optional[int] = None,
+    dca_scope: Optional[str] = None,
+    dca_min_order: Optional[float] = None,
 ):
-    inp = _proposal_inputs_for(request, client_id, profile=profile, universe=universe,
-                               portfolio_value=portfolio_value)
+    lang_v, overrides_v, dca_v = _parse_proposal_query(
+        lang, excluded, wishes, summary, execution_plan,
+        dca_monthly, dca_horizon, dca_scope, dca_min_order,
+    )
+    inp = _proposal_inputs_for(
+        request, client_id, profile=profile, universe=universe,
+        portfolio_value=portfolio_value, lang=lang_v,
+        overrides=overrides_v, dca=dca_v,
+    )
     if inp is None:
         return JSONResponse({"error": "not_found"}, status_code=404)
     try:
@@ -1269,7 +1350,8 @@ async def client_proposal_pdf(
                 action_type="proposal_generated",
                 client_id=client_id,
                 payload={"profile": inp.profile, "universe": inp.universe,
-                         "portfolio_value": inp.portfolio_value, "size_bytes": len(pdf_bytes)},
+                         "portfolio_value": inp.portfolio_value, "size_bytes": len(pdf_bytes),
+                         "format": "pdf", "lang": ctx.get("lang")},
             )
             db.commit()
     except Exception as e:
@@ -1290,9 +1372,25 @@ async def client_proposal_html(
     profile: Optional[str] = None,
     universe: Optional[str] = None,
     portfolio_value: Optional[float] = None,
+    lang: Optional[str] = None,
+    excluded: Optional[str] = None,
+    wishes: Optional[str] = None,
+    summary: Optional[str] = None,
+    execution_plan: Optional[str] = None,
+    dca_monthly: Optional[float] = None,
+    dca_horizon: Optional[int] = None,
+    dca_scope: Optional[str] = None,
+    dca_min_order: Optional[float] = None,
 ):
-    inp = _proposal_inputs_for(request, client_id, profile=profile, universe=universe,
-                               portfolio_value=portfolio_value)
+    lang_v, overrides_v, dca_v = _parse_proposal_query(
+        lang, excluded, wishes, summary, execution_plan,
+        dca_monthly, dca_horizon, dca_scope, dca_min_order,
+    )
+    inp = _proposal_inputs_for(
+        request, client_id, profile=profile, universe=universe,
+        portfolio_value=portfolio_value, lang=lang_v,
+        overrides=overrides_v, dca=dca_v,
+    )
     if inp is None:
         return JSONResponse({"error": "not_found"}, status_code=404)
     try:
@@ -1302,6 +1400,69 @@ async def client_proposal_html(
         logger.exception("Proposal HTML render failed for %s: %s", client_id, e)
         return JSONResponse({"error": "render_failed", "detail": str(e)}, status_code=500)
     return HTMLResponse(html)
+
+
+@app.get("/api/clients/{client_id}/proposal.docx")
+async def client_proposal_docx(
+    request: Request,
+    client_id: str,
+    profile: Optional[str] = None,
+    universe: Optional[str] = None,
+    portfolio_value: Optional[float] = None,
+    lang: Optional[str] = None,
+    excluded: Optional[str] = None,
+    wishes: Optional[str] = None,
+    summary: Optional[str] = None,
+    execution_plan: Optional[str] = None,
+    dca_monthly: Optional[float] = None,
+    dca_horizon: Optional[int] = None,
+    dca_scope: Optional[str] = None,
+    dca_min_order: Optional[float] = None,
+):
+    """Editable Word-document version of the proposal — the primary
+    advisor working format per Jannick Bröring."""
+    lang_v, overrides_v, dca_v = _parse_proposal_query(
+        lang, excluded, wishes, summary, execution_plan,
+        dca_monthly, dca_horizon, dca_scope, dca_min_order,
+    )
+    inp = _proposal_inputs_for(
+        request, client_id, profile=profile, universe=universe,
+        portfolio_value=portfolio_value, lang=lang_v,
+        overrides=overrides_v, dca=dca_v,
+    )
+    if inp is None:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    try:
+        ctx = build_proposal_context(inp)
+        docx_bytes = render_proposal_docx(ctx)
+    except Exception as e:
+        logger.exception("Proposal DOCX render failed for %s: %s", client_id, e)
+        return JSONResponse({"error": "render_failed", "detail": str(e)}, status_code=500)
+    try:
+        with SessionLocal() as db:
+            log_action(
+                db,
+                actor_email=_actor_email(request),
+                action_type="proposal_generated",
+                client_id=client_id,
+                payload={"profile": inp.profile, "universe": inp.universe,
+                         "portfolio_value": inp.portfolio_value, "size_bytes": len(docx_bytes),
+                         "format": "docx", "lang": ctx.get("lang")},
+            )
+            db.commit()
+    except Exception as e:
+        logger.warning("Audit log for proposal_generated failed: %s", e)
+    safe_name = "".join(ch if ch.isalnum() else "_" for ch in inp.client.get("name", client_id))
+    filename = f"Teroxx_Proposal_{safe_name}_{datetime.utcnow().strftime('%Y%m%d')}.docx"
+    headers = {
+        "Content-Disposition": f'attachment; filename="{filename}"',
+        "Cache-Control": "private, no-store",
+    }
+    return Response(
+        content=docx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers=headers,
+    )
 
 
 # ── Client CRUD ──────────────────────────────────────────────────────

@@ -34,6 +34,11 @@ def to_legacy_dict(client: Client) -> dict:
         "starting_capital_usd": client.starting_capital_usd or 0,
         "risk_notes": client.risk_notes or "",
         "implementation_note": client.implementation_note or "",
+        # Proposal-render preferences. Both fields tolerate NULL via
+        # the schema; the proposal renderer resolves defaults from
+        # domicile_country when unset.
+        "proposal_language": getattr(client, "proposal_language", None),
+        "proposal_overrides_json": getattr(client, "proposal_overrides_json", None),
         "positions": [
             {
                 "ticker": lot.ticker,
