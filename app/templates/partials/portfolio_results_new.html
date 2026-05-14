@@ -227,31 +227,40 @@
         Pick a client to anchor the cover, disclaimers and rationale; the
         allocation, exhibits and macro framing come from this page.
     </p>
+    {# Pre-baked query string so the per-client links work without any JS
+       at click time. profile/universe/portfolio_value come from the
+       current page state; each <option> carries the full proposal URL
+       in data-* attributes. A tiny onchange swaps them onto the two
+       anchors — native anchor navigation can't be popup-blocked and
+       survives HTMX swaps. #}
+    {% set _qs = '?profile=' ~ (profile|urlencode) ~ '&universe=' ~ (universe|urlencode) ~ '&portfolio_value=' ~ (portfolio_value|round(2)) %}
     <form id="proposal-export-form" class="controls" onsubmit="return false;"
           style="padding:0 32px 18px;align-items:flex-end;">
         <div class="control-group">
             <span class="control-label">Client</span>
-            <select id="proposal-export-client">
+            <select id="proposal-export-client"
+                    onchange="var o=this.options[this.selectedIndex],p=document.getElementById('proposal-export-pdf'),h=document.getElementById('proposal-export-html'),s=document.getElementById('proposal-export-status');p.href=o.dataset.hrefPdf||'#';h.href=o.dataset.hrefHtml||'#';if(s)s.textContent='';">
                 <option value="">— pick a client —</option>
                 {% for c in clients %}
-                <option value="{{ c.id }}">{{ c.name }} ({{ c.profile }}{% if c.domicile %} · {{ c.domicile }}{% endif %})</option>
+                <option value="{{ c.id }}"
+                        data-href-pdf="/api/clients/{{ c.id }}/proposal.pdf{{ _qs }}"
+                        data-href-html="/api/clients/{{ c.id }}/proposal.html{{ _qs }}">
+                    {{ c.name }} ({{ c.profile }}{% if c.domicile %} · {{ c.domicile }}{% endif %})
+                </option>
                 {% endfor %}
             </select>
         </div>
-        <button type="button" class="btn-accent" id="proposal-export-pdf"
-                onclick="exportProposal('pdf', {{ portfolio_value|tojson }}, {{ profile|tojson }}, {{ universe|tojson }})">
+        <a id="proposal-export-pdf" class="btn-accent" href="#" target="_blank" rel="noopener"
+           onclick="if(this.getAttribute('href')==='#'){var s=document.getElementById('proposal-export-status');if(s)s.textContent='Pick a client first.';return false;}">
             Generate proposal PDF
-        </button>
-        <button type="button" class="btn-outline" id="proposal-export-html"
-                onclick="exportProposal('html', {{ portfolio_value|tojson }}, {{ profile|tojson }}, {{ universe|tojson }})">
+        </a>
+        <a id="proposal-export-html" class="btn-outline" href="#" target="_blank" rel="noopener"
+           onclick="if(this.getAttribute('href')==='#'){var s=document.getElementById('proposal-export-status');if(s)s.textContent='Pick a client first.';return false;}">
             Preview in browser
-        </button>
+        </a>
         <span id="proposal-export-status" style="font-size:0.72rem;color:var(--text-muted);"></span>
     </form>
 </div>
-
-<!-- exportProposal() is defined globally in /static/js/app.js so it
-     persists across HTMX swaps. -->
 
 <div class="sources">
     <div class="sources-title">Sources</div>
