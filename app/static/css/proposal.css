@@ -121,17 +121,24 @@ a { color: var(--electric-sky); text-decoration: none; }
 .cover {
     width: 210mm;
     height: 297mm;
-    background: var(--nightblue);
+    /* Brand gradient: deep navy base + Sunset Ember accent top-right + Electric Sky accent bottom-left */
+    background:
+        radial-gradient(ellipse 65% 55% at 78% 18%, rgba(208, 102, 67, 0.52) 0%, transparent 68%),
+        radial-gradient(ellipse 55% 65% at 12% 80%, rgba(11, 104, 140, 0.38) 0%, transparent 62%),
+        var(--nightblue);
     color: var(--white);
     position: relative;
     padding: 28mm 22mm 22mm 22mm;
     page-break-after: always;
 }
-.cover .wordmark {
-    font-family: 'SometimesTimes', Georgia, serif;
-    font-size: 18pt;
-    letter-spacing: 0.03em;
-    color: var(--white);
+/* Inline logo SVG on the cover — white gradient fill shows on dark background */
+.cover-logo {
+    margin-bottom: 6pt;
+}
+.cover-logo svg {
+    height: 16pt;
+    width: auto;
+    display: block;
 }
 .cover .wordmark-sub {
     font-family: 'Sohne', Arial, sans-serif;
@@ -390,9 +397,11 @@ table.alloc .reg-flag {
 }
 
 /* ── Per-asset rationale cards ──────────────────────────────────── */
+/* 2x2 grid — 4 per page so no half-empty pages */
 .rationale-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
     gap: 10pt;
     margin-top: 8pt;
 }

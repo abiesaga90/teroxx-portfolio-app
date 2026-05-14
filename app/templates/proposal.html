@@ -1,8 +1,8 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ lang }}">
 <head>
     <meta charset="UTF-8">
-    <title>Allocation Proposal — {{ client.name }}</title>
+    <title>{{ t('cover.title') }} — {{ client.name }}</title>
     <link rel="stylesheet" href="{{ static_url('css/proposal.css') }}">
 </head>
 <body>
@@ -10,76 +10,75 @@
 <!-- Running header & footer pulled out of normal flow by `position: running()` -->
 <div class="running-header">
     <span class="brand">Teroxx Advisory</span>
-    <span>Allocation Proposal · {{ client.name }} · {{ prepared_date }}</span>
+    <span>{{ t('running.header_title') }} · {{ client.name }} · {{ prepared_date }}</span>
 </div>
 <div class="running-footer">
-    Strictly confidential. Prepared by {{ prepared_by }} for {{ client.name }}.
+    {{ t('running.footer_prefix') }} {{ prepared_by }} {{ t('running.footer_for') }} {{ client.name }}.
 </div>
 
 <!-- ═══════════════ COVER ═══════════════ -->
 <section class="cover">
-    <div class="wordmark">Teroxx Advisory</div>
-    <div class="wordmark-sub">Investment Advisory · MiCA-regulated</div>
+    <div class="cover-logo">
+        {{ teroxx_logo_svg | safe }}
+    </div>
+    <div class="wordmark-sub">{{ t('cover.brand_sub') }}</div>
     <div class="rule"></div>
-    <h1>Allocation Proposal</h1>
-    <div class="subtitle">{{ cover_subtitle }}</div>
+    <h1>{{ t('cover.title') }}</h1>
     <div class="meta">
         <div class="left">
-            <div><span class="lbl">CLIENT</span>{{ client.name }}</div>
-            <div><span class="lbl">PROFILE</span>{{ client.profile }}{% if client.domicile %} · {{ client.domicile }}{% endif %}</div>
-            <div><span class="lbl">PREPARED BY</span>{{ prepared_by }}</div>
-            <div><span class="lbl">DATE</span>{{ prepared_date }}</div>
+            <div><span class="lbl">{{ t('cover.lbl_client') }}</span>{{ client.name }}</div>
+            <div><span class="lbl">{{ t('cover.lbl_profile') }}</span>{{ profile_label_i18n(client.profile) }}{% if client.domicile_country %} · {{ client.domicile_country }}{% endif %}</div>
+            <div><span class="lbl">{{ t('cover.lbl_prepared_by') }}</span>{{ prepared_by }}</div>
+            <div><span class="lbl">{{ t('cover.lbl_date') }}</span>{{ prepared_date }}</div>
         </div>
-        <div class="right">
-            Strictly confidential. Prepared for client use only.
-        </div>
+        <div class="right">{{ t('cover.confidential') }}</div>
     </div>
     <div class="mark">{{ teroxx_mark | safe }}</div>
 </section>
 
 <!-- ═══════════════ PAGE 2 — EXECUTIVE SUMMARY ═══════════════ -->
 <section class="page">
-    <div class="page-tag">Executive summary</div>
+    <div class="page-tag">{{ t('page.exec_summary') }}</div>
     <h2 class="action-title">{{ exec_title }}</h2>
     <div class="action-rule"></div>
 
     <div class="grid-3" style="margin-bottom: 16pt;">
         <div class="kpi">
-            <div class="lbl">Portfolio value</div>
+            <div class="lbl">{{ t('kpi.portfolio_value') }}</div>
             <div class="val">${{ "{:,.0f}".format(portfolio_value) }}</div>
-            <div class="sub">{{ client.currency or "USD" }} reporting</div>
+            <div class="sub">{{ t('kpi.reporting_ccy', ccy=client.currency or 'USD') }}</div>
         </div>
         <div class="kpi">
-            <div class="lbl">Defensive sleeve</div>
+            <div class="lbl">{{ t('kpi.defensive_sleeve') }}</div>
             <div class="val">{{ "{:.0f}".format(defensive_pct) }}%</div>
             <div class="sub">USDC · EURC · PAXG</div>
         </div>
         <div class="kpi">
-            <div class="lbl">Risk profile</div>
-            <div class="val">{{ client.profile }}</div>
-            <div class="sub">{{ allocation_count }} positions</div>
+            <div class="lbl">{{ t('kpi.risk_profile') }}</div>
+            <div class="val">{{ profile_label_i18n(client.profile) }}</div>
+            <div class="sub">{{ t('kpi.positions', n=allocation_count) }}</div>
         </div>
     </div>
 
     <div class="grid-2">
         <div>
             <div class="exhibit">
-                <div class="exhibit-title">What this means</div>
-                <div class="exhibit-subtitle">Three implications for the client.</div>
+                <div class="exhibit-title">{{ t('exhibit.what_this_means') }}</div>
+                <div class="exhibit-subtitle">{{ t('exhibit.what_this_means_sub') }}</div>
                 <ul class="bullets">
                     {% for b in exec_bullets %}
                     <li>{{ b }}</li>
                     {% endfor %}
                 </ul>
                 <div class="exhibit-source">
-                    Source: Teroxx Portfolio Allocation Model v4.1. Data as of {{ prepared_date }}.
+                    {{ t('source.pam') }} {{ t('source.as_of', date=prepared_date) }}
                 </div>
             </div>
         </div>
         <div>
             <div class="exhibit">
-                <div class="exhibit-title">Recommended allocation</div>
-                <div class="exhibit-subtitle">Top-down weights, target.</div>
+                <div class="exhibit-title">{{ t('exhibit.recommended_alloc') }}</div>
+                <div class="exhibit-subtitle">{{ t('exhibit.recommended_alloc_sub') }}</div>
                 <div class="exhibit-body" style="text-align:center;">
                     {{ donut_svg | safe }}
                 </div>
@@ -94,7 +93,7 @@
                     </tbody>
                 </table>
                 <div class="exhibit-source">
-                    Source: Teroxx PAM v4.1. Renormalised across {{ allocation_count }} positions.
+                    {{ t('source.pam') }} {{ t('source.renormalised', n=allocation_count) }}
                 </div>
             </div>
         </div>
@@ -103,23 +102,21 @@
 
 <!-- ═══════════════ PAGE 3 — RECOMMENDED ALLOCATION ═══════════════ -->
 <section class="page">
-    <div class="page-tag">Recommended allocation</div>
+    <div class="page-tag">{{ t('page.allocation') }}</div>
     <h2 class="action-title">{{ allocation_title }}</h2>
     <div class="action-rule"></div>
 
     <div class="exhibit">
-        <div class="exhibit-title">Per-asset target weights</div>
-        <div class="exhibit-subtitle">
-            Sorted by target weight. The defensive sleeve is profile-driven and always included.
-        </div>
+        <div class="exhibit-title">{{ t('exhibit.per_asset_weights') }}</div>
+        <div class="exhibit-subtitle">{{ t('exhibit.per_asset_weights_sub') }}</div>
         <table class="alloc">
             <thead>
                 <tr>
-                    <th style="width: 28%;">Asset</th>
-                    <th>Tier</th>
-                    <th class="right">Weight %</th>
-                    <th class="right">$ allocation</th>
-                    <th>Role</th>
+                    <th style="width: 28%;">{{ t('table.asset') }}</th>
+                    <th>{{ t('table.tier') }}</th>
+                    <th class="right">{{ t('table.weight_pct') }}</th>
+                    <th class="right">{{ t('table.alloc_usd') }}</th>
+                    <th>{{ t('table.role') }}</th>
                 </tr>
             </thead>
             <tbody>
@@ -130,7 +127,7 @@
                         <span class="name">· {{ row.name }}</span>
                         {% for flag in row.flags %}<span class="reg-flag">{{ flag }}</span>{% endfor %}
                     </td>
-                    <td><span class="tier-tag">{{ row.tier_label }}</span></td>
+                    <td><span class="tier-tag">{{ tier_label_i18n(row.tier_label) }}</span></td>
                     <td class="right">{{ "{:.2f}".format(row.target_pct) }}%</td>
                     <td class="right">${{ "{:,.0f}".format(row.target_usd) }}</td>
                     <td>{{ row.rationale_tag }}</td>
@@ -139,39 +136,43 @@
             </tbody>
         </table>
         <div class="exhibit-source">
-            Source: Teroxx PAM v4.1, profile {{ client.profile }}, universe {{ universe }}.
-            EMT = e-money token under MiCA Art. 40. ART = asset-referenced token.
+            {{ t('source.pam_universe', profile=client.profile, universe=universe) }}
+            {{ t('source.mica_emt_art') }}
         </div>
     </div>
 
     <div class="exhibit">
-        <div class="exhibit-title">Allocation by tier</div>
-        <div class="exhibit-subtitle">Share of portfolio across defensive, core and extended sleeves.</div>
+        <div class="exhibit-title">{{ t('exhibit.alloc_by_tier') }}</div>
+        <div class="exhibit-subtitle">{{ t('exhibit.alloc_by_tier_sub') }}</div>
         <div class="exhibit-body" style="text-align:center;">
             {{ tier_bar_svg | safe }}
         </div>
-        <div class="exhibit-source">Source: Teroxx PAM v4.1 tier framework.</div>
+        <div class="exhibit-source">{{ t('source.tier_framework') }}</div>
     </div>
 </section>
 
 <!-- ═══════════════ PAGE 4 — MACRO FRAMING ═══════════════ -->
 <section class="page">
-    <div class="page-tag">Macro framing</div>
+    <div class="page-tag">{{ t('page.macro') }}</div>
     <h2 class="action-title">{{ macro_title }}</h2>
     <div class="action-rule"></div>
 
     <div class="exhibit">
-        <div class="exhibit-title">Composite regime read</div>
-        <div class="exhibit-subtitle">
-            22 indicators aggregated across sentiment, traditional markets, on-chain activity and technicals.
-        </div>
+        <div class="exhibit-title">{{ t('exhibit.regime_read') }}</div>
+        <div class="exhibit-subtitle">{{ t('exhibit.regime_read_sub') }}</div>
         <div class="macro-row">
             <div style="text-align:center;">{{ regime_gauge_svg | safe }}</div>
             <div>
                 <p>{{ macro_paragraph_text }}</p>
                 {% if top_indicators %}
                 <table class="indicator-table">
-                    <thead><tr><th>Indicator</th><th>Category</th><th class="right">Score</th></tr></thead>
+                    <thead>
+                        <tr>
+                            <th>{{ t('table.indicator') }}</th>
+                            <th>{{ t('table.category') }}</th>
+                            <th class="right">{{ t('table.score') }}</th>
+                        </tr>
+                    </thead>
                     <tbody>
                     {% for ind in top_indicators %}
                     <tr>
@@ -187,9 +188,7 @@
                 {% endif %}
             </div>
         </div>
-        <div class="exhibit-source">
-            Source: alternative.me, Yahoo Finance, Binance, blockchain.info, CoinMetrics, CryptoCompare. Composite renormalises when sources are unavailable.
-        </div>
+        <div class="exhibit-source">{{ t('source.macro_composite') }}</div>
     </div>
 </section>
 
@@ -198,11 +197,11 @@
 {% for chunk in rationale_pages %}
 <section class="page">
     {% if loop.first %}
-    <div class="page-tag">Per-asset rationale</div>
-    <h2 class="action-title">Why each position earns its weight</h2>
+    <div class="page-tag">{{ t('page.rationale') }}</div>
+    <h2 class="action-title">{{ t('exhibit.rationale_title') }}</h2>
     <div class="action-rule"></div>
     {% else %}
-    <div class="page-tag">Per-asset rationale (continued)</div>
+    <div class="page-tag">{{ t('page.rationale_cont') }}</div>
     <div class="action-rule"></div>
     {% endif %}
     <div class="rationale-grid">
@@ -210,15 +209,18 @@
         <div class="rationale">
             <div class="top">
                 <div>
-                    <span class="ticker">{{ r.ticker }}</span><span class="name">{{ r.name }}</span>
+                    <span class="ticker">{{ r.ticker }}</span>
+                    <span class="name">{{ r.name }}</span>
                 </div>
                 <div class="tag">{{ r.tag }}</div>
             </div>
             <div class="headline">{{ r.headline }}</div>
             <div class="body">{{ r.body }}</div>
             <div class="footer-row">
-                <span>Weight target {{ "{:.2f}".format(r.target_pct) }}%</span>
-                {% if r.current_price %}<span>Spot ${{ "{:,.4f}".format(r.current_price) if r.current_price < 10 else "{:,.2f}".format(r.current_price) }}</span>{% endif %}
+                <span>{{ t('misc.weight_target') }} {{ "{:.2f}".format(r.target_pct) }}%</span>
+                {% if r.current_price %}
+                <span>{{ t('misc.spot_label') }} ${{ "{:,.4f}".format(r.current_price) if r.current_price < 10 else "{:,.2f}".format(r.current_price) }}</span>
+                {% endif %}
             </div>
         </div>
         {% endfor %}
@@ -227,54 +229,45 @@
 {% endfor %}
 {% endif %}
 
-<!-- ═══════════════ IMPLEMENTATION NOTE ═══════════════ -->
+<!-- ═══════════════ IMPLEMENTATION ═══════════════ -->
 <section class="page">
-    <div class="page-tag">Implementation</div>
-    <h2 class="action-title">Phased build-out tailored to the {{ client.profile|lower }} profile</h2>
+    <div class="page-tag">{{ t('page.implementation') }}</div>
+    <h2 class="action-title">{{ t('implementation.heading_tpl', profile=profile_label_i18n(client.profile)) }}</h2>
     <div class="action-rule"></div>
     <div class="exhibit">
-        <div class="exhibit-title">Suggested execution path</div>
-        <div class="exhibit-subtitle">Editable per client; defaults below.</div>
+        <div class="exhibit-title">{{ t('exhibit.execution_path') }}</div>
+        <div class="exhibit-subtitle">{{ t('exhibit.execution_path_sub') }}</div>
         <p>{{ implementation_text }}</p>
-        <div class="exhibit-source">
-            Source: Teroxx Advisory house view, calibrated to {{ client.profile }} risk profile.
-        </div>
+        <div class="exhibit-source">{{ t('source.house_view', profile=client.profile) }}</div>
     </div>
     <div class="exhibit">
-        <div class="exhibit-title">Review cadence</div>
+        <div class="exhibit-title">{{ t('exhibit.review_cadence') }}</div>
         <ul class="bullets">
-            <li>Portfolio drift checked at each review window or on regime shifts greater than 10 composite points.</li>
-            <li>Single-position drift over 5 percentage points triggers a rebalance proposal.</li>
-            <li>Macro regime is re-scored every 30 minutes by the Teroxx allocation model.</li>
+            <li>{{ t('review.drift_window') }}</li>
+            <li>{{ t('review.single_drift') }}</li>
+            <li>{{ t('review.rescore_cadence') }}</li>
         </ul>
     </div>
 </section>
 
 <!-- ═══════════════ APPENDIX + DISCLAIMERS ═══════════════ -->
 <section class="page">
-    <div class="page-tag">Appendix</div>
-    <h2 class="action-title">Methodology, data sources and important information</h2>
+    <div class="page-tag">{{ t('page.appendix') }}</div>
+    <h2 class="action-title">{{ t('page.appendix_title') }}</h2>
     <div class="action-rule"></div>
 
     <div class="exhibit">
-        <div class="exhibit-title">Methodology in one paragraph</div>
-        <p>
-            The Teroxx Portfolio Allocation Model v4.1 assigns each asset to a strategic tier
-            (defensive, core, large cap, mid cap, small cap) and distributes a profile-specific
-            budget across the universe using either equal-weight (Standard mode) or factor-weighted
-            (Fundamental mode) allocation. The factor stack includes value-accrual signals, on-chain
-            fundamentals and selective momentum overlays. Defensive sleeves (USDC, EURC, PAXG) are
-            held flat against their reference currencies; no yield is implied or paid.
-        </p>
+        <div class="exhibit-title">{{ t('exhibit.methodology') }}</div>
+        <p>{{ t('methodology.body') }}</p>
     </div>
 
     <div class="exhibit">
-        <div class="exhibit-title">Data sources</div>
+        <div class="exhibit-title">{{ t('exhibit.data_sources') }}</div>
         <ul class="bullets">
-            <li>Spot prices and market data: CoinMarketCap (primary), CoinGecko (fallback). Five-minute cache.</li>
-            <li>Macro composite: alternative.me, Yahoo Finance, Binance public fapi, blockchain.info, CoinGecko global, CoinMetrics community API.</li>
-            <li>On-chain protocol metrics: DeFiLlama, Messari, native protocol RPCs.</li>
-            <li>Historical daily closes: CryptoCompare.</li>
+            <li>{{ t('datasources.spot') }}</li>
+            <li>{{ t('datasources.macro') }}</li>
+            <li>{{ t('datasources.onchain') }}</li>
+            <li>{{ t('datasources.history') }}</li>
         </ul>
     </div>
 
@@ -286,7 +279,7 @@
     </div>
 
     <div class="signoff">
-        <p><strong>Prepared by Teroxx Advisory.</strong></p>
+        <p><strong>{{ t('signoff.prepared_by') }}</strong></p>
         <p>{{ prepared_by }} · {{ prepared_date }}</p>
     </div>
 </section>

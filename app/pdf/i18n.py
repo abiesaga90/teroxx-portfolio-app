@@ -413,6 +413,10 @@ _STRINGS: dict[str, dict[str, str]] = {
     "page.fees": {"en": "Fee structure", "de": "Gebührenstruktur"},
     "page.contact": {"en": "Contact", "de": "Kontaktinformationen"},
     "page.legal": {"en": "Legal notice", "de": "Rechtlicher Hinweis"},
+    "page.appendix_title": {
+        "en": "Methodology, data sources and important information",
+        "de": "Methodik, Datenquellen und wichtige Informationen",
+    },
 
     # ── Market analysis defaults (left empty when no override; we
     #     don't fabricate market commentary). ──

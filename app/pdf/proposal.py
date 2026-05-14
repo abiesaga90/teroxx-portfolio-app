@@ -241,8 +241,9 @@ def build_proposal_context(inp: ProposalInputs) -> dict[str, Any]:
     macro_paragraph_text = macro_paragraph(
         regime_label=regime_label, score=score,
         sources_available=sources_available, sources_total=sources_total,
+        lang=lang,
     )
-    bias_word, _ = regime_bias(regime_label)
+    bias_word, _ = regime_bias(regime_label, lang=lang)
 
     # Pick the 6 most decisive indicators (highest absolute distance from 50).
     indicators = (inp.macro_state or {}).get("indicators") or []
@@ -288,7 +289,7 @@ def build_proposal_context(inp: ProposalInputs) -> dict[str, Any]:
             "target_pct": row["target_pct"],
             "current_price": (inp.spot_prices or {}).get(ticker),
         })
-        if len(chunk) == 2:
+        if len(chunk) == 4:
             rationale_pages.append(chunk)
             chunk = []
     if chunk:
@@ -408,13 +409,16 @@ def build_proposal_context(inp: ProposalInputs) -> dict[str, Any]:
         except Exception:
             dca_rows = []
 
-    # Read the brand mark SVG into the template so WeasyPrint embeds it
-    # alongside the rest of the document.
+    # Brand SVGs embedded inline so WeasyPrint doesn't need to resolve URLs.
+    static_img = Path(__file__).resolve().parents[1] / "static" / "img"
     try:
-        mark_path = Path(__file__).resolve().parents[1] / "static" / "img" / "teroxx-mark.svg"
-        teroxx_mark = mark_path.read_text(encoding="utf-8")
+        teroxx_mark = (static_img / "teroxx-mark.svg").read_text(encoding="utf-8")
     except OSError:
         teroxx_mark = ""
+    try:
+        teroxx_logo_svg = (static_img / "logo.svg").read_text(encoding="utf-8")
+    except OSError:
+        teroxx_logo_svg = ""
 
     return {
         "client": client,
@@ -441,6 +445,7 @@ def build_proposal_context(inp: ProposalInputs) -> dict[str, Any]:
         "implementation_text": implementation_text,
         "disclaimer": disclaimer,
         "teroxx_mark": teroxx_mark,
+        "teroxx_logo_svg": teroxx_logo_svg,
         # Overrides: cleaned-up versions ready for the renderer.
         # All free-form *_md blocks are markdown strings; empty when
         # the advisor has not yet drafted that section.
