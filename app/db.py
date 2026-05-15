@@ -1,16 +1,12 @@
-"""SQLite-backed persistence for clients, lots, and the advisor audit trail.
+"""Database persistence for clients, lots, and the advisor audit trail.
 
 Design notes:
 
 - SQLAlchemy 2.0 ORM with declarative `Base`. Tables are created on first
-  import (`init_db()`); migrations beyond that point will move to Alembic
-  when schema changes start landing post-launch.
-- One file, one library. The DB path resolves from the env var
-  `TEROXX_DB_PATH` if set (Render: point at a mounted disk), else from
-  `./data/teroxx.db` in the working directory, with a `/tmp/teroxx.db`
-  fallback if the working directory is not writable. This keeps local dev
-  and demo deployments working without external setup, while production
-  can drop in a persistent disk.
+  import (`init_db()`); schema changes will move to Alembic post-launch.
+- Production: set DATABASE_URL to a Postgres connection string, e.g.
+    postgresql://user:password@host:5432/teroxx
+  Local dev fallback: SQLite at ./data/teroxx.db (no env var needed).
 - Soft-deletes via `deleted_at`. Hard deletes only via direct SQL.
 - All mutations should write a row to `advisor_actions`; the repo layer
   centralises this so endpoints don't forget.
@@ -33,36 +29,44 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship,
 logger = logging.getLogger(__name__)
 
 
-def _resolve_db_path() -> Path:
-    """Pick a writable SQLite path.
+def _build_db_url() -> tuple[str, dict]:
+    """Return (url, connect_args) for the configured database.
 
     Priority:
-      1. $TEROXX_DB_PATH (full path to the .db file).
-      2. ./data/teroxx.db in the working directory.
-      3. /tmp/teroxx.db (last-resort, ephemeral on most platforms).
+      1. DATABASE_URL env var  → Postgres (or any SQLAlchemy-compatible URL)
+      2. TEROXX_DB_PATH env var → SQLite at that path
+      3. ./data/teroxx.db      → SQLite local dev default
+      4. /tmp/teroxx.db        → SQLite last-resort fallback
     """
+    database_url = os.getenv("DATABASE_URL")
+    if database_url:
+        # Heroku/Render sometimes emit postgres:// which SQLAlchemy 2.x rejects
+        if database_url.startswith("postgres://"):
+            database_url = database_url.replace("postgres://", "postgresql://", 1)
+        return database_url, {}
+
+    # SQLite fallback for local development
     env_path = os.getenv("TEROXX_DB_PATH")
     if env_path:
-        return Path(env_path)
-    default = Path("data") / "teroxx.db"
-    try:
-        default.parent.mkdir(parents=True, exist_ok=True)
-        # Touch a sentinel to confirm writability.
-        probe = default.parent / ".write_probe"
-        probe.write_text("ok")
-        probe.unlink(missing_ok=True)
-        return default
-    except OSError:
-        return Path("/tmp/teroxx.db")
+        db_path = Path(env_path)
+    else:
+        default = Path("data") / "teroxx.db"
+        try:
+            default.parent.mkdir(parents=True, exist_ok=True)
+            probe = default.parent / ".write_probe"
+            probe.write_text("ok")
+            probe.unlink(missing_ok=True)
+            db_path = default
+        except OSError:
+            db_path = Path("/tmp/teroxx.db")
+
+    return f"sqlite:///{db_path.as_posix()}", {"check_same_thread": False}
 
 
-DB_PATH = _resolve_db_path()
-DB_URL = f"sqlite:///{DB_PATH.as_posix()}"
+DB_URL, _connect_args = _build_db_url()
+DB_PATH = Path(DB_URL.replace("sqlite:///", "")) if DB_URL.startswith("sqlite") else Path("postgres")
 
-# `check_same_thread=False` because FastAPI handlers run in a threadpool and
-# we want one engine to back all of them; SQLAlchemy + SQLite handles the
-# concurrency safely with a per-request `Session`.
-engine = create_engine(DB_URL, connect_args={"check_same_thread": False}, future=True)
+engine = create_engine(DB_URL, connect_args=_connect_args, future=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
 
 
@@ -197,25 +201,25 @@ class AdvisorAction(Base):
 def init_db() -> None:
     """Create tables and seed demo clients if the store is empty."""
     Base.metadata.create_all(engine)
-    _ensure_client_columns()
+    if DB_URL.startswith("sqlite"):
+        _ensure_client_columns_sqlite()
     with SessionLocal() as db:
         has_any = db.execute(select(func.count(Client.id))).scalar_one() > 0
         if not has_any:
             _seed_demo(db)
             db.commit()
-            logger.info("Seeded demo clients into %s", DB_PATH)
+            logger.info("Seeded demo clients into fresh database")
         else:
-            logger.info("Clients table already populated; skipping seed (%s)", DB_PATH)
+            logger.info("Clients table already populated; skipping seed")
 
 
-def _ensure_client_columns() -> None:
-    """Tiny forward-only SQLite migration for Client column additions.
+def _ensure_client_columns_sqlite() -> None:
+    """Forward-only column migration for existing SQLite databases.
 
-    SQLAlchemy's ``create_all`` does not ALTER existing tables, so when
-    we add a column to the Client model we need to add it to any
-    pre-existing SQLite database too. Idempotent: skips columns that are
-    already present. Add new column names + types to ``required`` below
-    when extending the model.
+    SQLAlchemy's create_all does not ALTER existing tables. On Postgres this
+    is handled by running migrations; on SQLite (local dev / legacy) we patch
+    in missing columns manually. Not needed on fresh databases since create_all
+    produces the full schema from the model definitions.
     """
     required = {
         "proposal_language": "VARCHAR(8)",
