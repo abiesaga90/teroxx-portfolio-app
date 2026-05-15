@@ -334,24 +334,24 @@ TOKEN_MAP = {
 }
 
 # DefiLlama protocol slug mapping (for fees/TVL data)
+# Slugs match the /protocols endpoint; versioned slugs used where DeFiLlama split by version
 DEFILLAMA_MAP = {
     "ETH": "ethereum", "SOL": "solana", "BNB": "bsc", "AVAX": "avalanche",
     "DOT": "polkadot", "ATOM": "cosmos", "ADA": "cardano", "NEAR": "near",
     "APT": "aptos", "ALGO": "algorand", "ICP": "icp", "SUI": "sui",
     "ARB": "arbitrum", "OP": "optimism", "TRX": "tron", "HBAR": "hedera",
-    "FIL": "filecoin", "POL": "polygon", "IOTA": "iota",
-    # DeFi protocols (have fee/TVL data)
-    "AAVE": "aave", "UNI": "uniswap", "MKR": "maker", "CRV": "curve-dex",
-    "LDO": "lido", "GRT": "the-graph", "SNX": "synthetix", "COMP": "compound-finance",
-    "PENDLE": "pendle", "MORPHO": "morpho", "ETHFI": "ether.fi", "ENA": "ethena",
-    "CAKE": "pancakeswap", "1INCH": "1inch-network", "DEXE": "dexe",
-    "HYPE": "hyperliquid", "INJ": "injective",
+    "FIL": "filecoin", "IOTA": "iota",
+    # DeFi protocols — versioned slugs (DeFiLlama dropped unversioned slugs)
+    "AAVE": "aave-v3", "UNI": "uniswap-v3", "MKR": "sky-lending", "CRV": "curve-dex",
+    "LDO": "lido", "GRT": "the-graph", "COMP": "compound-v3",
+    "PENDLE": "pendle", "MORPHO": "morpho-blue", "ETHFI": "ether.fi-stake", "ENA": "ethena-usde",
+    "CAKE": "pancakeswap-amm", "HYPE": "hyperliquid-hlp",
     # Gaming / other
     "SAND": "sandbox", "MANA": "decentraland", "GALA": "gala",
     "IMX": "immutable-x", "RNDR": "render", "FET": "fetch-ai",
     # Teroxx Research additions
-    "SKY": "maker", "SYRUP": "maple", "AR": "arweave",
-    "AERO": "aerodrome", "EUL": "euler", "AKT": "akash-network",
+    "SKY": "sky-lending", "SYRUP": "maple", "AR": "arweave",
+    "AERO": "aerodrome-slipstream", "EUL": "euler-v2", "AKT": "akash-network",
 }
 
 # DefiLlama per-protocol TVL history mapping
@@ -367,41 +367,39 @@ DEFILLAMA_TVL_MAP = {
     "ARB": "chain:Arbitrum", "OP": "chain:Optimism", "TRX": "chain:Tron",
     "HBAR": "chain:Hedera", "TON": "chain:TON", "ASTER": "chain:Astar",
     "MNT": "chain:Mantle",
-    # DeFi protocols — use /protocol/{slug} endpoint
-    "AAVE": "protocol:aave",
-    "UNI": "protocol:uniswap-v3,uniswap-v2,uniswap-v4",  # multi-slug: sum TVL
-    "MKR": "protocol:maker", "SKY": "protocol:maker",
+    # DeFi protocols — use /protocol/{slug} endpoint (versioned slugs, multi-slug sums TVL)
+    "AAVE": "protocol:aave-v3,aave-v2",
+    "UNI": "protocol:uniswap-v3,uniswap-v2,uniswap-v4",
+    "MKR": "protocol:sky-lending", "SKY": "protocol:sky-lending",
     "CRV": "protocol:curve-dex",
     "LDO": "protocol:lido",
-    "SNX": "protocol:synthetix",
-    "COMP": "protocol:compound-finance",
+    "COMP": "protocol:compound-v3,compound-v2",
     "PENDLE": "protocol:pendle",
-    "MORPHO": "protocol:morpho",
-    "ETHFI": "protocol:ether.fi",
-    "ENA": "protocol:ethena",
-    "CAKE": "protocol:pancakeswap-amm-v3,pancakeswap-amm",
-    "1INCH": "protocol:1inch-network",
-    "HYPE": "protocol:hyperliquid",
-    "INJ": "protocol:injective",
+    "MORPHO": "protocol:morpho-blue",
+    "ETHFI": "protocol:ether.fi-stake,ether.fi-liquid",
+    "ENA": "protocol:ethena-usde,ethena-usdtb",
+    "CAKE": "protocol:pancakeswap-amm,pancakeswap-amm-v3",
+    "HYPE": "protocol:hyperliquid-bridge,hyperliquid-hlp",
     "SYRUP": "protocol:maple",
-    "AERO": "protocol:aerodrome-slipstream,aerodrome",
-    "EUL": "protocol:euler",
+    "AERO": "protocol:aerodrome-slipstream,aerodrome-v1",
+    "EUL": "protocol:euler-v2",
     "AKT": "protocol:akash-network",
 }
 
 # DefiLlama fees slug mapping (separate from protocol slugs)
+# Versioned slugs required — DeFiLlama dropped unversioned fee entries
 DEFILLAMA_FEES_MAP = {
-    "AAVE": "aave", "UNI": "uniswap", "CRV": "curve-finance",
-    "LDO": "lido", "SNX": "synthetix", "COMP": "compound-finance",
-    "PENDLE": "pendle", "MORPHO": "morpho", "ETHFI": "ether.fi",
-    "CAKE": "pancakeswap", "1INCH": "1inch", "HYPE": "hyperliquid",
-    "INJ": "injective", "MKR": "maker", "GRT": "the-graph",
-    "ENA": "ethena", "ETH": "ethereum", "SOL": "solana",
+    "AAVE": "aave-v3", "UNI": "uniswap-v3", "CRV": "curve-dex",
+    "LDO": "lido", "COMP": "compound-v3",
+    "PENDLE": "pendle", "MORPHO": "morpho-blue", "ETHFI": "ether.fi-liquid",
+    "CAKE": "pancakeswap-amm", "HYPE": "hyperliquid-hlp",
+    "MKR": "sky-lending", "GRT": "the-graph",
+    "ENA": "ethena-usde", "ETH": "ethereum", "SOL": "solana",
     "BNB": "bsc", "AVAX": "avalanche", "ARB": "arbitrum",
-    "OP": "optimism", "TRX": "tron", "SUI": "sui",
+    "TRX": "tron", "SUI": "sui",
     # Teroxx Research additions
-    "SKY": "maker", "SYRUP": "maple", "AERO": "aerodrome-slipstream",
-    "EUL": "euler", "AKT": "akash-network",
+    "SKY": "sky-lending", "SYRUP": "maple", "AERO": "aerodrome-slipstream",
+    "EUL": "euler-v2", "AKT": "akash-network",
 }
 
 # Messari network slug mapping (for free metrics API)
