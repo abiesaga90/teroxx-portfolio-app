@@ -191,15 +191,21 @@ def _momentum_signal(c7d: float, c30d: float) -> float:
 
 
 def _dev_activity_signal(ticker: str) -> float:
-    """Developer activity from CoinGecko: commits + PRs, scaled."""
+    """Developer activity from CoinGecko: commits + PRs, scaled.
+
+    Returns 0.0 (neutral) when no data is available — this is preferable
+    to a flat -0.5 penalty that would show as 25.0 for all tokens whose
+    dev data hasn't been fetched yet or where CoinGecko returns zeros.
+    """
     dev = get_dev_info(ticker) or {}
     commits = dev.get("commit_count_4_weeks", 0) or 0
     prs = dev.get("pull_requests_merged", 0) or 0
     contributors = dev.get("pull_request_contributors", 0) or 0
-    # Composite: commits dominate, PRs and contributors add signal
-    score = commits + prs * 2 + contributors * 3
-    # Normalize: 50 = strong, 100+ = exceptional
-    return _clamp((score - 25) / 50)
+    composite = commits + prs * 2 + contributors * 3
+    if composite == 0:
+        return 0.0  # no data — neutral rather than penalising
+    # Normalize: composite 25 = neutral, 75 = strong, 150+ = exceptional
+    return _clamp((composite - 25) / 50)
 
 
 def _volume_intensity_signal(vol: float, mc: float) -> float:

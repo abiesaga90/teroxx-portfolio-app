@@ -971,58 +971,71 @@ _MESSARI_SLUG_TO_TICKER = {v: k for k, v in MESSARI_NETWORK_MAP.items()}
 
 
 async def fetch_messari_networks() -> dict[str, dict]:
-    """Fetch network metrics from Messari free API (no auth required)."""
+    """Fetch network metrics from Messari free API (no auth required).
+
+    The endpoint ignores large `limit` values and returns 5 per page.
+    We paginate through all pages to collect every chain in one call.
+    """
     global _messari_cache, _messari_ts
     now = time.time()
     if _messari_cache and (now - _messari_ts) < MESSARI_TTL:
         return _messari_cache
 
     result: dict[str, dict] = {}
+
+    def _parse_page(networks: list) -> None:
+        for net in networks:
+            slug = net.get("slug", "")
+            ticker = _MESSARI_SLUG_TO_TICKER.get(slug)
+            if not ticker:
+                continue
+            metrics = net.get("metrics", {})
+            activity = metrics.get("activity", {}) or {}
+            financial = metrics.get("financial", {}) or {}
+            ecosystem = metrics.get("ecosystem", {}) or {}
+            stablecoin = metrics.get("stablecoin", {}) or {}
+            result[ticker] = {
+                "active_addresses": activity.get("activeAddresses24Hour"),
+                "txn_count": activity.get("txnCount24Hour"),
+                "fees_24h_usd": financial.get("feesTotal24HourUsd"),
+                "revenue_24h_usd": financial.get("revenue24HourUsd"),
+                "fees_7d_avg_usd": financial.get("rolling7dAvgFeeUsd"),
+                "dev_commits": ecosystem.get("coreCommits24Hour"),
+                "active_devs": ecosystem.get("activeDevelopers24Hour"),
+                "tvl_usd": ecosystem.get("tvl24HourUsd"),
+                "dex_volume_usd": ecosystem.get("dexVolume24HourUsd"),
+                "stablecoin_supply_usd": stablecoin.get("outstandingSupplyUsd"),
+            }
+
     async with httpx.AsyncClient(timeout=30) as client:
-        try:
-            resp = await _fetch_with_retry(
-                client, "GET",
-                f"{MESSARI_BASE}/metrics/v2/networks",
-                params={"limit": 200},
-            )
-            if not resp:
-                return _messari_cache
+        page = 1
+        total_pages = 1  # updated from first response
+        while page <= total_pages:
+            try:
+                resp = await _fetch_with_retry(
+                    client, "GET",
+                    f"{MESSARI_BASE}/metrics/v2/networks",
+                    params={"page": page},
+                )
+                if not resp:
+                    break
+                raw = resp.json()
+                data_wrapper = raw.get("data", {})
+                if isinstance(data_wrapper, dict):
+                    networks = data_wrapper.get("data", [])
+                    meta = data_wrapper.get("metadata", {})
+                    total_pages = int(meta.get("totalPages", 1))
+                else:
+                    networks = data_wrapper if isinstance(data_wrapper, list) else []
+                _parse_page(networks)
+                page += 1
+                if page <= total_pages:
+                    await asyncio.sleep(0.3)  # be polite to the free endpoint
+            except Exception as e:
+                logger.warning(f"Messari networks page {page} fetch failed: {e}")
+                break
 
-            raw = resp.json()
-            # Response structure: {"data": {"data": [...]}}
-            networks = raw.get("data", {})
-            if isinstance(networks, dict):
-                networks = networks.get("data", [])
-
-            for net in networks:
-                slug = net.get("slug", "")
-                ticker = _MESSARI_SLUG_TO_TICKER.get(slug)
-                if not ticker:
-                    continue
-
-                metrics = net.get("metrics", {})
-                activity = metrics.get("activity", {}) or {}
-                financial = metrics.get("financial", {}) or {}
-                ecosystem = metrics.get("ecosystem", {}) or {}
-                stablecoin = metrics.get("stablecoin", {}) or {}
-
-                result[ticker] = {
-                    "active_addresses": activity.get("activeAddresses24Hour"),
-                    "txn_count": activity.get("txnCount24Hour"),
-                    "fees_24h_usd": financial.get("feesTotal24HourUsd"),
-                    "revenue_24h_usd": financial.get("revenue24HourUsd"),
-                    "fees_7d_avg_usd": financial.get("rolling7dAvgFeeUsd"),
-                    "dev_commits": ecosystem.get("coreCommits24Hour"),
-                    "active_devs": ecosystem.get("activeDevelopers24Hour"),
-                    "tvl_usd": ecosystem.get("tvl24HourUsd"),
-                    "dex_volume_usd": ecosystem.get("dexVolume24HourUsd"),
-                    "stablecoin_supply_usd": stablecoin.get("outstandingSupplyUsd"),
-                }
-
-            logger.info(f"Messari networks: fetched {len(result)} chains")
-        except Exception as e:
-            logger.warning(f"Messari networks fetch failed: {e}")
-
+    logger.info(f"Messari networks: fetched {len(result)} chains across {page - 1} pages")
     if result:
         _messari_cache = result
         _messari_ts = now
