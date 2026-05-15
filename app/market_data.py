@@ -39,6 +39,9 @@ _binance_ts: float = 0
 _supply_history: dict[str, list[tuple[float, float]]] = {}  # {cg_id: [(ts, supply), ...]}
 _SUPPLY_HISTORY_PATH = os.getenv("TEROXX_SUPPLY_HISTORY_PATH", "/tmp/teroxx_supply_history.json")
 _supply_history_loaded = False
+_supply_30d_cache: dict[str, Optional[float]] = {}  # ticker → 30d delta %
+_supply_30d_ts: float = 0
+SUPPLY_30D_TTL = 86400  # refresh once per day
 
 
 def _load_supply_history() -> None:
@@ -1058,8 +1061,66 @@ def get_binance_info(ticker: str) -> Optional[dict]:
     return _binance_cache.get(ticker)
 
 
+async def fetch_supply_delta_30d() -> dict[str, Optional[float]]:
+    """
+    Compute 30-day circulating supply delta for all tickers using CoinGecko market_chart.
+    supply = market_cap / price, so we can derive it without a dedicated supply endpoint.
+    Runs once per day; 2s sleep between calls to respect the free-tier rate limit.
+    """
+    global _supply_30d_cache, _supply_30d_ts
+    now = time.time()
+    if _supply_30d_cache and (now - _supply_30d_ts) < SUPPLY_30D_TTL:
+        return _supply_30d_cache
+
+    result: dict[str, Optional[float]] = {}
+    async with httpx.AsyncClient(timeout=30) as client:
+        for ticker, cg_id in TOKEN_MAP.items():
+            try:
+                resp = await client.get(
+                    f"{COINGECKO_BASE}/coins/{cg_id}/market_chart",
+                    params={"vs_currency": "usd", "days": 31, "interval": "daily"},
+                )
+                if resp.status_code != 200:
+                    result[ticker] = None
+                    await asyncio.sleep(2.0)
+                    continue
+                data = resp.json()
+                mcs = data.get("market_caps", [])
+                pxs = data.get("prices", [])
+                if len(mcs) < 2 or len(pxs) < 2:
+                    result[ticker] = None
+                    await asyncio.sleep(2.0)
+                    continue
+                p_old, mc_old = pxs[0][1], mcs[0][1]
+                p_new, mc_new = pxs[-1][1], mcs[-1][1]
+                if p_old <= 0 or p_new <= 0 or mc_old <= 0:
+                    result[ticker] = None
+                    await asyncio.sleep(2.0)
+                    continue
+                supply_old = mc_old / p_old
+                supply_new = mc_new / p_new
+                result[ticker] = (supply_new - supply_old) / supply_old * 100
+            except Exception:
+                result[ticker] = None
+            await asyncio.sleep(2.0)
+
+    if result:
+        _supply_30d_cache = result
+        _supply_30d_ts = now
+        n_ok = sum(1 for v in result.values() if v is not None)
+        logger.info("30d supply deltas computed: %d/%d tokens", n_ok, len(result))
+    return _supply_30d_cache
+
+
 def get_supply_delta_pct(ticker: str) -> Optional[float]:
-    """Compute supply delta % from in-memory history. Returns None if insufficient data."""
+    """
+    Return 30-day supply delta % from CoinGecko market_chart cache when available,
+    falling back to short-term in-memory history while the 30d fetch runs on startup.
+    """
+    # Prefer 30-day window (refreshed daily, survives restarts on the first fetch)
+    if _supply_30d_cache:
+        return _supply_30d_cache.get(ticker)
+    # Fallback: in-memory tracking (accumulates since deploy, variable timeframe)
     _load_supply_history()
     cg_id = TOKEN_MAP.get(ticker)
     if not cg_id or cg_id not in _supply_history:
@@ -1069,7 +1130,7 @@ def get_supply_delta_pct(ticker: str) -> Optional[float]:
         return None
     oldest_ts, oldest_supply = history[0]
     latest_ts, latest_supply = history[-1]
-    if oldest_supply <= 0 or (latest_ts - oldest_ts) < 1800:
+    if oldest_supply <= 0 or (latest_ts - oldest_ts) < 300:
         return None
     return (latest_supply - oldest_supply) / oldest_supply * 100
 
@@ -1164,6 +1225,11 @@ async def background_refresh():
         except Exception as e:
             _mark_source_fail("btc_vol")
             logger.error(f"BTC volatility refresh error: {e}")
+        try:
+            if time.time() - _supply_30d_ts >= SUPPLY_30D_TTL:
+                await fetch_supply_delta_30d()
+        except Exception as e:
+            logger.error(f"30d supply delta refresh error: {e}")
         try:
             from app.macro_regime import refresh_macro_regime, MACRO_TTL, _cache as _macro_cache
             if time.time() - _macro_cache["ts"] >= MACRO_TTL:

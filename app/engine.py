@@ -115,9 +115,8 @@ def _get_raw_market_vectors(tickers: list[str]) -> dict:
         funding_rates.append(bn.get("funding_rate", 0) if bn else 0)
         open_interests_usd.append(bn.get("open_interest_usd", 0) if bn else 0)
 
-        # Supply delta
-        sd = get_supply_delta_pct(t)
-        supply_deltas.append(sd if sd is not None else 0)
+        # Supply delta — keep None so display can distinguish "no data" from "stable"
+        supply_deltas.append(get_supply_delta_pct(t))
 
     return {
         "market_caps": market_caps,

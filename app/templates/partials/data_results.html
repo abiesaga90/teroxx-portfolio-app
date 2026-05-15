@@ -29,7 +29,7 @@
                     <th class="right">7d %</th>
                     <th class="right">30d %</th>
                     <th class="right">FDV/MCap</th>
-                    <th class="right">Supply &Delta;</th>
+                    <th class="right">Supply &Delta; 30d</th>
                 </tr>
             </thead>
             <tbody>
@@ -45,13 +45,13 @@
                     <td class="right" style="color:{{ 'var(--success)' if r.change_7d >= 0 else 'var(--danger)' }}">{{ "{:+.1f}".format(r.change_7d) }}%</td>
                     <td class="right" style="color:{{ 'var(--success)' if r.change_30d >= 0 else 'var(--danger)' }}">{{ "{:+.1f}".format(r.change_30d) }}%</td>
                     <td class="right"><span style="color:{{ '#1a8a4a' if r.fdv_mcap_ratio < 2 else '#F59E0B' if r.fdv_mcap_ratio < 4 else '#c0432a' }}">{{ "{:.2f}".format(r.fdv_mcap_ratio) }}x</span></td>
-                    <td class="right">{% if r.supply_delta != 0 %}<span style="color:{{ 'var(--danger)' if r.supply_delta > 0 else 'var(--success)' }}">{{ "{:+.2f}".format(r.supply_delta) }}%</span>{% else %}&mdash;{% endif %}</td>
+                    <td class="right">{% if r.supply_delta is none %}<span style="color:var(--text-muted);font-size:0.6rem;">...</span>{% elif r.supply_delta != 0 %}<span style="color:{{ 'var(--danger)' if r.supply_delta > 0 else 'var(--success)' }}">{{ "{:+.2f}".format(r.supply_delta) }}%</span>{% else %}&mdash;{% endif %}</td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
-    <div class="sources"><div class="sources-title">Notes</div>Prices and market data from CoinMarketCap. Vol/MCap = 24h volume / market cap (turnover ratio). Supply &Delta; = circulating supply change tracked in-memory. Updated: {{ price_age }}.</div>
+    <div class="sources"><div class="sources-title">Notes</div>Prices and market data from CoinMarketCap. Vol/MCap = 24h volume / market cap (turnover ratio). Supply &Delta; 30d = 30-day circulating supply change derived from CoinGecko market chart (market_cap/price). &ldquo;...&rdquo; = still loading on first deploy (~3 min). Updated: {{ price_age }}.</div>
 </div>
 </div>
 
