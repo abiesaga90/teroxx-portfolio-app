@@ -66,6 +66,7 @@ logger = logging.getLogger(__name__)
 UNIVERSE_OPTIONS = [
     "Teroxx Core (9)",
     "Teroxx Expanded (21)",
+    "Teroxx Extended (40)",
 ]
 
 
