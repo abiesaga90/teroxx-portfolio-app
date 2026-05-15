@@ -78,6 +78,9 @@
             </thead>
             <tbody>
                 {% for r in rows %}
+                {% if loop.changed(r.has_defi) and not r.has_defi %}
+                <tr><td colspan="11" style="padding:4px 8px;font-size:0.65rem;color:var(--text-muted);border-top:1px solid rgba(255,255,255,0.08);letter-spacing:0.05em;">FALLBACK &mdash; no DeFiLlama data</td></tr>
+                {% endif %}
                 <tr{% if not r.has_defi %} style="opacity:0.35"{% endif %}>
                     <td style="color:var(--text-muted)">{{ loop.index }}</td>
                     <td class="ticker"><div class="ticker-cell">{% set logo = get_logo(r.ticker) %}{% if logo %}<img src="{{ logo }}" class="token-logo token-logo-sm" alt="{{ r.ticker }}">{% endif %}{{ r.ticker }}</div></td>

@@ -917,7 +917,7 @@ def full_data_breakdown(tickers: list[str], profile: str) -> list[dict]:
             "messari_info": get_messari_info(t),
         })
 
-    rows.sort(key=lambda x: -x["market_cap"])
+    rows.sort(key=lambda x: (not x["has_defi"], -x["market_cap"]))
     return rows
 
 
