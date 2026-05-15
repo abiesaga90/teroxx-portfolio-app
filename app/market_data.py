@@ -153,7 +153,6 @@ _CGID_TO_TICKER = {v: k for k, v in TOKEN_MAP.items() if v}
 # CMC symbol overrides where our ticker differs from CMC
 CMC_SYMBOL_OVERRIDES = {
     "ASTER": "ASTR",   # Aster on CMC is ASTR
-    "RNDR": "RENDER",  # Render rebranded ticker on CMC
 }
 
 

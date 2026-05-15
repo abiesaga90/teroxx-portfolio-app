@@ -89,7 +89,7 @@ _ASSET_CLASS_BUCKETS = (
      ("ETH", "BNB", "XRP", "ADA", "SOL", "DOGE", "TRX", "LINK", "TON")),
     ("mid_cap", "assetclass.mid_cap",
      ("POL", "AVAX", "DOT", "LTC", "SUI", "ATOM", "NEAR", "APT", "HBAR",
-      "ICP", "ARB", "OP", "FIL", "AAVE", "UNI", "MKR", "RNDR", "FET",
+      "ICP", "ARB", "OP", "FIL", "AAVE", "UNI", "MKR", "RENDER", "FET",
       "TAO", "PENDLE", "ENA", "ONDO", "QNT", "MNT", "HYPE")),
 )
 

@@ -22,11 +22,9 @@ DRAWDOWN_IMPACT = {
 ALLOCATION_MODES = ["Standard", "Fundamental"]
 
 ASSET_UNIVERSES = {
-    # Only two universes are offered. Teroxx Core is the currently live
-    # 9-token roster; Teroxx Expanded is the confirmed next-step roster
-    # whose 21 tokens correspond to the TeroxxUniverseAlpha valuation
-    # models (BTC, ETH, BNB, ADA, XRP, AAVE, UNI, LINK, POL, MNT, SYRUP,
-    # PENDLE, ENA, ONDO, COMP, EUL, QNT, CHZ, PAXG, USDC, EURC).
+    # Teroxx Core: live 9-token roster (active offering).
+    # Teroxx Expanded: confirmed next-step 21-token roster (MVP add-ons).
+    # Teroxx Extended: full combined universe — Current + MVP + AB & Leo adds (40 tokens).
     "Teroxx Core (9)": ["USDC", "EURC", "PAXG", "BTC", "ETH", "BNB", "XRP", "ADA", "POL"],
     "Teroxx Expanded (21)": [
         "USDC", "EURC", "PAXG",
@@ -36,6 +34,19 @@ ASSET_UNIVERSES = {
         "ONDO",
         "LINK", "QNT",
         "CHZ",
+    ],
+    "Teroxx Extended (40)": [
+        # Defensive
+        "USDC", "EURC", "PAXG", "BUIDL",
+        # Core L1s
+        "BTC", "ETH", "BNB", "XRP", "ADA", "POL",
+        # MVP DeFi + infra
+        "AAVE", "UNI", "COMP", "EUL", "PENDLE", "SYRUP", "ENA",
+        "ONDO", "LINK", "QNT", "CHZ", "MNT",
+        # AB adds
+        "SOL", "HYPE", "TRX", "CRV", "SKY", "AERO", "AR", "AKT", "RENDER", "VVV",
+        # Leo adds
+        "AVAX", "DOT", "ARB", "SUI", "LTC", "BCH", "DOGE", "ASTER",
     ],
 }
 
@@ -79,7 +90,7 @@ ASSET_UNIVERSE = [
     {"ticker": "ARB",     "name": "Arbitrum",          "category": "Layer 2",      "tier": "Extended",          "risk_tier": "Speculative"},
     {"ticker": "OP",      "name": "Optimism",          "category": "Layer 2",      "tier": "Extended",          "risk_tier": "Speculative"},
     {"ticker": "IMX",     "name": "Immutable X",       "category": "Layer 2",      "tier": "Extended",          "risk_tier": "Speculative"},
-    {"ticker": "RNDR",    "name": "Render",            "category": "AI / Compute", "tier": "Extended",          "risk_tier": "Speculative"},
+    {"ticker": "RENDER",  "name": "Render",            "category": "AI / Compute", "tier": "Extended",          "risk_tier": "Speculative"},
     {"ticker": "FET",     "name": "Fetch.ai",          "category": "AI / Compute", "tier": "Extended",          "risk_tier": "Speculative"},
     {"ticker": "TAO",     "name": "Bittensor",         "category": "AI / Compute", "tier": "Extended",          "risk_tier": "Speculative"},
     {"ticker": "FIL",     "name": "Filecoin",          "category": "AI / Compute", "tier": "Extended",          "risk_tier": "Speculative"},
@@ -129,6 +140,7 @@ ASSET_UNIVERSE = [
     {"ticker": "AKT",     "name": "Akash Network",     "category": "AI / Compute", "tier": "Research",          "risk_tier": "Speculative"},
     {"ticker": "ATH",     "name": "Aethir",            "category": "AI / Compute", "tier": "Research",          "risk_tier": "Speculative"},
     {"ticker": "MON",     "name": "Mon Protocol",      "category": "Gaming",       "tier": "Research",          "risk_tier": "Speculative"},
+    {"ticker": "BUIDL",   "name": "BlackRock USD IDLF","category": "RWA",          "tier": "Research",          "risk_tier": "Defensive"},
 ]
 
 # Build lookup
@@ -210,7 +222,7 @@ VA_REGISTRY = {
     "ZEC":   {"mechanism": "none"},                                              # PoW, no accrual
     "XMR":   {"mechanism": "none"},                                              # PoW, no accrual
     "PENDLE":{"mechanism": "fee_distribution",   "defillama_accurate": True},    # vePENDLE fee share
-    "RNDR":  {"mechanism": "buyback_burn",       "defillama_accurate": False},   # Render burn-and-mint
+    "RENDER":{"mechanism": "buyback_burn",       "defillama_accurate": False},   # Render burn-and-mint
     "TAO":   {"mechanism": "staking_rewards",    "defillama_accurate": False},   # Subnet staking
     # ── Teroxx Research additions ──
     "SKY":   {"mechanism": "buyback_burn",       "defillama_accurate": True},   # MKR burn via surplus auctions
@@ -310,7 +322,8 @@ TOKEN_MAP = {
     "FIL": "filecoin", "ARB": "arbitrum", "OP": "optimism", "SUI": "sui",
     "INJ": "injective-protocol", "IMX": "immutable-x", "MKR": "maker",
     "AAVE": "aave", "GRT": "the-graph", "SNX": "havven", "LDO": "lido-dao",
-    "CRV": "curve-dao-token", "RNDR": "render-token", "FET": "artificial-superintelligence-alliance",
+    "CRV": "curve-dao-token", "RENDER": "render-token", "FET": "artificial-superintelligence-alliance",
+    "BUIDL": "blackrock-usd-institutional-digital-liquidity-fund",
     "TAO": "bittensor", "SAND": "the-sandbox", "MANA": "decentraland",
     "GALA": "gala", "ETC": "ethereum-classic", "XLM": "stellar",
     "TRX": "tron", "SHIB": "shiba-inu", "TON": "toncoin",
@@ -348,7 +361,7 @@ DEFILLAMA_MAP = {
     "CAKE": "pancakeswap-amm", "HYPE": "hyperliquid-hlp",
     # Gaming / other
     "SAND": "sandbox", "MANA": "decentraland", "GALA": "gala",
-    "IMX": "immutable-x", "RNDR": "render", "FET": "fetch-ai",
+    "IMX": "immutable-x", "RENDER": "render", "FET": "fetch-ai",
     # Teroxx Research additions
     "SKY": "sky-lending", "SYRUP": "maple", "AR": "arweave",
     "AERO": "aerodrome-slipstream", "EUL": "euler-v2", "AKT": "akash-network",
