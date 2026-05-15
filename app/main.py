@@ -93,7 +93,6 @@ async def _initial_warmup():
             logger.info(f"Initial {name} data loaded")
         except Exception as e:
             logger.warning(f"Initial {name} fetch failed: {e}")
-    asyncio.create_task(fetch_coingecko_dev_data())
     try:
         await refresh_defi_health()
     except Exception as e:

@@ -43,6 +43,7 @@ _SUPPLY_HISTORY_PATH = os.getenv("TEROXX_SUPPLY_HISTORY_PATH", "/tmp/teroxx_supp
 _supply_history_loaded = False
 _supply_30d_cache: dict[str, Optional[float]] = {}  # ticker → 30d delta %
 _supply_30d_ts: float = 0
+_supply_fetch_running: bool = False  # prevents concurrent supply tasks
 SUPPLY_30D_TTL = 86400  # refresh once per day
 
 
@@ -1066,13 +1067,21 @@ async def fetch_supply_delta_30d() -> dict[str, Optional[float]]:
     """
     Compute 30-day circulating supply delta for all tickers using CoinGecko market_chart.
     supply = market_cap / price — no dedicated supply endpoint needed.
-    Uses the CG demo key (500 req/min). Run as a fire-and-forget task; never blocks
-    the main background_refresh loop.
+    Uses the CG demo key. Run as a fire-and-forget task; never blocks
+    the main background_refresh loop. Guarded by _supply_fetch_running to prevent
+    concurrent tasks from piling up when the rate limit is exhausted.
     """
-    global _supply_30d_cache, _supply_30d_ts
+    global _supply_30d_cache, _supply_30d_ts, _supply_fetch_running
     now = time.time()
     if _supply_30d_cache and (now - _supply_30d_ts) < SUPPLY_30D_TTL:
         return _supply_30d_cache
+    if _supply_fetch_running:
+        logger.debug("supply_30d fetch already in progress, skipping")
+        return _supply_30d_cache
+    _supply_fetch_running = True
+    # Stamp timestamp at start so background_refresh won't fire duplicate tasks
+    # even if this run completes with n_ok=0 (retry will happen next 24h cycle)
+    _supply_30d_ts = now
 
     result: dict[str, Optional[float]] = {}
     async with httpx.AsyncClient(timeout=10, headers=_CG_HEADERS) as client:
@@ -1083,44 +1092,47 @@ async def fetch_supply_delta_30d() -> dict[str, Optional[float]]:
                     params={"vs_currency": "usd", "days": 31, "interval": "daily"},
                 )
                 if resp.status_code == 429:
-                    logger.warning("CoinGecko 429 during supply fetch, backing off 60s")
-                    await asyncio.sleep(60.0)
+                    logger.warning("CoinGecko 429 during supply fetch, backing off 90s")
+                    await asyncio.sleep(90.0)
                     resp = await client.get(
                         f"{COINGECKO_BASE}/coins/{cg_id}/market_chart",
                         params={"vs_currency": "usd", "days": 31, "interval": "daily"},
                     )
                 if resp.status_code != 200:
+                    logger.warning("supply_30d non-200 for %s: %s", ticker, resp.status_code)
                     result[ticker] = None
-                    await asyncio.sleep(1.5)
+                    await asyncio.sleep(2.5)
                     continue
                 data = resp.json()
                 mcs = data.get("market_caps", [])
                 pxs = data.get("prices", [])
                 if len(mcs) < 2 or len(pxs) < 2:
                     result[ticker] = None
-                    await asyncio.sleep(1.5)
+                    await asyncio.sleep(2.5)
                     continue
                 p_old, mc_old = pxs[0][1], mcs[0][1]
                 p_new, mc_new = pxs[-1][1], mcs[-1][1]
                 if p_old <= 0 or p_new <= 0 or mc_old <= 0:
                     result[ticker] = None
-                    await asyncio.sleep(1.5)
+                    await asyncio.sleep(2.5)
                     continue
                 supply_old = mc_old / p_old
                 supply_new = mc_new / p_new
                 result[ticker] = (supply_new - supply_old) / supply_old * 100
             except Exception as exc:
-                logger.debug("supply_30d fetch error for %s: %s", ticker, exc)
+                logger.warning("supply_30d fetch error for %s: %s", ticker, exc)
                 result[ticker] = None
-            await asyncio.sleep(1.5)
+            await asyncio.sleep(2.5)  # 24 req/min — safely under 30/min CG demo limit
 
     n_ok = sum(1 for v in result.values() if v is not None)
     if n_ok > 0:
         _supply_30d_cache = result
-        _supply_30d_ts = now
         logger.info("30d supply deltas computed: %d/%d tokens", n_ok, len(result))
     else:
-        logger.warning("30d supply fetch returned 0 valid values — cache not updated")
+        logger.warning("30d supply fetch returned 0 valid values — rate limit likely exhausted")
+        # Reset timestamp so the next background cycle will retry sooner (1h instead of 24h)
+        _supply_30d_ts = now - SUPPLY_30D_TTL + 3600
+    _supply_fetch_running = False
     return _supply_30d_cache
 
 
