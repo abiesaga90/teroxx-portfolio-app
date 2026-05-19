@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import io
 import re
+from pathlib import Path
 from typing import Any, Iterable, Optional
 
 from docx import Document
@@ -28,7 +29,7 @@ from docx.enum.table import WD_ALIGN_VERTICAL, WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
-from docx.shared import Cm, Inches, Pt, RGBColor
+from docx.shared import Cm, Inches, Mm, Pt, RGBColor
 
 from app.pdf.i18n import (
     DEFAULT as I18N_DEFAULT,
@@ -39,15 +40,44 @@ from app.pdf.i18n import (
 )
 
 
-# Brand palette as RGB triples.
+# ── Brand palette (Short Brand Guideline VS1.0 §3.2) ────────────────
 NIGHTBLUE = RGBColor(0x01, 0x06, 0x26)
 DEEP_INDIGO = RGBColor(0x06, 0x0D, 0x43)
 ELECTRIC_SKY = RGBColor(0x0B, 0x68, 0x8C)
 SANDSTONE = RGBColor(0xBF, 0xB3, 0xA8)
 SUNSET_EMBER = RGBColor(0xD0, 0x66, 0x43)
-TEXT_BODY = RGBColor(0x1A, 0x1A, 0x1A)
-TEXT_MUTED = RGBColor(0x66, 0x66, 0x66)
 WHITE = RGBColor(0xFF, 0xFF, 0xFF)
+
+# Brand picks Deep Indigo over pure black for text (the brand "Color
+# Story" pairs the Deep Indigo with Nightblue as the foundation).
+TEXT_BODY = DEEP_INDIGO
+TEXT_MUTED = RGBColor(0x6B, 0x6F, 0x82)  # desaturated Deep Indigo at ~55%
+
+# Brand palette has no green; gains map to Electric Sky and losses to
+# Sunset Ember (mirrors the same decision in palette.py / proposal.css).
+GAIN = ELECTRIC_SKY
+LOSS = SUNSET_EMBER
+
+# Sandstone tints for backgrounds. Hex strings (not RGBColor) because
+# _shade_cell takes raw hex.
+SANDSTONE_50_HEX = "F4F1ED"     # zebra-stripe row
+CREAM_HEX = "ECE8E5"            # disclaimer / appendix blocks
+
+
+# ── Brand typography (Short Brand Guideline VS1.0 §5.1, §5.2) ───────
+# Word looks up these by the font family name embedded in the OTF. The
+# Söhne weights ship as separate families (Söhne / Söhne Leicht /
+# Söhne Kräftig / Söhne Halbfett / Söhne Fett); set font.name to the
+# weight you want and keep bold=False so Word doesn't try to synth.
+FONT_HEADING = "Sometimes Times Medium"     # Big Headline, action titles
+FONT_BODY = "Söhne"                          # Bodytext = Söhne Buch
+FONT_LEICHT = "Söhne Leicht"                # Sublines
+FONT_KRAFTIG = "Söhne Kräftig"              # Small special headings, kickers
+FONT_HALBFETT = "Söhne Halbfett"            # Semi-bold accents
+FONT_FETT = "Söhne Fett"                    # Heavy bold (rarely used)
+
+# Path to the static brand assets directory — used for the cover logo.
+_STATIC_IMG_DIR = Path(__file__).resolve().parent.parent / "static" / "img"
 
 
 # ── Helpers ─────────────────────────────────────────────────────────
@@ -65,44 +95,192 @@ def _svg_to_png(svg: str, width_px: int = 720) -> Optional[bytes]:
         return None
 
 
-def _set_default_font(doc: Document) -> None:
-    """Configure document defaults so Word picks brand fonts when
-    available and Calibri / Cambria when not."""
-    style = doc.styles["Normal"]
-    font = style.font
-    font.name = "Sohne"
-    font.size = Pt(10.5)
-    font.color.rgb = TEXT_BODY
-    # Set East-Asian + complex script font names so Word respects the
-    # latin face for all runs even in mixed-script paragraphs.
-    rpr = style.element.get_or_add_rPr()
+def _apply_font_family(run_or_style_element, family_name: str) -> None:
+    """Set ascii/hAnsi/cs font names on a run or style element via raw
+    OOXML so Word respects the latin face for mixed-script paragraphs.
+    python-docx's font.name only writes ``w:ascii`` by default.
+    """
+    rpr = run_or_style_element.get_or_add_rPr()
     rfonts = rpr.find(qn("w:rFonts"))
     if rfonts is None:
         rfonts = OxmlElement("w:rFonts")
         rpr.append(rfonts)
-    rfonts.set(qn("w:ascii"), "Sohne")
-    rfonts.set(qn("w:hAnsi"), "Sohne")
-    rfonts.set(qn("w:cs"), "Sohne")
+    for axis in ("ascii", "hAnsi", "cs", "eastAsia"):
+        rfonts.set(qn(f"w:{axis}"), family_name)
 
-    # Headings use the serif display face. Word falls back to Cambria
-    # when SometimesTimes is unavailable.
-    for level in range(1, 4):
+
+def _set_default_font(doc: Document) -> None:
+    """Configure document defaults so Word picks brand fonts when
+    available and Calibri / Cambria when not.
+
+    Brand hierarchy from Short Brand Guideline §5.2:
+        Bodytext  = Söhne Buch, 12pt / 16pt LH
+        Subline   = Söhne Leicht, 22pt / 28pt LH
+        Headline  = Sometimes Times Medium, 68pt / 78pt LH
+
+    A4 advisory documents need denser layout than the brand poster
+    examples, so we scale down: body 11pt, sublines 13pt, headings
+    18-40pt. The font *family* names match the brand book exactly.
+    """
+    style = doc.styles["Normal"]
+    style.font.name = FONT_BODY
+    style.font.size = Pt(11)
+    style.font.color.rgb = TEXT_BODY
+    _apply_font_family(style.element, FONT_BODY)
+
+    # Heading styles map to the brand's Big Headline / Subline /
+    # Special-heading tiers. We set the family name on each style so
+    # Word picks the right weight without us forcing bold=True (which
+    # would synthesise a fake bold on top of an already-weighted face).
+    heading_specs = [
+        (1, FONT_HEADING, 32, NIGHTBLUE),   # Cover / section dividers
+        (2, FONT_HEADING, 18, NIGHTBLUE),   # Action titles
+        (3, FONT_KRAFTIG, 12, NIGHTBLUE),   # Block-level subhead
+    ]
+    for level, family, size_pt, color in heading_specs:
         hs = doc.styles[f"Heading {level}"]
-        hs.font.name = "SometimesTimes"
-        hs.font.color.rgb = NIGHTBLUE
-        hs.font.size = Pt({1: 22, 2: 16, 3: 12}[level])
-        hs.font.bold = level <= 2
+        hs.font.name = family
+        hs.font.color.rgb = color
+        hs.font.size = Pt(size_pt)
+        hs.font.bold = False
+        _apply_font_family(hs.element, family)
 
 
-def _page_setup(doc: Document) -> None:
-    """A4 with comfortable advisory-document margins."""
+def _logo_image_path(variant: str = "white") -> Optional[Path]:
+    """Return the path to a pre-rendered Teroxx logo PNG.
+
+    ``variant='white'`` returns the Sandstone/white logo for use on
+    Nightblue backgrounds (cover). ``variant='dark'`` returns the
+    Nightblue logo for use on light backgrounds (page header).
+
+    We ship two rasterised PNGs in static/img/ so the renderer doesn't
+    depend on cairosvg — which fails to load on some macOS setups
+    (libcairo dynamic-lib mismatch). Returns None if the file is
+    missing, so callers can skip embedding silently.
+    """
+    name = "logo-white.png" if variant == "white" else "logo-dark.png"
+    path = _STATIC_IMG_DIR / name
+    return path if path.exists() else None
+
+
+def _page_setup(doc: Document, ctx: dict) -> None:
+    """A4 with brand-aligned margins, running header and running footer.
+
+    Brand layout templates (Short Brand Guideline §7.1) put a small
+    Söhne meta strip at the top of every spread:
+
+        Teroxx — The Digital Asset Boutique. │ Section │ Date │ Page
+
+    We mirror that as the Word "different first page" header (so the
+    cover stays clean) and add a matching footer with just the page
+    number on the right.
+    """
     for section in doc.sections:
         section.page_height = Cm(29.7)
         section.page_width = Cm(21.0)
         section.left_margin = Cm(2.0)
         section.right_margin = Cm(2.0)
-        section.top_margin = Cm(2.2)
+        section.top_margin = Cm(2.4)
         section.bottom_margin = Cm(2.0)
+        section.header_distance = Cm(1.2)
+        section.footer_distance = Cm(1.1)
+        # Brand cover should have no header chrome — Word respects
+        # this via "different first page".
+        section.different_first_page_header_footer = True
+
+    lang = ctx.get("lang") or I18N_DEFAULT
+    section_title = t("running.header_title", lang)
+    client_name = (ctx.get("client") or {}).get("name") or ""
+    prepared_date = ctx.get("prepared_date") or ""
+
+    # Primary (non-first-page) header: brand strip on the left.
+    sec = doc.sections[0]
+    header = sec.header
+    hp = header.paragraphs[0]
+    hp.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    # Single tab stop on the right edge so we get "Brand · Section ...........  Date · Page"
+    # page_width / margins are ints in EMU; convert to twips for w:pos.
+    tab_pos_twips = (sec.page_width - sec.left_margin - sec.right_margin) // 635
+    pPr = hp._p.get_or_add_pPr()
+    tabs = OxmlElement("w:tabs")
+    tab = OxmlElement("w:tab")
+    tab.set(qn("w:val"), "right")
+    tab.set(qn("w:pos"), str(tab_pos_twips))  # twentieths-of-a-point
+    tabs.append(tab)
+    pPr.append(tabs)
+
+    # Small dark Teroxx logo at the left of every body-page header,
+    # before the brand text strip. Brand book §2.5 — minimum height
+    # 5mm without protection zone; we use ~4mm here because the logo
+    # repeats every page and the header strip must stay slim.
+    header_logo = _logo_image_path("dark")
+    if header_logo is not None:
+        logo_run = hp.add_run()
+        logo_run.add_picture(str(header_logo), height=Cm(0.4))
+        hp.add_run("   ")  # small gap before the text strip
+
+    left = hp.add_run("Teroxx — The Digital Asset Boutique.")
+    left.font.size = Pt(8)
+    left.font.color.rgb = TEXT_MUTED
+    left.font.name = FONT_BODY
+    _apply_font_family(left.element, FONT_BODY)
+
+    sep1 = hp.add_run(f"   {section_title}")
+    sep1.font.size = Pt(8)
+    sep1.font.color.rgb = TEXT_MUTED
+    sep1.font.name = FONT_LEICHT
+    _apply_font_family(sep1.element, FONT_LEICHT)
+
+    hp.add_run("\t")
+
+    right = hp.add_run(f"{prepared_date}")
+    right.font.size = Pt(8)
+    right.font.color.rgb = TEXT_MUTED
+    right.font.name = FONT_LEICHT
+    _apply_font_family(right.element, FONT_LEICHT)
+
+    # Page-number footer on the right, brand "X of Y" style.
+    footer = sec.footer
+    fp = footer.paragraphs[0]
+    fp.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    # client name on left, page X on right — single line, tabbed.
+    pPr2 = fp._p.get_or_add_pPr()
+    tabs2 = OxmlElement("w:tabs")
+    tab2 = OxmlElement("w:tab")
+    tab2.set(qn("w:val"), "right")
+    tab2.set(qn("w:pos"), str(tab_pos_twips))
+    tabs2.append(tab2)
+    pPr2.append(tabs2)
+    fp.alignment = WD_ALIGN_PARAGRAPH.LEFT
+
+    cname_run = fp.add_run(f"Confidential · {client_name}")
+    cname_run.font.size = Pt(7.5)
+    cname_run.font.color.rgb = TEXT_MUTED
+    cname_run.font.name = FONT_LEICHT
+    _apply_font_family(cname_run.element, FONT_LEICHT)
+
+    fp.add_run("\t")
+    # PAGE field code — Word renders the live page number.
+    fldChar1 = OxmlElement("w:fldChar")
+    fldChar1.set(qn("w:fldCharType"), "begin")
+    instrText = OxmlElement("w:instrText")
+    instrText.text = "PAGE"
+    fldChar2 = OxmlElement("w:fldChar")
+    fldChar2.set(qn("w:fldCharType"), "end")
+    page_run = fp.add_run()
+    page_run.font.size = Pt(7.5)
+    page_run.font.color.rgb = TEXT_MUTED
+    page_run.font.name = FONT_LEICHT
+    _apply_font_family(page_run.element, FONT_LEICHT)
+    page_run._r.append(fldChar1)
+    page_run._r.append(instrText)
+    page_run._r.append(fldChar2)
+
+    # First-page header/footer left empty — cover stays clean.
+    first_h = sec.first_page_header.paragraphs[0]
+    first_h.text = ""
+    first_f = sec.first_page_footer.paragraphs[0]
+    first_f.text = ""
 
 
 def _shade_cell(cell, hex_color: str) -> None:
@@ -120,12 +298,18 @@ def _shade_cell(cell, hex_color: str) -> None:
 
 
 def _set_cell_text(cell, text: str, *, bold: bool = False, color: Optional[RGBColor] = None,
-                   align: int = WD_ALIGN_PARAGRAPH.LEFT, size_pt: float = 10.0) -> None:
+                   align: int = WD_ALIGN_PARAGRAPH.LEFT, size_pt: float = 10.0,
+                   font: str = FONT_BODY) -> None:
     cell.text = ""  # clear default empty paragraph contents
     p = cell.paragraphs[0]
     p.alignment = align
     run = p.add_run(str(text))
+    run.font.name = font
+    _apply_font_family(run.element, font)
     run.font.size = Pt(size_pt)
+    # ``bold=True`` on a Söhne-Buch run forces Word to synthesise a fake
+    # bold, which looks subtly wrong. Caller should instead pass
+    # font=FONT_HALBFETT or font=FONT_KRAFTIG when emphasis is needed.
     run.font.bold = bold
     if color is not None:
         run.font.color.rgb = color
@@ -257,49 +441,108 @@ def _md_or_placeholder(doc: Document, ctx: dict, md_value: str, placeholder_key:
 # ── Section builders ────────────────────────────────────────────────
 
 
+def _set_section_page_color(section, hex_color: str) -> None:
+    """Tint the whole page background of a Word section.
+
+    Word doesn't expose a per-section page-color API; we attach a
+    ``<w:background>`` to the document and ``<w:displayBackgroundShape/>``
+    so the cover renders Nightblue on screen and (depending on print
+    settings) on paper.
+    """
+    doc_el = section.part.document.element
+    body = doc_el
+    # The background element must live on the <w:document> root.
+    root = body.getparent() if body.tag.endswith("body") else body
+    bg = root.find(qn("w:background"))
+    if bg is None:
+        bg = OxmlElement("w:background")
+        bg.set(qn("w:color"), hex_color)
+        root.insert(0, bg)
+
+
 def _cover(doc: Document, ctx: dict) -> None:
-    """Minimal cover: brand mark, headline, confidentiality strip.
+    """Brand-aligned cover (Short Brand Guideline §7.1).
 
-    Detailed client/advisor metadata moved into a dedicated Client
-    Information section directly after the welcome paragraphs (matches
-    Jannick's template flow)."""
-    p = doc.add_paragraph()
-    p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-    run = p.add_run(_T(ctx, "cover.brand"))
-    run.font.size = Pt(11)
-    run.font.bold = True
-    run.font.color.rgb = ELECTRIC_SKY
+    Layout:
+        Top-left:    white Teroxx logo (the primary brand element)
+        Body:        "Allocation Proposal" — Sometimes Times Medium ~40pt
+        Subline:     client name + profile — Söhne Leicht in Sandstone
+        Brand claim: "The Digital Asset Boutique." — Sometimes Times
+                     Medium in Sandstone (per §2.4 / §7.1)
+        Footer:      confidentiality strip in muted Sandstone
 
-    p = doc.add_paragraph()
-    run = p.add_run(_T(ctx, "cover.brand_sub"))
-    run.font.size = Pt(9.5)
-    run.font.color.rgb = TEXT_MUTED
+    Detailed client / advisor metadata lives in the dedicated Client
+    Information section that follows the welcome page — matches
+    Jannick's template flow.
+    """
+    sec = doc.sections[0]
+    # Full-bleed Nightblue page fill for the cover only. The
+    # different_first_page_header_footer flag (set in _page_setup)
+    # keeps the cover header/footer clean.
+    _set_section_page_color(sec, "010626")
+
+    # Pull cover layout inward so the logo + headline breathe.
+    cover_para = doc.add_paragraph()
+    cover_para.paragraph_format.space_before = Pt(6)
+
+    # ── Logo (top-left, white on Nightblue) ──
+    logo_path = _logo_image_path("white")
+    if logo_path is not None:
+        lp = doc.add_paragraph()
+        lp.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        lp.add_run().add_picture(str(logo_path), width=Cm(4.2))
+
+    # Spacer to push the headline into the lower-middle of the page.
+    for _ in range(6):
+        doc.add_paragraph()
+
+    # ── Big Headline (Sometimes Times Medium, Sandstone on dark) ──
+    title_p = doc.add_paragraph()
+    title_p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    title_run = title_p.add_run(_T(ctx, "cover.title"))
+    title_run.font.size = Pt(40)
+    title_run.font.bold = False
+    title_run.font.color.rgb = SANDSTONE
+    title_run.font.name = FONT_HEADING
+    _apply_font_family(title_run.element, FONT_HEADING)
+
+    # ── Subline (Söhne Leicht, white-ish) ──
+    sub_p = doc.add_paragraph()
+    sub_text = ctx.get("cover_subtitle") or ""
+    if sub_text:
+        sub_run = sub_p.add_run(sub_text)
+        sub_run.font.size = Pt(13)
+        sub_run.font.color.rgb = WHITE
+        sub_run.font.name = FONT_LEICHT
+        _apply_font_family(sub_run.element, FONT_LEICHT)
 
     for _ in range(5):
         doc.add_paragraph()
 
-    title_p = doc.add_paragraph()
-    title_run = title_p.add_run(_T(ctx, "cover.title"))
-    title_run.font.size = Pt(36)
-    title_run.font.bold = True
-    title_run.font.color.rgb = NIGHTBLUE
-    title_run.font.name = "SometimesTimes"
+    # ── Brand claim "The Digital Asset Boutique." ──
+    # Section 7.1 of the brand book: "The Digital Asset Boutique is
+    # always set in Sometimes Times Medium and the color is selected
+    # in relation to the background: on Nightblue the claim is set
+    # in Sandstone."
+    claim_p = doc.add_paragraph()
+    claim_p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    claim_run = claim_p.add_run(_T(ctx, "cover.brand_claim"))
+    claim_run.font.size = Pt(22)
+    claim_run.font.color.rgb = SANDSTONE
+    claim_run.font.name = FONT_HEADING
+    _apply_font_family(claim_run.element, FONT_HEADING)
 
-    sub_p = doc.add_paragraph()
-    sub_run = sub_p.add_run(ctx.get("cover_subtitle", ""))
-    sub_run.font.size = Pt(12)
-    sub_run.font.color.rgb = TEXT_BODY
-    sub_run.font.italic = True
-
-    for _ in range(8):
+    for _ in range(2):
         doc.add_paragraph()
 
+    # ── Confidentiality strip (very small Söhne Leicht) ──
     foot = doc.add_paragraph()
     foot.alignment = WD_ALIGN_PARAGRAPH.LEFT
     foot_run = foot.add_run(_T(ctx, "cover.confidential"))
     foot_run.font.size = Pt(8.5)
-    foot_run.font.color.rgb = TEXT_MUTED
-    foot_run.font.italic = True
+    foot_run.font.color.rgb = SANDSTONE
+    foot_run.font.name = FONT_LEICHT
+    _apply_font_family(foot_run.element, FONT_LEICHT)
 
     doc.add_page_break()
 
@@ -404,21 +647,24 @@ def _consultation_summary(doc: Document, ctx: dict) -> None:
     """Advisor's account of the meeting + agreed positioning.
 
     Maps to Jannick's "Zusammenfassung der Beratung / des Gesprächs"
-    heading. Sourced from overrides.summary_md; left out entirely when
-    the advisor has not yet drafted the section (no placeholder, since
-    inventing a summary would be misleading).
+    heading. Always rendered so the advisor sees the slot to fill in;
+    when no summary_md is supplied a muted-italic placeholder appears
+    instructing them to describe what was discussed in the call
+    (Leonardo, 2026-05-19).
     """
     ov = ctx.get("overrides") or {}
-    body = ov.get("summary_md")
-    if not (body and body.strip()):
-        return
+    body = (ov.get("summary_md") or "").strip()
+
     _section_header(doc, ctx, "page.consultation", _T(ctx, "page.consultation"))
     sub = doc.add_paragraph()
     sr = sub.add_run(_T(ctx, "overrides.summary_sub"))
     sr.font.size = Pt(9.5)
     sr.font.italic = True
     sr.font.color.rgb = TEXT_MUTED
-    _add_md_block(doc, body)
+    sr.font.name = FONT_LEICHT
+    _apply_font_family(sr.element, FONT_LEICHT)
+
+    _md_or_placeholder(doc, ctx, body, "consultation.placeholder")
     doc.add_page_break()
 
 
@@ -686,6 +932,110 @@ def _fees_section(doc: Document, ctx: dict) -> None:
     doc.add_page_break()
 
 
+def _current_allocation(doc: Document, ctx: dict) -> None:
+    """Current crypto allocation shown to the client BEFORE the new
+    "Your portfolio in detail" section (Leonardo, 2026-05-19).
+
+    Behaviour:
+      * If ``ctx['current_allocation']`` is supplied (list of dicts with
+        ticker / name / weight_pct / value), render it as a table.
+      * Else if ``ctx['review']['pnl']['ticker_summary']`` has rows
+        (existing-client flow), fall back to those.
+      * Else render an editable 4-row placeholder table so the advisor
+        can paste / type the client's current holdings directly in Word.
+
+    The section is always rendered: even when the client has no crypto
+    on file, advisors need the slot visible so they don't forget to
+    fill it in before sending.
+    """
+    rows = ctx.get("current_allocation") or []
+    if not rows:
+        review = ctx.get("review") or {}
+        pnl = review.get("pnl") or {}
+        rows = pnl.get("ticker_summary") or pnl.get("by_ticker") or []
+
+    _section_header(doc, ctx, "page.current_allocation",
+                    _T(ctx, "page.current_allocation"))
+
+    sub = doc.add_paragraph()
+    sr = sub.add_run(_T(ctx, "current_allocation.subheading"))
+    sr.font.size = Pt(9.5)
+    sr.font.italic = True
+    sr.font.color.rgb = TEXT_MUTED
+    sr.font.name = FONT_LEICHT
+    _apply_font_family(sr.element, FONT_LEICHT)
+
+    if rows:
+        # Real data: 3 columns. Keep it simple — clients see "what I own
+        # today", not full P&L (that's in the review-flow section).
+        table = doc.add_table(rows=1 + len(rows), cols=3)
+        headers = [
+            _T(ctx, "table.asset"),
+            _T(ctx, "table.weight_now"),
+            _T(ctx, "table.market_value"),
+        ]
+        for i, hd in enumerate(headers):
+            _set_cell_text(table.rows[0].cells[i], hd, bold=True,
+                           color=WHITE, size_pt=9.5, font=FONT_HALBFETT)
+            _shade_cell(table.rows[0].cells[i], "010626")
+        for i, r in enumerate(rows, start=1):
+            cells = table.rows[i].cells
+            c = cells[0]
+            c.text = ""
+            p = c.paragraphs[0]
+            rt = p.add_run(r.get("ticker", ""))
+            rt.font.bold = True
+            rt.font.size = Pt(10)
+            rt.font.name = FONT_HALBFETT
+            _apply_font_family(rt.element, FONT_HALBFETT)
+            rn = p.add_run(f"  {r.get('name', '')}")
+            rn.font.size = Pt(9)
+            rn.font.color.rgb = TEXT_MUTED
+            _set_cell_text(
+                cells[1],
+                f"{r.get('weight_pct', r.get('weight', 0)):.1f}%",
+                align=WD_ALIGN_PARAGRAPH.RIGHT, size_pt=9.5,
+            )
+            _set_cell_text(
+                cells[2],
+                _money(ctx, r.get("value", r.get("current_value", 0))),
+                align=WD_ALIGN_PARAGRAPH.RIGHT, size_pt=9.5,
+            )
+            if i % 2 == 0:
+                for cell in cells:
+                    _shade_cell(cell, SANDSTONE_50_HEX)
+    else:
+        # Empty placeholder — 4 blank rows the advisor fills in directly.
+        ph = doc.add_paragraph()
+        pr = ph.add_run(_T(ctx, "current_allocation.placeholder"))
+        pr.font.italic = True
+        pr.font.color.rgb = TEXT_MUTED
+        pr.font.size = Pt(10)
+        pr.font.name = FONT_LEICHT
+        _apply_font_family(pr.element, FONT_LEICHT)
+
+        table = doc.add_table(rows=5, cols=3)
+        headers = [
+            _T(ctx, "table.asset"),
+            _T(ctx, "table.weight_now"),
+            _T(ctx, "table.market_value"),
+        ]
+        for i, hd in enumerate(headers):
+            _set_cell_text(table.rows[0].cells[i], hd, bold=True,
+                           color=WHITE, size_pt=9.5, font=FONT_HALBFETT)
+            _shade_cell(table.rows[0].cells[i], "010626")
+        for i in range(1, 5):
+            cells = table.rows[i].cells
+            _set_cell_text(cells[0], " ", size_pt=10)
+            _set_cell_text(cells[1], " ", align=WD_ALIGN_PARAGRAPH.RIGHT, size_pt=10)
+            _set_cell_text(cells[2], " ", align=WD_ALIGN_PARAGRAPH.RIGHT, size_pt=10)
+            if i % 2 == 0:
+                for cell in cells:
+                    _shade_cell(cell, SANDSTONE_50_HEX)
+
+    doc.add_page_break()
+
+
 # ── Review-flow sections (existing-client proposals) ───────────────
 
 
@@ -781,9 +1131,9 @@ def _current_holdings(doc: Document, ctx: dict) -> None:
         pr = pp.add_run(pnl_text)
         pr.font.size = Pt(9.5)
         if pnl_val > 0:
-            pr.font.color.rgb = RGBColor(0x14, 0x6C, 0x43)
+            pr.font.color.rgb = GAIN
         elif pnl_val < 0:
-            pr.font.color.rgb = RGBColor(0xB4, 0x3A, 0x3A)
+            pr.font.color.rgb = LOSS
         _set_cell_text(cells[6], f"{r.get('weight', 0):.1f}%",
                        align=WD_ALIGN_PARAGRAPH.RIGHT, size_pt=9.5)
         if i % 2 == 0:
@@ -936,9 +1286,9 @@ def _rebalance_actions(doc: Document, ctx: dict) -> None:
         ar.font.bold = True
         ar.font.size = Pt(9.5)
         if r.get("action") == "BUY":
-            ar.font.color.rgb = RGBColor(0x14, 0x6C, 0x43)
+            ar.font.color.rgb = GAIN
         elif r.get("action") == "SELL":
-            ar.font.color.rgb = RGBColor(0xB4, 0x3A, 0x3A)
+            ar.font.color.rgb = LOSS
         if i % 2 == 0:
             for cell in cells:
                 _shade_cell(cell, "F6F4F0")
@@ -981,20 +1331,34 @@ def _contact_section(doc: Document, ctx: dict) -> None:
 
 
 def _section_header(doc: Document, ctx: dict, page_tag_key: str, action_title: str) -> None:
-    """Per-section title block: small kicker line + one-sentence action title + rule."""
+    """Per-section title block following Short Brand Guideline §7.1:
+    kicker label in Söhne Kräftig + Sunset Ember → big serif title in
+    Sometimes Times Medium / Nightblue → thin Nightblue rule.
+
+    Both the kicker and the title use the brand fonts directly so the
+    document doesn't rely on Word's "bold" synthesis (which would
+    double-weight an already-weighted face).
+    """
     kicker = doc.add_paragraph()
+    kicker.paragraph_format.space_before = Pt(6)
     krun = kicker.add_run(_T(ctx, page_tag_key).upper())
     krun.font.size = Pt(8.5)
-    krun.font.bold = True
     krun.font.color.rgb = SUNSET_EMBER
+    krun.font.name = FONT_KRAFTIG
+    _apply_font_family(krun.element, FONT_KRAFTIG)
+    # Tracked letters per brand "kicker" treatment.
+    rpr = krun._r.get_or_add_rPr()
+    spacing = OxmlElement("w:spacing")
+    spacing.set(qn("w:val"), "40")   # 40 twentieths-of-a-pt ≈ 0.10em
+    rpr.append(spacing)
 
     h = doc.add_paragraph()
-    h.paragraph_format.space_before = Pt(2)
+    h.paragraph_format.space_before = Pt(4)
     hrun = h.add_run(action_title)
-    hrun.font.size = Pt(18)
-    hrun.font.bold = True
+    hrun.font.size = Pt(22)
     hrun.font.color.rgb = NIGHTBLUE
-    hrun.font.name = "SometimesTimes"
+    hrun.font.name = FONT_HEADING
+    _apply_font_family(hrun.element, FONT_HEADING)
 
     _add_horizontal_rule(doc, NIGHTBLUE)
 
@@ -1383,7 +1747,7 @@ def render_docx(ctx: dict[str, Any]) -> bytes:
     """
     doc = Document()
     _set_default_font(doc)
-    _page_setup(doc)
+    _page_setup(doc, ctx)
 
     proposal_type = (ctx.get("proposal_type") or "new").strip().lower()
     is_review = proposal_type == "review"
@@ -1396,6 +1760,11 @@ def render_docx(ctx: dict[str, Any]) -> bytes:
     if is_review:
         _current_holdings(doc, ctx)
         _drift_analysis(doc, ctx)
+    else:
+        # Per Leonardo (2026-05-19): always show a "current allocation"
+        # slot in NEW-client proposals, so advisors can document what
+        # the client holds today before proposing the new portfolio.
+        _current_allocation(doc, ctx)
     _portfolio_detail(doc, ctx)
     _allocation_table(doc, ctx)
     if is_review:

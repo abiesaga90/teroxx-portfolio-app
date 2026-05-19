@@ -311,7 +311,7 @@ def sparkline(
         points.append(f"{x:.2f},{y:.2f}")
     pl = " ".join(points)
     last_v = vals[-1]
-    color_end = palette.success if last_v >= vals[0] else palette.danger
+    color_end = palette.gain if last_v >= vals[0] else palette.loss
     body = (
         f'<polyline points="{pl}" fill="none" stroke="{color}" stroke-width="1.5" stroke-linejoin="round" />'
         f'<circle cx="{points[-1].split(",")[0]}" cy="{points[-1].split(",")[1]}" r="2.4" fill="{color_end}" />'

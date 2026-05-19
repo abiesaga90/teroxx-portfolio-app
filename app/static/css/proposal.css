@@ -6,10 +6,38 @@
    ───────────────────────────────────────────────────────────────── */
 
 /* ── Fonts (must be served from /static/fonts/) ─────────────────── */
+/* Full Söhne family per brand guideline 5.1: Leicht (sublines),
+   Buch (body), Kräftig (special headings), Halbfett, Fett. Italic
+   variants are German "Kursiv". Weights map to CSS numerics. */
+@font-face {
+    font-family: 'Sohne';
+    src: url('/static/fonts/Sohne-Leicht.otf') format('opentype');
+    font-weight: 300; font-style: normal;
+}
+@font-face {
+    font-family: 'Sohne';
+    src: url('/static/fonts/Sohne-LeichtKursiv.otf') format('opentype');
+    font-weight: 300; font-style: italic;
+}
 @font-face {
     font-family: 'Sohne';
     src: url('/static/fonts/Sohne-Buch.otf') format('opentype');
     font-weight: 400; font-style: normal;
+}
+@font-face {
+    font-family: 'Sohne';
+    src: url('/static/fonts/Sohne-BuchKursiv.otf') format('opentype');
+    font-weight: 400; font-style: italic;
+}
+@font-face {
+    font-family: 'Sohne';
+    src: url('/static/fonts/Sohne-Kraftig.otf') format('opentype');
+    font-weight: 500; font-style: normal;
+}
+@font-face {
+    font-family: 'Sohne';
+    src: url('/static/fonts/Sohne-KraftigKursiv.otf') format('opentype');
+    font-weight: 500; font-style: italic;
 }
 @font-face {
     font-family: 'Sohne';
@@ -28,16 +56,20 @@
 }
 
 /* ── Brand tokens ───────────────────────────────────────────────── */
+/* Six colors from Short Brand Guideline VS1.0 §3.2 + a couple of
+   Sandstone tints for backgrounds. Brand palette has no green; gains
+   map to Electric Sky, losses to Sunset Ember (see --gain / --loss). */
 :root {
     --nightblue: #010626;
     --deep-indigo: #060D43;
     --electric-sky: #0B688C;
     --sandstone: #BFB3A8;
+    --sandstone-50: #F4F1ED;
     --cream: #ECE8E5;
     --sunset-ember: #D06643;
     --white: #FFFFFF;
-    --success: #1A8A4A;
-    --danger: #C0432A;
+    --gain: #0B688C;        /* Electric Sky — substitutes for green */
+    --loss: #D06643;        /* Sunset Ember — substitutes for red */
     --text-body: #060D43;
     --text-muted: rgba(6, 13, 67, 0.55);
     --rule: rgba(6, 13, 67, 0.18);
@@ -95,9 +127,13 @@
 html, body {
     background: var(--white);
     color: var(--text-body);
+    /* Brand guideline 5.2: Bodytext = Söhne Buch 12pt / 16pt LH.
+       11pt + 1.5 reads closer to the brand's bodytext spec while
+       keeping enough data density for advisory tables. */
     font-family: 'Sohne', Arial, sans-serif;
-    font-size: 10pt;
-    line-height: 1.45;
+    font-weight: 400;
+    font-size: 11pt;
+    line-height: 1.5;
     margin: 0;
     padding: 0;
     counter-reset: exhibit;  /* exhibit numbering is document-wide */
@@ -164,9 +200,22 @@ a { color: var(--electric-sky); text-decoration: none; }
 .cover .subtitle {
     margin-top: 10mm;
     font-family: 'Sohne', Arial, sans-serif;
-    font-size: 11pt;
+    font-weight: 300;        /* Söhne Leicht — brand subline weight */
+    font-size: 13pt;
     color: var(--cream);
     line-height: 1.5;
+    max-width: 130mm;
+}
+/* Brand claim "The Digital Asset Boutique." — Sometimes Times Medium,
+   Sandstone on Nightblue (per Logo Colors §2.4 and Basic Layout §7.1). */
+.cover .brand-claim {
+    margin-top: 14mm;
+    font-family: 'SometimesTimes', Georgia, serif;
+    font-weight: 500;
+    font-size: 22pt;
+    color: var(--sandstone);
+    line-height: 1.15;
+    letter-spacing: -0.005em;
     max-width: 130mm;
 }
 .cover .meta {
@@ -488,8 +537,8 @@ table.alloc .reg-flag {
     text-align: left;
 }
 .indicator-table td.right { text-align: right; }
-.score-pos { color: var(--success); font-weight: 600; }
-.score-neg { color: var(--danger); font-weight: 600; }
+.score-pos { color: var(--gain); font-weight: 600; }
+.score-neg { color: var(--loss); font-weight: 600; }
 
 /* ── Appendix / disclaimers ─────────────────────────────────────── */
 .disclaimer-block {
@@ -519,6 +568,6 @@ table.alloc .reg-flag {
 .signoff strong { color: var(--nightblue); }
 
 /* Pos/Neg deltas in alloc table */
-.delta-pos { color: var(--success); }
-.delta-neg { color: var(--danger); }
+.delta-pos { color: var(--gain); }
+.delta-neg { color: var(--loss); }
 .delta-neutral { color: var(--text-muted); }

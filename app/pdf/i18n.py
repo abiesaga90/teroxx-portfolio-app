@@ -61,6 +61,14 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "Investment Advisory · MiCA-regulated",
         "de": "Anlageberatung · MiCA-reguliert",
     },
+    # Brand claim from Short Brand Guideline VS1.0 — set in Sometimes
+    # Times Medium; color depends on background (Sandstone on Nightblue,
+    # white on color gradient). Same string in both languages: the brand
+    # book keeps the claim in English even on German materials.
+    "cover.brand_claim": {
+        "en": "The Digital Asset Boutique.",
+        "de": "The Digital Asset Boutique.",
+    },
     "cover.title": {
         "en": "Allocation Proposal",
         "de": "Allokationsvorschlag",
@@ -423,6 +431,35 @@ _STRINGS: dict[str, dict[str, str]] = {
     "market_analysis.subheading": {
         "en": "Tailored commentary for the current digital-asset market environment.",
         "de": "Individuelle Einordnung des aktuellen Marktumfelds digitaler Vermögenswerte.",
+    },
+    "page.current_allocation": {
+        "en": "Current allocation",
+        "de": "Aktuelle Allokation",
+    },
+    "current_allocation.subheading": {
+        "en": "Your existing digital-asset holdings before this proposal.",
+        "de": "Ihre aktuellen digitalen Vermögenswerte vor diesem Vorschlag.",
+    },
+    "current_allocation.placeholder": {
+        "en": (
+            "_Fill in the client's current digital-asset holdings below. "
+            "Leave blank if the client is new to crypto._"
+        ),
+        "de": (
+            "_Tragen Sie die aktuellen Krypto-Bestände des Kunden ein. "
+            "Lassen Sie die Tabelle leer, wenn der Kunde neu in Krypto ist._"
+        ),
+    },
+    "consultation.placeholder": {
+        "en": (
+            "_Describe what was discussed in the consultation: client goals, "
+            "constraints, risk concerns, time horizon, and any agreed positioning._"
+        ),
+        "de": (
+            "_Beschreiben Sie, was im Beratungsgespräch besprochen wurde: "
+            "Ziele des Kunden, Rahmenbedingungen, Risikoaspekte, Anlagehorizont "
+            "und vereinbarte Positionierung._"
+        ),
     },
     "market_analysis.placeholder": {
         "en": (
