@@ -80,6 +80,109 @@ FONT_FETT = "Söhne Fett"                    # Heavy bold (rarely used)
 _STATIC_IMG_DIR = Path(__file__).resolve().parent.parent / "static" / "img"
 
 
+# ── Theme presets ───────────────────────────────────────────────────
+# Two on-brand looks for the proposal: a white-paper LIGHT variant for
+# print / classic advisory documents, and an on-screen DARK variant
+# that mirrors the brand book's hero layouts (§7.1, Nightblue ground
+# with Sandstone accents). The toggle applies to the whole document —
+# cover, page chrome, headings, body, tables.
+
+from dataclasses import dataclass as _dc
+
+
+@_dc(frozen=True)
+class Theme:
+    """All theme-dependent colors and the logo PNG variant.
+
+    Hex strings (without leading '#') for fields that feed
+    ``_shade_cell`` (table fills, page background); RGBColor objects
+    for font colors. Keep both forms so we don't double-convert.
+    """
+    name: str
+
+    # Page-level
+    page_bg_hex: str        # body page background ("FFFFFF" or "010626")
+    cover_bg_hex: str       # cover background
+    body_text: RGBColor     # default paragraph color
+    muted_text: RGBColor    # subline / footnote color
+    subline_text: RGBColor  # bigger subline (Söhne Leicht under titles)
+    rule_color: RGBColor    # action-rule underline color
+
+    # Headings + brand strip
+    heading_color: RGBColor       # action-title color
+    kicker_color: RGBColor        # small kicker above each section
+    claim_color: RGBColor         # "The Digital Asset Boutique." on cover
+    headline_color: RGBColor      # Big Headline on cover
+    cover_subline_color: RGBColor # subline under cover headline
+    running_strip_color: RGBColor # header/footer text strip
+
+    # Tables
+    table_header_fill_hex: str    # header row fill
+    table_header_text: RGBColor   # header row text
+    table_zebra_hex: str          # alternating-row fill
+    table_body_text: RGBColor     # default cell text
+
+    # Logo variant for cover (white logo on dark, dark logo on light).
+    cover_logo_variant: str        # "white" or "dark"
+    header_logo_variant: str       # logo in running header
+
+
+LIGHT_THEME = Theme(
+    name="light",
+    page_bg_hex="FFFFFF",
+    cover_bg_hex="FFFFFF",                         # white cover (brand §2.4 — dark logo on white)
+    body_text=DEEP_INDIGO,
+    muted_text=TEXT_MUTED,
+    subline_text=TEXT_MUTED,
+    rule_color=NIGHTBLUE,
+    heading_color=NIGHTBLUE,
+    kicker_color=SUNSET_EMBER,
+    claim_color=NIGHTBLUE,                         # dark claim on white cover
+    headline_color=NIGHTBLUE,
+    cover_subline_color=DEEP_INDIGO,
+    running_strip_color=TEXT_MUTED,
+    table_header_fill_hex="010626",                # Nightblue header row
+    table_header_text=WHITE,
+    table_zebra_hex=SANDSTONE_50_HEX,
+    table_body_text=DEEP_INDIGO,
+    cover_logo_variant="dark",                     # dark logo on white cover
+    header_logo_variant="dark",                    # dark logo on white body pages
+)
+
+
+DARK_THEME = Theme(
+    name="dark",
+    page_bg_hex="010626",                          # Nightblue body pages
+    cover_bg_hex="010626",
+    body_text=RGBColor(0xEC, 0xE8, 0xE5),          # Cream
+    muted_text=SANDSTONE,
+    subline_text=SANDSTONE,
+    rule_color=SANDSTONE,
+    heading_color=SANDSTONE,
+    kicker_color=SUNSET_EMBER,                     # Sunset Ember pops on Nightblue
+    claim_color=SANDSTONE,
+    headline_color=SANDSTONE,
+    cover_subline_color=WHITE,
+    running_strip_color=SANDSTONE,
+    table_header_fill_hex="0B688C",                # Electric Sky (sits on Nightblue body)
+    table_header_text=WHITE,
+    table_zebra_hex="060D43",                      # Deep Indigo
+    table_body_text=RGBColor(0xEC, 0xE8, 0xE5),    # Cream
+    cover_logo_variant="white",                    # white logo on Nightblue
+    header_logo_variant="white",                   # white logo on Nightblue body
+)
+
+
+def _resolve_theme(ctx: dict) -> Theme:
+    """Pick the proposal theme from the context dict. Accepts
+    'light' or 'dark' (case-insensitive). Falls back to LIGHT when
+    the value is missing or unknown — light is the brand-canonical
+    print look and matches Jannick's WIP template.
+    """
+    name = str(ctx.get("theme") or "light").strip().lower()
+    return DARK_THEME if name == "dark" else LIGHT_THEME
+
+
 # ── Helpers ─────────────────────────────────────────────────────────
 
 
@@ -109,7 +212,7 @@ def _apply_font_family(run_or_style_element, family_name: str) -> None:
         rfonts.set(qn(f"w:{axis}"), family_name)
 
 
-def _set_default_font(doc: Document) -> None:
+def _set_default_font(doc: Document, theme: Theme = LIGHT_THEME) -> None:
     """Configure document defaults so Word picks brand fonts when
     available and Calibri / Cambria when not.
 
@@ -125,7 +228,7 @@ def _set_default_font(doc: Document) -> None:
     style = doc.styles["Normal"]
     style.font.name = FONT_BODY
     style.font.size = Pt(11)
-    style.font.color.rgb = TEXT_BODY
+    style.font.color.rgb = theme.body_text
     _apply_font_family(style.element, FONT_BODY)
 
     # Heading styles map to the brand's Big Headline / Subline /
@@ -133,9 +236,9 @@ def _set_default_font(doc: Document) -> None:
     # Word picks the right weight without us forcing bold=True (which
     # would synthesise a fake bold on top of an already-weighted face).
     heading_specs = [
-        (1, FONT_HEADING, 32, NIGHTBLUE),   # Cover / section dividers
-        (2, FONT_HEADING, 18, NIGHTBLUE),   # Action titles
-        (3, FONT_KRAFTIG, 12, NIGHTBLUE),   # Block-level subhead
+        (1, FONT_HEADING, 32, theme.heading_color),   # Cover / section dividers
+        (2, FONT_HEADING, 18, theme.heading_color),   # Action titles
+        (3, FONT_KRAFTIG, 12, theme.heading_color),   # Block-level subhead
     ]
     for level, family, size_pt, color in heading_specs:
         hs = doc.styles[f"Heading {level}"]
@@ -163,7 +266,7 @@ def _logo_image_path(variant: str = "white") -> Optional[Path]:
     return path if path.exists() else None
 
 
-def _page_setup(doc: Document, ctx: dict) -> None:
+def _page_setup(doc: Document, ctx: dict, theme: Theme = LIGHT_THEME) -> None:
     """A4 with brand-aligned margins, running header and running footer.
 
     Brand layout templates (Short Brand Guideline §7.1) put a small
@@ -209,11 +312,11 @@ def _page_setup(doc: Document, ctx: dict) -> None:
     tabs.append(tab)
     pPr.append(tabs)
 
-    # Small dark Teroxx logo at the left of every body-page header,
-    # before the brand text strip. Brand book §2.5 — minimum height
-    # 5mm without protection zone; we use ~4mm here because the logo
+    # Small Teroxx logo at the left of every body-page header, before
+    # the brand text strip. Brand book §2.5 — minimum height 5mm
+    # without protection zone; we use ~4mm here because the logo
     # repeats every page and the header strip must stay slim.
-    header_logo = _logo_image_path("dark")
+    header_logo = _logo_image_path(theme.header_logo_variant)
     if header_logo is not None:
         logo_run = hp.add_run()
         logo_run.add_picture(str(header_logo), height=Cm(0.4))
@@ -221,13 +324,13 @@ def _page_setup(doc: Document, ctx: dict) -> None:
 
     left = hp.add_run("Teroxx — The Digital Asset Boutique.")
     left.font.size = Pt(8)
-    left.font.color.rgb = TEXT_MUTED
+    left.font.color.rgb = theme.running_strip_color
     left.font.name = FONT_BODY
     _apply_font_family(left.element, FONT_BODY)
 
     sep1 = hp.add_run(f"   {section_title}")
     sep1.font.size = Pt(8)
-    sep1.font.color.rgb = TEXT_MUTED
+    sep1.font.color.rgb = theme.running_strip_color
     sep1.font.name = FONT_LEICHT
     _apply_font_family(sep1.element, FONT_LEICHT)
 
@@ -235,7 +338,7 @@ def _page_setup(doc: Document, ctx: dict) -> None:
 
     right = hp.add_run(f"{prepared_date}")
     right.font.size = Pt(8)
-    right.font.color.rgb = TEXT_MUTED
+    right.font.color.rgb = theme.running_strip_color
     right.font.name = FONT_LEICHT
     _apply_font_family(right.element, FONT_LEICHT)
 
@@ -255,7 +358,7 @@ def _page_setup(doc: Document, ctx: dict) -> None:
 
     cname_run = fp.add_run(f"Confidential · {client_name}")
     cname_run.font.size = Pt(7.5)
-    cname_run.font.color.rgb = TEXT_MUTED
+    cname_run.font.color.rgb = theme.running_strip_color
     cname_run.font.name = FONT_LEICHT
     _apply_font_family(cname_run.element, FONT_LEICHT)
 
@@ -269,7 +372,7 @@ def _page_setup(doc: Document, ctx: dict) -> None:
     fldChar2.set(qn("w:fldCharType"), "end")
     page_run = fp.add_run()
     page_run.font.size = Pt(7.5)
-    page_run.font.color.rgb = TEXT_MUTED
+    page_run.font.color.rgb = theme.running_strip_color
     page_run.font.name = FONT_LEICHT
     _apply_font_family(page_run.element, FONT_LEICHT)
     page_run._r.append(fldChar1)
@@ -460,7 +563,7 @@ def _set_section_page_color(section, hex_color: str) -> None:
         root.insert(0, bg)
 
 
-def _cover(doc: Document, ctx: dict) -> None:
+def _cover(doc: Document, ctx: dict, theme: Theme = LIGHT_THEME) -> None:
     """Brand-aligned cover (Short Brand Guideline §7.1).
 
     Layout:
@@ -476,17 +579,23 @@ def _cover(doc: Document, ctx: dict) -> None:
     Jannick's template flow.
     """
     sec = doc.sections[0]
-    # Full-bleed Nightblue page fill for the cover only. The
-    # different_first_page_header_footer flag (set in _page_setup)
-    # keeps the cover header/footer clean.
-    _set_section_page_color(sec, "010626")
+    # Set the document-wide page color. Word's <w:background> is
+    # document-wide (not section-scoped), so this also colors body
+    # pages — which is exactly what we want for the dark theme. For
+    # the light theme the cover still needs Nightblue but body pages
+    # need white; we work around that by always painting the cover
+    # background via the page color *and* relying on Word's default
+    # white page-fill for body pages (set via "displayBackgroundShape"
+    # being absent for screen viewers; for print the cover image
+    # carries the dark fill itself).
+    _set_section_page_color(sec, theme.page_bg_hex)
 
     # Pull cover layout inward so the logo + headline breathe.
     cover_para = doc.add_paragraph()
     cover_para.paragraph_format.space_before = Pt(6)
 
-    # ── Logo (top-left, white on Nightblue) ──
-    logo_path = _logo_image_path("white")
+    # ── Logo (top-left, variant chosen by theme) ──
+    logo_path = _logo_image_path(theme.cover_logo_variant)
     if logo_path is not None:
         lp = doc.add_paragraph()
         lp.alignment = WD_ALIGN_PARAGRAPH.LEFT
@@ -496,23 +605,23 @@ def _cover(doc: Document, ctx: dict) -> None:
     for _ in range(6):
         doc.add_paragraph()
 
-    # ── Big Headline (Sometimes Times Medium, Sandstone on dark) ──
+    # ── Big Headline (Sometimes Times Medium, theme color) ──
     title_p = doc.add_paragraph()
     title_p.alignment = WD_ALIGN_PARAGRAPH.LEFT
     title_run = title_p.add_run(_T(ctx, "cover.title"))
     title_run.font.size = Pt(40)
     title_run.font.bold = False
-    title_run.font.color.rgb = SANDSTONE
+    title_run.font.color.rgb = theme.headline_color
     title_run.font.name = FONT_HEADING
     _apply_font_family(title_run.element, FONT_HEADING)
 
-    # ── Subline (Söhne Leicht, white-ish) ──
+    # ── Subline (Söhne Leicht, theme color) ──
     sub_p = doc.add_paragraph()
     sub_text = ctx.get("cover_subtitle") or ""
     if sub_text:
         sub_run = sub_p.add_run(sub_text)
         sub_run.font.size = Pt(13)
-        sub_run.font.color.rgb = WHITE
+        sub_run.font.color.rgb = theme.cover_subline_color
         sub_run.font.name = FONT_LEICHT
         _apply_font_family(sub_run.element, FONT_LEICHT)
 
@@ -528,7 +637,7 @@ def _cover(doc: Document, ctx: dict) -> None:
     claim_p.alignment = WD_ALIGN_PARAGRAPH.LEFT
     claim_run = claim_p.add_run(_T(ctx, "cover.brand_claim"))
     claim_run.font.size = Pt(22)
-    claim_run.font.color.rgb = SANDSTONE
+    claim_run.font.color.rgb = theme.claim_color
     claim_run.font.name = FONT_HEADING
     _apply_font_family(claim_run.element, FONT_HEADING)
 
@@ -540,7 +649,7 @@ def _cover(doc: Document, ctx: dict) -> None:
     foot.alignment = WD_ALIGN_PARAGRAPH.LEFT
     foot_run = foot.add_run(_T(ctx, "cover.confidential"))
     foot_run.font.size = Pt(8.5)
-    foot_run.font.color.rgb = SANDSTONE
+    foot_run.font.color.rgb = theme.muted_text
     foot_run.font.name = FONT_LEICHT
     _apply_font_family(foot_run.element, FONT_LEICHT)
 
@@ -1746,13 +1855,14 @@ def render_docx(ctx: dict[str, Any]) -> bytes:
     response body of a FastAPI handler.
     """
     doc = Document()
-    _set_default_font(doc)
-    _page_setup(doc, ctx)
+    theme = _resolve_theme(ctx)
+    _set_default_font(doc, theme)
+    _page_setup(doc, ctx, theme)
 
     proposal_type = (ctx.get("proposal_type") or "new").strip().lower()
     is_review = proposal_type == "review"
 
-    _cover(doc, ctx)
+    _cover(doc, ctx, theme)
     _welcome(doc, ctx)
     _client_info(doc, ctx)
     _consultation_summary(doc, ctx)

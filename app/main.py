@@ -1572,9 +1572,15 @@ async def client_proposal_docx(
     advisor_email: Optional[str] = None,
     advisor_phone: Optional[str] = None,
     proposal_type: Optional[str] = None,
+    theme: Optional[str] = None,
 ):
     """Editable Word-document version of the proposal — the primary
-    advisor working format per Jannick Bröring."""
+    advisor working format per Jannick Bröring.
+
+    ``?theme=light|dark`` toggles the brand variant: light is a
+    white-paper print look (default), dark switches to the brand's
+    Nightblue hero layout for on-screen presentation.
+    """
     lang_v, overrides_v, dca_v = _parse_proposal_query(
         lang, excluded, wishes, summary, execution_plan,
         dca_monthly, dca_horizon, dca_scope, dca_min_order,
@@ -1593,6 +1599,7 @@ async def client_proposal_docx(
         return JSONResponse({"error": "not_found"}, status_code=404)
     try:
         ctx = build_proposal_context(inp)
+        ctx["theme"] = (theme or "light").strip().lower()
         docx_bytes = render_proposal_docx(ctx)
     except Exception as e:
         logger.exception("Proposal DOCX render failed for %s: %s", client_id, e)
@@ -1779,6 +1786,7 @@ async def prospect_proposal_docx(
     consultation_date: Optional[str] = None,
     advisor_email: Optional[str] = None,
     advisor_phone: Optional[str] = None,
+    theme: Optional[str] = None,
 ):
     lang_v, overrides_v, dca_v = _parse_proposal_query(
         lang, excluded, wishes, summary, execution_plan,
@@ -1795,6 +1803,7 @@ async def prospect_proposal_docx(
     )
     try:
         ctx = build_proposal_context(inp)
+        ctx["theme"] = (theme or "light").strip().lower()
         docx_bytes = render_proposal_docx(ctx)
     except Exception as e:
         logger.exception("Prospect DOCX render failed: %s", e)
