@@ -889,7 +889,10 @@ def _portfolio_detail(doc: Document, ctx: dict) -> None:
         cr.font.italic = True
         cr.font.color.rgb = TEXT_MUTED
 
-    doc.add_page_break()
+    # No page break: _allocation_table continues this same merged
+    # "your portfolio in detail" section straight below, so the
+    # allocation finding sentence is not repeated on a second header.
+    doc.add_paragraph()
 
 
 def _wishes_section(doc: Document, ctx: dict) -> None:
@@ -910,75 +913,82 @@ def _wishes_section(doc: Document, ctx: dict) -> None:
     doc.add_page_break()
 
 
+def _dca_table(doc: Document, ctx: dict) -> None:
+    """Monthly Buy Schedule — the phased-build DCA table.
+
+    Rendered as a sub-block of the merged "your portfolio in detail"
+    section, directly under the recommended allocation, and only when
+    the client has a recurring-buy plan (``dca_rows`` present)."""
+    rows = ctx.get("dca_rows") or []
+    if not rows:
+        return
+    meta = ctx.get("dca_meta") or {}
+    doc.add_paragraph()
+    h = doc.add_paragraph()
+    hr = h.add_run(_T(ctx, "exhibit.phased_build"))
+    hr.font.bold = True
+    hr.font.size = Pt(12)
+    hr.font.color.rgb = NIGHTBLUE
+    sub2 = doc.add_paragraph()
+    sr2 = sub2.add_run(_T(ctx, "exhibit.phased_build_sub",
+                          horizon_months=meta.get("horizon_months", 0)))
+    sr2.font.size = Pt(9.5)
+    sr2.font.italic = True
+    sr2.font.color.rgb = TEXT_MUTED
+
+    table = doc.add_table(rows=1 + len(rows), cols=4)
+    headers = [
+        _T(ctx, "table.asset"),
+        _T(ctx, "table.weight_pct"),
+        _T(ctx, "table.monthly_buy"),
+        _T(ctx, "table.horizon_total"),
+    ]
+    for i, hd in enumerate(headers):
+        _set_cell_text(table.rows[0].cells[i], hd, bold=True, color=WHITE, size_pt=9.5)
+        _shade_cell(table.rows[0].cells[i], "010626")
+    for i, r in enumerate(rows, start=1):
+        cells = table.rows[i].cells
+        c = cells[0]
+        c.text = ""
+        p = c.paragraphs[0]
+        rt = p.add_run(r.get("ticker", ""))
+        rt.font.bold = True
+        rt.font.size = Pt(10)
+        rn = p.add_run(f"  {r.get('name', '')}")
+        rn.font.size = Pt(9)
+        rn.font.color.rgb = TEXT_MUTED
+        _set_cell_text(cells[1], f"{(r.get('portfolio_pct', 0) * 100):.2f}%",
+                       align=WD_ALIGN_PARAGRAPH.RIGHT, size_pt=9.5)
+        _set_cell_text(cells[2], _money(ctx, r.get("monthly_buy", 0)),
+                       align=WD_ALIGN_PARAGRAPH.RIGHT, size_pt=9.5)
+        _set_cell_text(cells[3], _money(ctx, r.get("horizon_total", 0)),
+                       align=WD_ALIGN_PARAGRAPH.RIGHT, size_pt=9.5)
+        if i % 2 == 0:
+            for cell in cells:
+                _shade_cell(cell, "F6F4F0")
+
+
 def _strategy_section(doc: Document, ctx: dict) -> None:
-    """Strategy / phased build. Falls back to PAM's default implementation
-    paragraph when no execution plan is drafted, keeping the section
-    informative for fresh clients."""
+    """Strategy section — the advisor's drafted execution-plan narrative.
+
+    The DCA Monthly Buy Schedule table now renders inside the merged
+    portfolio section (see _dca_table); this section carries only the
+    drafted execution plan. Falls back to PAM's default implementation
+    paragraph when no plan is drafted, so the page is never blank."""
     ov = ctx.get("overrides") or {}
     plan_md = ov.get("execution_plan_md", "")
-    rows = ctx.get("dca_rows") or []
-    if not (plan_md or rows):
-        # Use the auto-generated implementation paragraph + review cadence
-        # to ensure the strategy page is never blank.
+    if not plan_md:
+        # Auto-generated implementation paragraph + review cadence.
         _implementation_section(doc, ctx)
         return
 
     _section_header(doc, ctx, "page.strategy", _T(ctx, "exhibit.phased_build"))
-
-    if plan_md:
-        sub = doc.add_paragraph()
-        sr = sub.add_run(_T(ctx, "overrides.execution_sub"))
-        sr.font.size = Pt(9.5)
-        sr.font.italic = True
-        sr.font.color.rgb = TEXT_MUTED
-        _add_md_block(doc, plan_md)
-        doc.add_paragraph()
-
-    if rows:
-        meta = ctx.get("dca_meta") or {}
-        h = doc.add_paragraph()
-        hr = h.add_run(_T(ctx, "exhibit.phased_build"))
-        hr.font.bold = True
-        hr.font.size = Pt(12)
-        hr.font.color.rgb = NIGHTBLUE
-        sub2 = doc.add_paragraph()
-        sr2 = sub2.add_run(_T(ctx, "exhibit.phased_build_sub",
-                              horizon_months=meta.get("horizon_months", 0)))
-        sr2.font.size = Pt(9.5)
-        sr2.font.italic = True
-        sr2.font.color.rgb = TEXT_MUTED
-
-        table = doc.add_table(rows=1 + len(rows), cols=4)
-        headers = [
-            _T(ctx, "table.asset"),
-            _T(ctx, "table.weight_pct"),
-            _T(ctx, "table.monthly_buy"),
-            _T(ctx, "table.horizon_total"),
-        ]
-        for i, hd in enumerate(headers):
-            _set_cell_text(table.rows[0].cells[i], hd, bold=True, color=WHITE, size_pt=9.5)
-            _shade_cell(table.rows[0].cells[i], "010626")
-        for i, r in enumerate(rows, start=1):
-            cells = table.rows[i].cells
-            c = cells[0]
-            c.text = ""
-            p = c.paragraphs[0]
-            rt = p.add_run(r.get("ticker", ""))
-            rt.font.bold = True
-            rt.font.size = Pt(10)
-            rn = p.add_run(f"  {r.get('name', '')}")
-            rn.font.size = Pt(9)
-            rn.font.color.rgb = TEXT_MUTED
-            _set_cell_text(cells[1], f"{(r.get('portfolio_pct', 0) * 100):.2f}%",
-                           align=WD_ALIGN_PARAGRAPH.RIGHT, size_pt=9.5)
-            _set_cell_text(cells[2], _money(ctx, r.get("monthly_buy", 0)),
-                           align=WD_ALIGN_PARAGRAPH.RIGHT, size_pt=9.5)
-            _set_cell_text(cells[3], _money(ctx, r.get("horizon_total", 0)),
-                           align=WD_ALIGN_PARAGRAPH.RIGHT, size_pt=9.5)
-            if i % 2 == 0:
-                for cell in cells:
-                    _shade_cell(cell, "F6F4F0")
-
+    sub = doc.add_paragraph()
+    sr = sub.add_run(_T(ctx, "overrides.execution_sub"))
+    sr.font.size = Pt(9.5)
+    sr.font.italic = True
+    sr.font.color.rgb = TEXT_MUTED
+    _add_md_block(doc, plan_md)
     doc.add_page_break()
 
 
@@ -1436,7 +1446,7 @@ def _contact_section(doc: Document, ctx: dict) -> None:
     for i, v in enumerate(row_vals):
         _set_cell_text(table.rows[1].cells[i], v, size_pt=10.5)
 
-    doc.add_page_break()
+    # No trailing page break: Contact is the final section of the document.
 
 
 def _section_header(doc: Document, ctx: dict, page_tag_key: str, action_title: str) -> None:
@@ -1546,15 +1556,12 @@ def _exec_summary(doc: Document, ctx: dict) -> None:
 
 
 def _allocation_table(doc: Document, ctx: dict) -> None:
-    # In review mode the same per-ticker target table reads as "what we
-    # rebalance toward", so swap the kicker label to "Target allocation".
-    kicker_key = (
-        "page.target_allocation"
-        if (ctx.get("proposal_type") or "").lower() == "review"
-        else "page.allocation"
-    )
-    _section_header(doc, ctx, kicker_key, ctx.get("allocation_title", ""))
+    """Per-asset target weights table, tier-bar exhibit and (when the
+    client has a recurring-buy plan) the Monthly Buy Schedule.
 
+    No section header of its own: this is the lower half of the merged
+    "your portfolio in detail" section and renders straight below
+    _portfolio_detail, so the allocation finding sentence appears once."""
     rows = ctx.get("allocation_rows", [])
     h = doc.add_paragraph()
     hr = h.add_run(_T(ctx, "exhibit.per_asset_weights"))
@@ -1626,6 +1633,10 @@ def _allocation_table(doc: Document, ctx: dict) -> None:
         cr.font.italic = True
         cr.font.color.rgb = TEXT_MUTED
 
+    # Monthly Buy Schedule — rendered here, directly under the
+    # recommended allocation, only when the client has a DCA plan.
+    _dca_table(doc, ctx)
+
     doc.add_page_break()
 
 
@@ -1649,54 +1660,6 @@ def _overrides_sections(doc: Document, ctx: dict) -> None:
         sr.font.color.rgb = TEXT_MUTED
         _add_md_block(doc, body)
         doc.add_page_break()
-
-
-def _dca_section(doc: Document, ctx: dict) -> None:
-    rows = ctx.get("dca_rows") or []
-    if not rows:
-        return
-    meta = ctx.get("dca_meta") or {}
-    _section_header(doc, ctx, "page.phased_build", _T(ctx, "exhibit.phased_build"))
-    sub = doc.add_paragraph()
-    sr = sub.add_run(_T(ctx, "exhibit.phased_build_sub",
-                       horizon_months=meta.get("horizon_months", 0)))
-    sr.font.size = Pt(9.5)
-    sr.font.italic = True
-    sr.font.color.rgb = TEXT_MUTED
-
-    table = doc.add_table(rows=1 + len(rows), cols=4)
-    headers = [
-        _T(ctx, "table.asset"),
-        _T(ctx, "table.weight_pct"),
-        _T(ctx, "table.monthly_buy"),
-        _T(ctx, "table.horizon_total"),
-    ]
-    for i, hd in enumerate(headers):
-        _set_cell_text(table.rows[0].cells[i], hd, bold=True, color=WHITE, size_pt=9.5)
-        _shade_cell(table.rows[0].cells[i], "010626")
-
-    for i, r in enumerate(rows, start=1):
-        cells = table.rows[i].cells
-        c = cells[0]
-        c.text = ""
-        p = c.paragraphs[0]
-        rt = p.add_run(r.get("ticker", ""))
-        rt.font.bold = True
-        rt.font.size = Pt(10)
-        rn = p.add_run(f"  {r.get('name', '')}")
-        rn.font.size = Pt(9)
-        rn.font.color.rgb = TEXT_MUTED
-        _set_cell_text(cells[1], f"{(r.get('portfolio_pct', 0) * 100):.2f}%",
-                       align=WD_ALIGN_PARAGRAPH.RIGHT, size_pt=9.5)
-        _set_cell_text(cells[2], f"${r.get('monthly_buy', 0):,.0f}",
-                       align=WD_ALIGN_PARAGRAPH.RIGHT, size_pt=9.5)
-        _set_cell_text(cells[3], f"${r.get('horizon_total', 0):,.0f}",
-                       align=WD_ALIGN_PARAGRAPH.RIGHT, size_pt=9.5)
-        if i % 2 == 0:
-            for cell in cells:
-                _shade_cell(cell, "F6F4F0")
-
-    doc.add_page_break()
 
 
 def _macro_section(doc: Document, ctx: dict) -> None:
@@ -1830,6 +1793,9 @@ def _appendix(doc: Document, ctx: dict) -> None:
     fr.font.size = Pt(9.5)
     fr.font.color.rgb = TEXT_MUTED
 
+    # Page break so the Contact section (rendered last) starts fresh.
+    doc.add_page_break()
+
 
 # ── Public entry point ──────────────────────────────────────────────
 
@@ -1841,9 +1807,10 @@ def render_docx(ctx: dict[str, Any]) -> bytes:
 
     * ``"new"`` (default) — onboarding allocation proposal. Section
       order mirrors Jannick Bröring's WIP IA template: cover → welcome
-      → client info → consultation summary → market analysis →
-      portfolio detail → recommended allocation → strategy → macro
-      framing → fazit → wishes → fees → contact → appendix.
+      → client info → consultation summary → market analysis → merged
+      portfolio detail + recommended allocation (with the Monthly Buy
+      Schedule when the client has a DCA plan) → strategy → macro
+      framing → fazit → wishes → fees → appendix → contact.
 
     * ``"review"`` — existing-client portfolio review. Inserts three
       review-specific sections after market analysis: current
@@ -1884,8 +1851,10 @@ def render_docx(ctx: dict[str, Any]) -> bytes:
     _fazit_section(doc, ctx)
     _wishes_section(doc, ctx)
     _fees_section(doc, ctx)
-    _contact_section(doc, ctx)
+    # Contact is the closing page, after the appendix — which carries
+    # the methodology, data sources and compliance disclaimer.
     _appendix(doc, ctx)
+    _contact_section(doc, ctx)
 
     buf = io.BytesIO()
     doc.save(buf)
