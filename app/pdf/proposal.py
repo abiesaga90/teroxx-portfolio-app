@@ -1,10 +1,12 @@
-"""Assembly point for the proposal PDF render context.
+"""Assembly point for the proposal render context.
 
-The route handler at `/api/clients/{id}/proposal.{html,pdf}` is thin: it
-loads the client, gathers the inputs (live prices, allocation, macro
-state) and asks `build_proposal_context()` to assemble the dict that
-`proposal.html` consumes. This separation keeps the route easy to test
-and keeps the template free of business logic.
+`build_proposal_context()` gathers the inputs (live prices, allocation,
+macro state) and assembles the dict that `render_docx()` consumes.
+
+The DOCX is the single source of truth for the proposal: the PDF and
+Google Docs outputs are conversions of it (docx_to_pdf.py, google_docs.py),
+so the three outputs cannot drift apart. Do not add a separate PDF or
+HTML renderer here.
 """
 from __future__ import annotations
 
@@ -124,16 +126,6 @@ def _aggregate_asset_classes(rows: list[dict], *, lang: str) -> list[dict]:
             "share_pct": share,
         })
     return out
-
-
-def _abs_static_path(rel: str) -> str:
-    """Return a file:// URL pointing into app/static/.
-
-    WeasyPrint resolves URLs against the document base, but cross-platform
-    `file://` paths are easier when we render strings directly.
-    """
-    root = Path(__file__).resolve().parents[1] / "static"
-    return (root / rel).as_uri()
 
 
 def build_proposal_context(inp: ProposalInputs) -> dict[str, Any]:
@@ -409,7 +401,7 @@ def build_proposal_context(inp: ProposalInputs) -> dict[str, Any]:
         except Exception:
             dca_rows = []
 
-    # Brand SVGs embedded inline so WeasyPrint doesn't need to resolve URLs.
+    # Brand SVGs embedded inline so the renderer needs no URL resolution.
     static_img = Path(__file__).resolve().parents[1] / "static" / "img"
     try:
         teroxx_mark = (static_img / "teroxx-mark.svg").read_text(encoding="utf-8")
@@ -488,25 +480,4 @@ def build_proposal_context(inp: ProposalInputs) -> dict[str, Any]:
         "tier_label_i18n": lambda label: _i18n_tier_label(label, lang),
         "profile_label_i18n": lambda label: profile_label(label, lang),
         "regime_label_i18n": lambda label: _i18n_regime_label(label, lang),
-        # Helper for the template's <link rel="stylesheet" href="{{ static_url(...) }}">
-        "static_url": lambda rel: _abs_static_path(rel),
     }
-
-
-def render_pdf(ctx: dict[str, Any], html_only: bool = False) -> bytes | str:
-    """Render the proposal template to PDF bytes (or HTML string for preview)."""
-    from jinja2 import Environment, FileSystemLoader, select_autoescape
-    templates_dir = Path(__file__).resolve().parents[1] / "templates"
-    env = Environment(
-        loader=FileSystemLoader(str(templates_dir)),
-        autoescape=select_autoescape(["html", "xml"]),
-    )
-    tpl = env.get_template("proposal.html")
-    html = tpl.render(**ctx)
-    if html_only:
-        return html
-    # Lazy import so the module is loadable without the system deps for
-    # local dev / tests that only exercise the assembly path.
-    from weasyprint import HTML
-    base_url = str(Path(__file__).resolve().parents[1])  # app/
-    return HTML(string=html, base_url=base_url).write_pdf()

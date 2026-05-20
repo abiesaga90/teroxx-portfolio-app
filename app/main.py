@@ -35,8 +35,9 @@ from app.macro_regime import get_macro_regime, refresh_macro_regime
 from app.session_context import SessionContext, load_context, patch_context
 from app.db import SessionLocal, get_db, log_action
 from app.repos import clients as clients_repo
-from app.pdf.proposal import ProposalInputs, build_proposal_context, render_pdf as render_proposal_pdf
+from app.pdf.proposal import ProposalInputs, build_proposal_context
 from app.pdf.proposal_docx import render_docx as render_proposal_docx
+from app.pdf.docx_to_pdf import docx_bytes_to_pdf, DocxToPdfError
 from app import google_docs
 from fastapi.responses import Response
 from starlette.concurrency import run_in_threadpool
@@ -1233,8 +1234,8 @@ def _prospect_inputs_for(
 
     The advisor types a name (and optionally country / currency) on the
     Proposal card; we synthesise the client dict in memory so the rest
-    of the pipeline (build_proposal_context, render_pdf, render_docx)
-    is unchanged. proposal_type is forced to "new" here — prospects by
+    of the pipeline (build_proposal_context, render_docx) is unchanged.
+    proposal_type is forced to "new" here — prospects by
     definition have no holdings, so the review flow does not apply.
     """
     user = get_current_user(request) or {}
@@ -1312,7 +1313,7 @@ def _proposal_inputs_for(
     dca: Optional[dict] = None,
     proposal_type: Optional[str] = None,
 ) -> Optional[ProposalInputs]:
-    """Common assembly for /proposal.pdf, /proposal.html, /proposal.docx."""
+    """Common assembly for /proposal.pdf, /proposal.docx, /proposal.gdoc."""
     c = get_client(client_id)
     if not c:
         return None
@@ -1452,7 +1453,10 @@ async def client_proposal_pdf(
     advisor_email: Optional[str] = None,
     advisor_phone: Optional[str] = None,
     proposal_type: Optional[str] = None,
+    theme: Optional[str] = None,
 ):
+    """PDF proposal — a conversion of the canonical .docx (LibreOffice),
+    so it is structurally identical to the DOCX and Google Docs outputs."""
     lang_v, overrides_v, dca_v = _parse_proposal_query(
         lang, excluded, wishes, summary, execution_plan,
         dca_monthly, dca_horizon, dca_scope, dca_min_order,
@@ -1471,7 +1475,12 @@ async def client_proposal_pdf(
         return JSONResponse({"error": "not_found"}, status_code=404)
     try:
         ctx = build_proposal_context(inp)
-        pdf_bytes = render_proposal_pdf(ctx, html_only=False)
+        ctx["theme"] = (theme or "light").strip().lower()
+        docx_bytes = render_proposal_docx(ctx)
+        pdf_bytes = await run_in_threadpool(docx_bytes_to_pdf, docx_bytes)
+    except DocxToPdfError as e:
+        logger.error("Proposal PDF conversion failed for %s: %s", client_id, e)
+        return JSONResponse({"error": "pdf_conversion_failed", "detail": str(e)}, status_code=500)
     except Exception as e:
         logger.exception("Proposal PDF render failed for %s: %s", client_id, e)
         return JSONResponse({"error": "render_failed", "detail": str(e)}, status_code=500)
@@ -1497,57 +1506,6 @@ async def client_proposal_pdf(
         "Cache-Control": "private, no-store",
     }
     return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
-
-
-@app.get("/api/clients/{client_id}/proposal.html", response_class=HTMLResponse)
-async def client_proposal_html(
-    request: Request,
-    client_id: str,
-    profile: Optional[str] = None,
-    universe: Optional[str] = None,
-    portfolio_value: Optional[float] = None,
-    lang: Optional[str] = None,
-    excluded: Optional[str] = None,
-    wishes: Optional[str] = None,
-    summary: Optional[str] = None,
-    execution_plan: Optional[str] = None,
-    dca_monthly: Optional[float] = None,
-    dca_horizon: Optional[int] = None,
-    dca_scope: Optional[str] = None,
-    dca_min_order: Optional[float] = None,
-    salutation: Optional[str] = None,
-    welcome: Optional[str] = None,
-    market_analysis: Optional[str] = None,
-    conclusion: Optional[str] = None,
-    status_level: Optional[str] = None,
-    consultation_date: Optional[str] = None,
-    advisor_email: Optional[str] = None,
-    advisor_phone: Optional[str] = None,
-    proposal_type: Optional[str] = None,
-):
-    lang_v, overrides_v, dca_v = _parse_proposal_query(
-        lang, excluded, wishes, summary, execution_plan,
-        dca_monthly, dca_horizon, dca_scope, dca_min_order,
-        salutation=salutation, welcome=welcome,
-        market_analysis=market_analysis, conclusion=conclusion,
-        status_level=status_level, consultation_date=consultation_date,
-        advisor_email=advisor_email, advisor_phone=advisor_phone,
-    )
-    inp = _proposal_inputs_for(
-        request, client_id, profile=profile, universe=universe,
-        portfolio_value=portfolio_value, lang=lang_v,
-        overrides=overrides_v, dca=dca_v,
-        proposal_type=proposal_type,
-    )
-    if inp is None:
-        return JSONResponse({"error": "not_found"}, status_code=404)
-    try:
-        ctx = build_proposal_context(inp)
-        html = render_proposal_pdf(ctx, html_only=True)
-    except Exception as e:
-        logger.exception("Proposal HTML render failed for %s: %s", client_id, e)
-        return JSONResponse({"error": "render_failed", "detail": str(e)}, status_code=500)
-    return HTMLResponse(html)
 
 
 @app.get("/api/clients/{client_id}/proposal.docx")
@@ -1813,7 +1771,10 @@ async def prospect_proposal_pdf(
     consultation_date: Optional[str] = None,
     advisor_email: Optional[str] = None,
     advisor_phone: Optional[str] = None,
+    theme: Optional[str] = None,
 ):
+    """PDF proposal for a prospect — a conversion of the canonical .docx
+    (LibreOffice), structurally identical to the DOCX / Google Docs."""
     lang_v, overrides_v, dca_v = _parse_proposal_query(
         lang, excluded, wishes, summary, execution_plan,
         dca_monthly, dca_horizon, dca_scope, dca_min_order,
@@ -1829,7 +1790,12 @@ async def prospect_proposal_pdf(
     )
     try:
         ctx = build_proposal_context(inp)
-        pdf_bytes = render_proposal_pdf(ctx, html_only=False)
+        ctx["theme"] = (theme or "light").strip().lower()
+        docx_bytes = render_proposal_docx(ctx)
+        pdf_bytes = await run_in_threadpool(docx_bytes_to_pdf, docx_bytes)
+    except DocxToPdfError as e:
+        logger.error("Prospect PDF conversion failed: %s", e)
+        return JSONResponse({"error": "pdf_conversion_failed", "detail": str(e)}, status_code=500)
     except Exception as e:
         logger.exception("Prospect PDF render failed: %s", e)
         return JSONResponse({"error": "render_failed", "detail": str(e)}, status_code=500)
@@ -1851,55 +1817,6 @@ async def prospect_proposal_pdf(
         headers={"Content-Disposition": f'attachment; filename="{filename}"',
                  "Cache-Control": "private, no-store"},
     )
-
-
-@app.get("/api/prospect/proposal.html", response_class=HTMLResponse)
-async def prospect_proposal_html(
-    request: Request,
-    name: str = "",
-    country: Optional[str] = None,
-    currency: Optional[str] = None,
-    profile: Optional[str] = None,
-    universe: Optional[str] = None,
-    portfolio_value: Optional[float] = None,
-    lang: Optional[str] = None,
-    excluded: Optional[str] = None,
-    wishes: Optional[str] = None,
-    summary: Optional[str] = None,
-    execution_plan: Optional[str] = None,
-    dca_monthly: Optional[float] = None,
-    dca_horizon: Optional[int] = None,
-    dca_scope: Optional[str] = None,
-    dca_min_order: Optional[float] = None,
-    salutation: Optional[str] = None,
-    welcome: Optional[str] = None,
-    market_analysis: Optional[str] = None,
-    conclusion: Optional[str] = None,
-    status_level: Optional[str] = None,
-    consultation_date: Optional[str] = None,
-    advisor_email: Optional[str] = None,
-    advisor_phone: Optional[str] = None,
-):
-    lang_v, overrides_v, dca_v = _parse_proposal_query(
-        lang, excluded, wishes, summary, execution_plan,
-        dca_monthly, dca_horizon, dca_scope, dca_min_order,
-        salutation=salutation, welcome=welcome,
-        market_analysis=market_analysis, conclusion=conclusion,
-        status_level=status_level, consultation_date=consultation_date,
-        advisor_email=advisor_email, advisor_phone=advisor_phone,
-    )
-    inp = _prospect_inputs_for(
-        request, name=name, country=country, currency=currency,
-        profile=profile, universe=universe, portfolio_value=portfolio_value,
-        lang=lang_v, overrides=overrides_v, dca=dca_v,
-    )
-    try:
-        ctx = build_proposal_context(inp)
-        html = render_proposal_pdf(ctx, html_only=True)
-    except Exception as e:
-        logger.exception("Prospect HTML render failed: %s", e)
-        return JSONResponse({"error": "render_failed", "detail": str(e)}, status_code=500)
-    return HTMLResponse(html)
 
 
 @app.get("/api/prospect/proposal.docx")

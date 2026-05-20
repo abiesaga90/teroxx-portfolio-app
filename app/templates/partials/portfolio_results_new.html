@@ -218,7 +218,9 @@
 </div>
 {% endif %}
 
-<!-- Proposal export: editable DOCX (primary) + PDF/HTML previews.
+<!-- Proposal export: editable DOCX, plus PDF and Google Docs.
+     The DOCX is the single source of truth; PDF and Google Docs are
+     conversions of it, so all three outputs always match.
 
      Per Jannick Bröring 2026-05-14: the IA workflow requires per-client
      advisor edits (wishes, custom summary, execution analysis, comments)
@@ -234,8 +236,8 @@
         before sending.{% if gdocs_enabled %} <strong>Open in Google Docs</strong>
         creates the same editable proposal straight in Google Drive, ready to
         edit in the browser and share.{% endif %} Download the <strong>PDF</strong>
-        for a fixed, read-only version of the same auto-rendered content. HTML
-        preview opens in the browser without downloading anything.
+        for a fixed, read-only version. The PDF and Google Doc are both
+        generated from the DOCX, so all three always match.
     </p>
     <form id="proposal-export-form" class="controls" onsubmit="return false;"
           style="padding:0 32px 8px;flex-wrap:wrap;align-items:flex-end;gap:12px;">
@@ -293,9 +295,6 @@
         {% endif %}
         <a id="proposal-export-pdf" class="btn-accent" href="#" target="_blank" rel="noopener">
             Download PDF
-        </a>
-        <a id="proposal-export-html" class="btn-outline" href="#" target="_blank" rel="noopener">
-            HTML preview
         </a>
         <span id="proposal-export-status" style="font-size:0.72rem;color:var(--text-muted);width:100%;"></span>
     </form>
@@ -423,7 +422,6 @@
             anchorDocx: 'proposal-export-docx',
             anchorGdoc: 'proposal-export-gdoc',
             anchorPdf: 'proposal-export-pdf',
-            anchorHtml: 'proposal-export-html',
             status: 'proposal-export-status',
         };
         function v(id) {
@@ -495,7 +493,6 @@
             syncProposalTypeUI();
             document.getElementById(ids.anchorDocx).href = build('docx');
             document.getElementById(ids.anchorPdf).href = build('pdf');
-            document.getElementById(ids.anchorHtml).href = build('html');
             // Google Docs anchor only renders when the integration is
             // configured server-side — guard against a missing element.
             var gdocEl = document.getElementById(ids.anchorGdoc);
@@ -517,8 +514,7 @@
         // a stale href that someone else (incl. an old cached JS
         // version) might have left behind.
         var anchorKinds = {
-            anchorDocx: 'docx', anchorGdoc: 'gdoc',
-            anchorPdf: 'pdf', anchorHtml: 'html',
+            anchorDocx: 'docx', anchorGdoc: 'gdoc', anchorPdf: 'pdf',
         };
         Object.keys(anchorKinds).forEach(function (k) {
             var a = document.getElementById(ids[k]);

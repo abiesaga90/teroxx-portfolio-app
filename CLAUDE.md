@@ -47,13 +47,19 @@ app/
 
 ## Proposal Export
 Proposal card (Allocator results) exports the branded proposal as
-**DOCX** (primary), **PDF**, **HTML preview**, and **Google Docs**.
-- Endpoints: `/api/clients/{id}/proposal.{docx,pdf,html,gdoc}` and
-  `/api/prospect/proposal.{docx,pdf,html,gdoc}`.
-- `.gdoc` uploads the rendered DOCX to Google Drive (native Google Doc)
-  via `app/google_docs.py` and redirects to the doc. Button is hidden
-  until `GOOGLE_SERVICE_ACCOUNT_JSON` is set. Setup:
-  `docs/google_docs_setup.md`.
+**DOCX**, **PDF**, and **Google Docs**.
+- **`proposal_docx.py:render_docx` is the SINGLE SOURCE OF TRUTH.** The
+  PDF and Google Docs outputs are *conversions* of the DOCX, so the three
+  can never drift apart. Do NOT add a separate PDF/HTML renderer or
+  template — that divergence is exactly what this design removed.
+  - `.docx` — `render_docx(ctx)`, the canonical artifact.
+  - `.pdf` — DOCX converted via headless LibreOffice (`app/pdf/docx_to_pdf.py`).
+  - `.gdoc` — DOCX uploaded to Google Drive as a native Google Doc
+    (`app/google_docs.py`). Hidden until `GOOGLE_SERVICE_ACCOUNT_JSON` set.
+- Endpoints: `/api/clients/{id}/proposal.{docx,pdf,gdoc}` and
+  `/api/prospect/proposal.{docx,pdf,gdoc}`.
+- The Docker image installs `libreoffice-writer` + the brand fonts for
+  the PDF conversion. Google Docs setup: `docs/google_docs_setup.md`.
 
 ## Brand
 - Nightblue `#010626`, Deep Indigo `#060d43`, Electric Sky `#0b688c`
