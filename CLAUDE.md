@@ -45,6 +45,16 @@ app/
 7. **Rebalancing** — Current vs target → BUY/SELL actions
 8. **P&L Tracker** — Entry price/qty → unrealized P&L with live prices
 
+## Proposal Export
+Proposal card (Allocator results) exports the branded proposal as
+**DOCX** (primary), **PDF**, **HTML preview**, and **Google Docs**.
+- Endpoints: `/api/clients/{id}/proposal.{docx,pdf,html,gdoc}` and
+  `/api/prospect/proposal.{docx,pdf,html,gdoc}`.
+- `.gdoc` uploads the rendered DOCX to Google Drive (native Google Doc)
+  via `app/google_docs.py` and redirects to the doc. Button is hidden
+  until `GOOGLE_SERVICE_ACCOUNT_JSON` is set. Setup:
+  `docs/google_docs_setup.md`.
+
 ## Brand
 - Nightblue `#010626`, Deep Indigo `#060d43`, Electric Sky `#0b688c`
 - Sandstone `#bfb3a8`, Sunset Ember `#d06643`

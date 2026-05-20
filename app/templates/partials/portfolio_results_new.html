@@ -231,9 +231,11 @@
         ({{ profile }} · {{ universe }} · {{ portfolio_value|fmt_usd }}).
         Download the <strong>editable DOCX</strong> when the advisor will extend
         the artifact with client wishes, custom summary and execution narrative
-        before sending. Download the <strong>PDF</strong> for a fixed, read-only
-        version of the same auto-rendered content. HTML preview opens in the
-        browser without downloading anything.
+        before sending.{% if gdocs_enabled %} <strong>Open in Google Docs</strong>
+        creates the same editable proposal straight in Google Drive, ready to
+        edit in the browser and share.{% endif %} Download the <strong>PDF</strong>
+        for a fixed, read-only version of the same auto-rendered content. HTML
+        preview opens in the browser without downloading anything.
     </p>
     <form id="proposal-export-form" class="controls" onsubmit="return false;"
           style="padding:0 32px 8px;flex-wrap:wrap;align-items:flex-end;gap:12px;">
@@ -284,6 +286,11 @@
         <a id="proposal-export-docx" class="btn-accent" href="#" target="_blank" rel="noopener">
             Download editable DOCX
         </a>
+        {% if gdocs_enabled %}
+        <a id="proposal-export-gdoc" class="btn-accent" href="#" target="_blank" rel="noopener">
+            Open in Google Docs
+        </a>
+        {% endif %}
         <a id="proposal-export-pdf" class="btn-accent" href="#" target="_blank" rel="noopener">
             Download PDF
         </a>
@@ -414,6 +421,7 @@
             dcaMonthly: 'proposal-dca-monthly',
             dcaHorizon: 'proposal-dca-horizon',
             anchorDocx: 'proposal-export-docx',
+            anchorGdoc: 'proposal-export-gdoc',
             anchorPdf: 'proposal-export-pdf',
             anchorHtml: 'proposal-export-html',
             status: 'proposal-export-status',
@@ -488,6 +496,10 @@
             document.getElementById(ids.anchorDocx).href = build('docx');
             document.getElementById(ids.anchorPdf).href = build('pdf');
             document.getElementById(ids.anchorHtml).href = build('html');
+            // Google Docs anchor only renders when the integration is
+            // configured server-side — guard against a missing element.
+            var gdocEl = document.getElementById(ids.anchorGdoc);
+            if (gdocEl) gdocEl.href = build('gdoc');
         }
         [
             'client', 'proposalType', 'prospectName', 'prospectCountry', 'lang',
@@ -504,7 +516,10 @@
         // Anchor kinds → format. Computed on click so we never rely on
         // a stale href that someone else (incl. an old cached JS
         // version) might have left behind.
-        var anchorKinds = { anchorDocx: 'docx', anchorPdf: 'pdf', anchorHtml: 'html' };
+        var anchorKinds = {
+            anchorDocx: 'docx', anchorGdoc: 'gdoc',
+            anchorPdf: 'pdf', anchorHtml: 'html',
+        };
         Object.keys(anchorKinds).forEach(function (k) {
             var a = document.getElementById(ids[k]);
             if (!a) return;
@@ -526,6 +541,14 @@
                 document.body.appendChild(tmp);
                 tmp.click();
                 document.body.removeChild(tmp);
+                // Google Docs export renders + uploads server-side, so
+                // the new tab sits on a blank page for a few seconds
+                // before redirecting. Tell the advisor it is working.
+                if (k === 'anchorGdoc') {
+                    var sg = document.getElementById(ids.status);
+                    if (sg) sg.textContent =
+                        'Creating the Google Doc in the new tab. This can take a few seconds.';
+                }
             });
         });
         refresh();

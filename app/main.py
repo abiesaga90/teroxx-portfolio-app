@@ -37,7 +37,9 @@ from app.db import SessionLocal, get_db, log_action
 from app.repos import clients as clients_repo
 from app.pdf.proposal import ProposalInputs, build_proposal_context, render_pdf as render_proposal_pdf
 from app.pdf.proposal_docx import render_docx as render_proposal_docx
+from app import google_docs
 from fastapi.responses import Response
+from starlette.concurrency import run_in_threadpool
 
 
 def list_clients():
@@ -403,6 +405,7 @@ async def portfolio_partial(
         "price_age": price_age_str(),
         "universe": universe,
         "clients": list_clients(),
+        "gdocs_enabled": google_docs.is_configured(),
     })
 
 
@@ -1631,6 +1634,145 @@ async def client_proposal_docx(
     )
 
 
+# ── Google Docs proposal export ─────────────────────────────────────
+#
+# Uploads the rendered .docx to Google Drive, converted to a native
+# Google Doc, and redirects the browser to the editable document. Sits
+# next to the .docx download: same content, same query params, but the
+# advisor lands straight in an editable Google Doc instead of a file.
+
+
+def _gdoc_error_page(message: str, status_code: int = 502) -> HTMLResponse:
+    """Standalone page shown when the Google Docs export fails.
+
+    The .gdoc links open in a new tab, so a failure needs a readable
+    page rather than a raw JSON blob.
+    """
+    safe = (message or "Unknown error").replace("<", "&lt;").replace(">", "&gt;")
+    html = f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>Google Docs export</title>
+<style>
+  body {{ font-family: -apple-system, Segoe UI, Roboto, sans-serif;
+         background:#010626; color:#f4f1ec; margin:0; min-height:100vh;
+         display:flex; align-items:center; justify-content:center; }}
+  .box {{ max-width:520px; padding:40px; }}
+  h1 {{ font-size:1.15rem; margin:0 0 12px; color:#d06643; }}
+  p {{ font-size:0.9rem; line-height:1.6; color:#bfb3a8; }}
+  code {{ background:#060d43; padding:2px 6px; border-radius:4px;
+          font-size:0.82rem; }}
+</style></head>
+<body><div class="box">
+  <h1>Could not create the Google Doc</h1>
+  <p>{safe}</p>
+  <p>The editable <code>.docx</code> download still works. If this keeps
+     happening, check the Google Drive integration settings.</p>
+</div></body></html>"""
+    return HTMLResponse(html, status_code=status_code)
+
+
+def _gdoc_title(display_name: str) -> str:
+    """Title for the created Google Doc."""
+    name = (display_name or "Proposal").strip() or "Proposal"
+    return f"Teroxx Proposal - {name} - {datetime.utcnow().strftime('%Y-%m-%d')}"
+
+
+@app.get("/api/google-docs/status")
+async def google_docs_status():
+    """Diagnostics for the Google Drive integration setup."""
+    return JSONResponse(google_docs.status())
+
+
+@app.get("/api/clients/{client_id}/proposal.gdoc")
+async def client_proposal_gdoc(
+    request: Request,
+    client_id: str,
+    profile: Optional[str] = None,
+    universe: Optional[str] = None,
+    portfolio_value: Optional[float] = None,
+    lang: Optional[str] = None,
+    excluded: Optional[str] = None,
+    wishes: Optional[str] = None,
+    summary: Optional[str] = None,
+    execution_plan: Optional[str] = None,
+    dca_monthly: Optional[float] = None,
+    dca_horizon: Optional[int] = None,
+    dca_scope: Optional[str] = None,
+    dca_min_order: Optional[float] = None,
+    salutation: Optional[str] = None,
+    welcome: Optional[str] = None,
+    market_analysis: Optional[str] = None,
+    conclusion: Optional[str] = None,
+    status_level: Optional[str] = None,
+    consultation_date: Optional[str] = None,
+    advisor_email: Optional[str] = None,
+    advisor_phone: Optional[str] = None,
+    proposal_type: Optional[str] = None,
+    theme: Optional[str] = None,
+):
+    """Render the proposal and open it as an editable Google Doc.
+
+    Same content as ``proposal.docx`` — the .docx bytes are uploaded to
+    Google Drive, converted to a native Google Doc, and the browser is
+    redirected to the document.
+    """
+    if not google_docs.is_configured():
+        return _gdoc_error_page(
+            "Google Docs export is not configured on this deployment.",
+            status_code=503,
+        )
+    lang_v, overrides_v, dca_v = _parse_proposal_query(
+        lang, excluded, wishes, summary, execution_plan,
+        dca_monthly, dca_horizon, dca_scope, dca_min_order,
+        salutation=salutation, welcome=welcome,
+        market_analysis=market_analysis, conclusion=conclusion,
+        status_level=status_level, consultation_date=consultation_date,
+        advisor_email=advisor_email, advisor_phone=advisor_phone,
+    )
+    inp = _proposal_inputs_for(
+        request, client_id, profile=profile, universe=universe,
+        portfolio_value=portfolio_value, lang=lang_v,
+        overrides=overrides_v, dca=dca_v,
+        proposal_type=proposal_type,
+    )
+    if inp is None:
+        return _gdoc_error_page("Client not found.", status_code=404)
+    try:
+        ctx = build_proposal_context(inp)
+        ctx["theme"] = (theme or "light").strip().lower()
+        docx_bytes = render_proposal_docx(ctx)
+    except Exception as e:
+        logger.exception("Proposal DOCX render failed for %s: %s", client_id, e)
+        return _gdoc_error_page(f"Proposal render failed: {e}", status_code=500)
+    try:
+        url = await run_in_threadpool(
+            google_docs.upload_docx_as_gdoc, docx_bytes,
+            _gdoc_title(inp.client.get("name", client_id)),
+        )
+    except google_docs.GoogleDocsError as e:
+        logger.error("Google Docs upload failed for %s: %s", client_id, e)
+        return _gdoc_error_page(str(e))
+    except Exception as e:
+        logger.exception("Google Docs upload error for %s: %s", client_id, e)
+        return _gdoc_error_page(f"Unexpected error: {e}")
+    try:
+        with SessionLocal() as db:
+            log_action(
+                db,
+                actor_email=_actor_email(request),
+                action_type="proposal_generated",
+                client_id=client_id,
+                payload={"profile": inp.profile, "universe": inp.universe,
+                         "portfolio_value": inp.portfolio_value,
+                         "size_bytes": len(docx_bytes),
+                         "format": "gdoc", "lang": ctx.get("lang")},
+            )
+            db.commit()
+    except Exception as e:
+        logger.warning("Audit log for proposal_generated failed: %s", e)
+    return RedirectResponse(url, status_code=302)
+
+
 # ── Prospect (no-DB-record) proposal endpoints ──────────────────────
 #
 # Triggered when the advisor picks "New client" on the Proposal card.
@@ -1827,6 +1969,86 @@ async def prospect_proposal_docx(
         headers={"Content-Disposition": f'attachment; filename="{filename}"',
                  "Cache-Control": "private, no-store"},
     )
+
+
+@app.get("/api/prospect/proposal.gdoc")
+async def prospect_proposal_gdoc(
+    request: Request,
+    name: str = "",
+    country: Optional[str] = None,
+    currency: Optional[str] = None,
+    profile: Optional[str] = None,
+    universe: Optional[str] = None,
+    portfolio_value: Optional[float] = None,
+    lang: Optional[str] = None,
+    excluded: Optional[str] = None,
+    wishes: Optional[str] = None,
+    summary: Optional[str] = None,
+    execution_plan: Optional[str] = None,
+    dca_monthly: Optional[float] = None,
+    dca_horizon: Optional[int] = None,
+    dca_scope: Optional[str] = None,
+    dca_min_order: Optional[float] = None,
+    salutation: Optional[str] = None,
+    welcome: Optional[str] = None,
+    market_analysis: Optional[str] = None,
+    conclusion: Optional[str] = None,
+    status_level: Optional[str] = None,
+    consultation_date: Optional[str] = None,
+    advisor_email: Optional[str] = None,
+    advisor_phone: Optional[str] = None,
+    theme: Optional[str] = None,
+):
+    """Render a prospect proposal and open it as an editable Google Doc."""
+    if not google_docs.is_configured():
+        return _gdoc_error_page(
+            "Google Docs export is not configured on this deployment.",
+            status_code=503,
+        )
+    lang_v, overrides_v, dca_v = _parse_proposal_query(
+        lang, excluded, wishes, summary, execution_plan,
+        dca_monthly, dca_horizon, dca_scope, dca_min_order,
+        salutation=salutation, welcome=welcome,
+        market_analysis=market_analysis, conclusion=conclusion,
+        status_level=status_level, consultation_date=consultation_date,
+        advisor_email=advisor_email, advisor_phone=advisor_phone,
+    )
+    inp = _prospect_inputs_for(
+        request, name=name, country=country, currency=currency,
+        profile=profile, universe=universe, portfolio_value=portfolio_value,
+        lang=lang_v, overrides=overrides_v, dca=dca_v,
+    )
+    try:
+        ctx = build_proposal_context(inp)
+        ctx["theme"] = (theme or "light").strip().lower()
+        docx_bytes = render_proposal_docx(ctx)
+    except Exception as e:
+        logger.exception("Prospect DOCX render failed: %s", e)
+        return _gdoc_error_page(f"Proposal render failed: {e}", status_code=500)
+    try:
+        url = await run_in_threadpool(
+            google_docs.upload_docx_as_gdoc, docx_bytes,
+            _gdoc_title(name),
+        )
+    except google_docs.GoogleDocsError as e:
+        logger.error("Google Docs upload failed for prospect: %s", e)
+        return _gdoc_error_page(str(e))
+    except Exception as e:
+        logger.exception("Google Docs upload error for prospect: %s", e)
+        return _gdoc_error_page(f"Unexpected error: {e}")
+    try:
+        with SessionLocal() as db:
+            log_action(
+                db, actor_email=_actor_email(request),
+                action_type="prospect_proposal_generated", client_id=None,
+                payload={"name": name, "format": "gdoc", "lang": ctx.get("lang"),
+                         "portfolio_value": inp.portfolio_value,
+                         "size_bytes": len(docx_bytes)},
+            )
+            db.commit()
+    except Exception as e:
+        logger.warning("Audit log for prospect proposal failed: %s", e)
+    return RedirectResponse(url, status_code=302)
 
 
 # ── Client CRUD ──────────────────────────────────────────────────────
