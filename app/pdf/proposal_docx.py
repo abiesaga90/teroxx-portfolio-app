@@ -806,11 +806,20 @@ def _portfolio_detail(doc: Document, ctx: dict) -> None:
     lang = ctx.get("lang", I18N_DEFAULT)
 
     # ── Parameters block (Jannick table 3) ──
+    # Thematic baskets carry no defensive sleeve, so that row is replaced
+    # by the basket's weighting basis (market-cap vs fundamental score).
+    if ctx.get("is_basket"):
+        wl_key = ("weighting.market_cap"
+                  if ctx.get("weighting_label") == "market-cap"
+                  else "weighting.fundamental")
+        sleeve_or_weighting = (_T(ctx, "kpi.weighting"), _T(ctx, wl_key))
+    else:
+        sleeve_or_weighting = (_T(ctx, "kpi.defensive_sleeve"), f"{ctx.get('defensive_pct', 0):.0f}%")
     params = [
         (_T(ctx, "kpi.risk_profile"), profile_label(client.get("profile", ""), lang)),
         (_T(ctx, "table.asset"), ctx.get("universe", "")),
         (_T(ctx, "kpi.portfolio_value"), _money(ctx, ctx.get("portfolio_value", 0))),
-        (_T(ctx, "kpi.defensive_sleeve"), f"{ctx.get('defensive_pct', 0):.0f}%"),
+        sleeve_or_weighting,
         (_T(ctx, "kpi.positions"), str(ctx.get("allocation_count", 0))),
     ]
     h = doc.add_paragraph()
@@ -1570,7 +1579,9 @@ def _allocation_table(doc: Document, ctx: dict) -> None:
     hr.font.color.rgb = NIGHTBLUE
 
     sub = doc.add_paragraph()
-    sr = sub.add_run(_T(ctx, "exhibit.per_asset_weights_sub"))
+    _sub_key = ("exhibit.per_asset_weights_sub_basket" if ctx.get("is_basket")
+                else "exhibit.per_asset_weights_sub")
+    sr = sub.add_run(_T(ctx, _sub_key))
     sr.font.size = Pt(9)
     sr.font.italic = True
     sr.font.color.rgb = TEXT_MUTED
@@ -1759,7 +1770,7 @@ def _appendix(doc: Document, ctx: dict) -> None:
     hr.font.bold = True
     hr.font.size = Pt(12)
     hr.font.color.rgb = NIGHTBLUE
-    doc.add_paragraph(_T(ctx, "methodology.body"))
+    doc.add_paragraph(_T(ctx, "methodology.body_basket" if ctx.get("is_basket") else "methodology.body"))
 
     h2 = doc.add_paragraph()
     hr2 = h2.add_run(_T(ctx, "exhibit.data_sources"))

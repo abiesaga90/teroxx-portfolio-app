@@ -113,6 +113,9 @@ _STRINGS: dict[str, dict[str, str]] = {
         "de": "Berichtswährung {ccy}",
     },
     "kpi.defensive_sleeve": {"en": "Defensive sleeve", "de": "Defensive Komponente"},
+    "kpi.weighting": {"en": "Weighting", "de": "Gewichtung"},
+    "weighting.market_cap": {"en": "Market-cap, capped", "de": "Marktkapitalisierung, gedeckelt"},
+    "weighting.fundamental": {"en": "Fundamental score", "de": "Fundamental-Score"},
     "kpi.risk_profile": {"en": "Risk profile", "de": "Risikoprofil"},
     "kpi.positions": {"en": "{n} positions", "de": "{n} Positionen"},
     # Exhibit titles / subtitles
@@ -139,6 +142,10 @@ _STRINGS: dict[str, dict[str, str]] = {
     "exhibit.per_asset_weights_sub": {
         "en": "Sorted by target weight. The defensive sleeve is profile-driven and always included.",
         "de": "Sortiert nach Zielgewicht. Die defensive Komponente ist profilgesteuert und stets enthalten.",
+    },
+    "exhibit.per_asset_weights_sub_basket": {
+        "en": "Sorted by target weight. The basket is fully invested in-theme, with no defensive sleeve.",
+        "de": "Sortiert nach Zielgewicht. Die Basket ist vollständig themenbezogen investiert, ohne defensive Komponente.",
     },
     "exhibit.alloc_by_tier": {
         "en": "Allocation by tier",
@@ -262,6 +269,27 @@ _STRINGS: dict[str, dict[str, str]] = {
             "(Fundamentalmodus). Der Faktorstapel umfasst Werterfassungssignale, On-Chain-Fundamentaldaten "
             "und selektive Momentum-Overlays. Defensive Komponenten (USDC, EURC, PAXG) werden flach gegen "
             "ihre Referenzwährungen gehalten; eine Verzinsung wird weder impliziert noch gezahlt."
+        ),
+    },
+    "methodology.body_basket": {
+        "en": (
+            "This is a thematic sector basket from the Teroxx Portfolio Allocation Model v4.1: "
+            "a fully invested, single-theme allocation drawn only from assets in the Teroxx model "
+            "universe. The basket carries no defensive sleeve. Constituents are weighted either by "
+            "market capitalisation with a single-name cap (Market-cap mode) or by the model's "
+            "fundamental factor score (Fundamental mode); the factor stack includes value-accrual "
+            "signals, on-chain fundamentals and selective momentum overlays. Position the basket in "
+            "line with the client's overall risk budget at the portfolio level."
+        ),
+        "de": (
+            "Dies ist eine thematische Sektor-Basket aus dem Teroxx Portfolio Allocation Model v4.1: "
+            "eine vollständig investierte, themenbezogene Allokation, die ausschließlich aus Anlagen "
+            "des Teroxx-Modelluniversums besteht. Die Basket enthält keine defensive Komponente. Die "
+            "Bestandteile werden entweder nach Marktkapitalisierung mit einer Einzeltitelobergrenze "
+            "(Marktkapitalisierungsmodus) oder nach dem Fundamental-Faktor-Score des Modells "
+            "(Fundamentalmodus) gewichtet. Der Faktorstapel umfasst Werterfassungssignale, "
+            "On-Chain-Fundamentaldaten und selektive Momentum-Overlays. Die Basket sollte im Rahmen "
+            "des Gesamtrisikobudgets des Kunden positioniert werden."
         ),
     },
     "datasources.spot": {

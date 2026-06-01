@@ -17,7 +17,7 @@ from typing import Any, Iterable, Optional
 
 from app.data import (
     ASSET_REGULATORY_FLAGS, DISCLAIMERS, RATIONALE_LIBRARY, RATIONALE_TAGS,
-    ASSET_BY_TICKER, get_alloc_tier,
+    ASSET_BY_TICKER, get_alloc_tier, THEMATIC_BASKETS,
 )
 from app.engine import (
     compute_allocations, compute_dca,
@@ -34,6 +34,7 @@ from app.pdf.narrative import (
     cover_subtitle, exec_action_title, allocation_action_title, macro_action_title,
     exec_summary_bullets, macro_paragraph, implementation_default,
     rationale_paragraph, regime_bias,
+    basket_exec_action_title, basket_allocation_action_title,
 )
 from app.pdf.palette import PALETTE
 
@@ -76,6 +77,11 @@ class ProposalInputs:
     #               rebalance trade list. Heading wording shifts from
     #               "Recommended allocation" to "Target allocation".
     proposal_type: str = "new"
+    # Allocation mode passed to the engine: "Standard" (equal-weight
+    # within tier) or "Fundamental"/"VA Model"/"Enhanced Model"
+    # (factor-weighted). Must mirror whatever the advisor selected on the
+    # Portfolio tab, otherwise the proposal weights drift from the screen.
+    mode: str = "Standard"
 
 
 # Asset-class buckets for the directional summary table. The mapping
@@ -128,11 +134,27 @@ def _aggregate_asset_classes(rows: list[dict], *, lang: str) -> list[dict]:
     return out
 
 
+def _aggregate_basket_categories(rows: list[dict]) -> list[dict]:
+    """For thematic baskets, group the 'by asset class' table by each
+    token's own category (e.g. DeFi / DEX) rather than the profile macro
+    buckets, which would collapse a whole sector basket into one row."""
+    totals: dict[str, float] = {}
+    for r in rows:
+        asset = ASSET_BY_TICKER.get((r.get("ticker") or "").upper(), {})
+        cat = (r.get("category") or asset.get("category") or "Other").strip() or "Other"
+        totals[cat] = totals.get(cat, 0.0) + float(r.get("target_pct") or 0)
+    return [
+        {"key": cat, "label": cat, "share_pct": share}
+        for cat, share in sorted(totals.items(), key=lambda kv: -kv[1])
+    ]
+
+
 def build_proposal_context(inp: ProposalInputs) -> dict[str, Any]:
     client = inp.client
     profile = inp.profile or client.get("profile", "Balanced")
     universe = inp.universe
     portfolio_value = float(inp.portfolio_value or 100_000)
+    mode_use = inp.mode or "Standard"
 
     # 0a. Resolve language: explicit input > client record > domicile > EN.
     lang = resolve_lang(
@@ -157,7 +179,7 @@ def build_proposal_context(inp: ProposalInputs) -> dict[str, Any]:
 
     # 1. Target allocation from the engine. Drop zero-weighted rows and
     #    any tickers excluded by the client.
-    allocs_raw = compute_allocations(profile, universe, mode="Standard")
+    allocs_raw = compute_allocations(profile, universe, mode=mode_use)
     allocs = [
         a for a in allocs_raw
         if (a.get("alloc_pct") or 0) > 0
@@ -287,17 +309,32 @@ def build_proposal_context(inp: ProposalInputs) -> dict[str, Any]:
     if chunk:
         rationale_pages.append(chunk)
 
-    # 8. Narrative titles (lang-aware).
-    exec_title = exec_action_title(
-        profile=profile, n_assets=len(alloc_rows),
-        defensive_pct=defensive_pct, regime_label=regime_label, lang=lang,
-    )
+    # 8. Narrative titles (lang-aware). Thematic baskets are pure in-theme
+    #    index products (no defensive sleeve), so they use index-product
+    #    wording instead of the profile/sleeve framing.
+    is_basket = universe in THEMATIC_BASKETS
+    theme_label = universe.replace(" Basket", "") if is_basket else ""
+    weighting_label = "market-cap" if mode_use == "Standard" else "fundamental-score"
+    if is_basket:
+        exec_title = basket_exec_action_title(
+            theme=theme_label, n_assets=len(alloc_rows),
+            weighting_label=weighting_label, lang=lang,
+        )
+        allocation_title = basket_allocation_action_title(
+            theme=theme_label, top_names=top_names, top_share_pct=top_share,
+            weighting_label=weighting_label, lang=lang,
+        )
+    else:
+        exec_title = exec_action_title(
+            profile=profile, n_assets=len(alloc_rows),
+            defensive_pct=defensive_pct, regime_label=regime_label, lang=lang,
+        )
+        allocation_title = allocation_action_title(
+            top_names=top_names, top_share_pct=top_share,
+            growth_tier_share_pct=growth_pct, lang=lang,
+        )
     exec_bullets = exec_summary_bullets(
         regime_label=regime_label, notable_holdings=top_names, lang=lang,
-    )
-    allocation_title = allocation_action_title(
-        top_names=top_names, top_share_pct=top_share,
-        growth_tier_share_pct=growth_pct, lang=lang,
     )
     macro_title = macro_action_title(
         regime_label=regime_label, score=score, bias=bias_word, lang=lang,
@@ -308,7 +345,9 @@ def build_proposal_context(inp: ProposalInputs) -> dict[str, Any]:
         profile=profile, prepared_by=inp.prepared_by, date_str=inp.prepared_date,
         lang=lang,
     )
-    implementation_text = client.get("implementation_note") or implementation_default(profile=profile, lang=lang)
+    implementation_text = client.get("implementation_note") or implementation_default(
+        profile=profile, lang=lang, basket_theme=(theme_label if is_basket else ""),
+    )
 
     # 9. Disclaimer block based on domicile + language. DISCLAIMERS may
     # be keyed by either "DE" or ("DE", "de") depending on what's in
@@ -361,7 +400,7 @@ def build_proposal_context(inp: ProposalInputs) -> dict[str, Any]:
         review_pv = max(portfolio_value, live_value) if live_value > 0 else portfolio_value
         try:
             rebal = compute_rebalance_pnl(
-                profile=profile, universe=universe, mode="Standard",
+                profile=profile, universe=universe, mode=mode_use,
                 portfolio_value=review_pv, positions=positions_agg,
             )
         except Exception:
@@ -382,7 +421,7 @@ def build_proposal_context(inp: ProposalInputs) -> dict[str, Any]:
             dca_rows = compute_dca(
                 profile=profile,
                 universe=universe,
-                mode="Standard",
+                mode=mode_use,
                 monthly_amount=float(inp.dca.get("monthly_amount") or 0),
                 dca_scope=str(inp.dca.get("scope") or "all"),
                 horizon_months=int(inp.dca.get("horizon_months") or 6),
@@ -424,6 +463,9 @@ def build_proposal_context(inp: ProposalInputs) -> dict[str, Any]:
         "exec_bullets": exec_bullets,
         "allocation_count": len(alloc_rows),
         "defensive_pct": defensive_pct,
+        "is_basket": is_basket,
+        "basket_theme": theme_label,
+        "weighting_label": weighting_label,
         "donut_svg": donut_svg,
         "donut_legend": legend,
         "allocation_title": allocation_title,
@@ -467,7 +509,10 @@ def build_proposal_context(inp: ProposalInputs) -> dict[str, Any]:
         },
         # Asset-class aggregation for the directional summary table
         # (Jannick's template table 4). Each entry: {key, label, share_pct}.
-        "asset_class_rows": _aggregate_asset_classes(alloc_rows, lang=lang),
+        "asset_class_rows": (
+            _aggregate_basket_categories(alloc_rows) if is_basket
+            else _aggregate_asset_classes(alloc_rows, lang=lang)
+        ),
         # DCA section payload (empty when no DCA params supplied).
         "dca_rows": dca_rows,
         "dca_meta": dca_meta,

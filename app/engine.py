@@ -9,7 +9,7 @@ from __future__ import annotations
 import math
 from typing import Optional
 from app.data import (
-    ASSET_UNIVERSE, ASSET_BY_TICKER, ASSET_UNIVERSES,
+    ASSET_UNIVERSE, ASSET_BY_TICKER, ASSET_UNIVERSES, THEMATIC_BASKETS,
     FIXED_STRATEGIC, TIER_ALLOCATIONS,
     TEN_FACTOR_WEIGHTS, VA_FACTOR_WEIGHTS,
     VA_FDV_MCAP_NEUTRAL, VA_SUPPLY_DELTA_NORMALIZE,
@@ -27,7 +27,10 @@ from app.market_data import (
 
 
 def get_universe_tickers(universe_name: str) -> list[str]:
-    from app.data import ASSET_UNIVERSES
+    from app.data import ASSET_UNIVERSES, THEMATIC_BASKETS
+    basket = THEMATIC_BASKETS.get(universe_name)
+    if basket:
+        return list(basket["tickers"])
     explicit = ASSET_UNIVERSES.get(universe_name)
     if isinstance(explicit, list):
         return explicit
@@ -1108,7 +1111,103 @@ def compute_diversification_score(allocations: list[dict]) -> dict:
 
 # ── Allocation engine (unchanged) ──────────────────────────────────────
 
+def _basket_row(ticker: str, label: str, alloc_pct: float) -> dict:
+    asset = ASSET_BY_TICKER.get(ticker, {})
+    return {
+        "ticker": ticker,
+        "name": asset.get("name", ticker),
+        "tier": label,
+        "risk_tier": asset.get("risk_tier", ""),
+        "category": asset.get("category", ""),
+        "alloc_pct": alloc_pct,
+    }
+
+
+def _apply_single_name_cap(weights: dict[str, float], cap: float) -> dict[str, float]:
+    """Cap any single weight at `cap`, redistributing excess pro-rata to the
+    uncapped names. Iterates until stable. The effective cap is lifted to
+    max(cap, 1/n) so a basket with few names (e.g. 2) is never made unfillable.
+    Assumes the incoming weights sum to ~1.0."""
+    n = len(weights)
+    if n == 0:
+        return weights
+    eff_cap = max(cap, 1.0 / n)
+    w = dict(weights)
+    for _ in range(n):  # at most n names can hit the cap
+        capped = {t: v for t, v in w.items() if v > eff_cap + 1e-12}
+        if not capped:
+            break
+        excess = sum(v - eff_cap for v in capped.values())
+        for t in capped:
+            w[t] = eff_cap
+        free = {t: v for t, v in w.items() if t not in capped}
+        if not free:
+            break
+        free_total = sum(free.values())
+        if free_total > 0:
+            # Pro-rata by existing weight.
+            for t in free:
+                w[t] += excess * (w[t] / free_total)
+        else:
+            # All free names have zero weight (e.g. a constituent with no
+            # market-cap data). Spread the excess equally so the basket
+            # still sums to 1.0 instead of leaking weight.
+            share = excess / len(free)
+            for t in free:
+                w[t] += share
+    return w
+
+
+def compute_basket_allocations(basket_name: str, mode: str, profile: str) -> list[dict]:
+    """Pure in-theme index allocation for a thematic basket: 100% invested in
+    the basket's tokens, NO defensive sleeve. Weighting follows `mode`:
+      Standard    → market-cap weighted (live mcap), single-name capped
+      Fundamental → factor-score weighted (compute_enhanced_scores), capped
+    Falls back gracefully (mcap→equal, score→mcap→equal) when data is missing.
+    Returns the same row shape as compute_allocations."""
+    basket = THEMATIC_BASKETS[basket_name]
+    tickers = list(basket["tickers"])
+    cap = float(basket.get("cap", 0.35))
+    n = len(tickers)
+    if n == 0:
+        return []
+
+    def _equal() -> dict[str, float]:
+        return {t: 1.0 / n for t in tickers}
+
+    def _by_mcap() -> dict[str, float]:
+        mcaps = {}
+        for t in tickers:
+            info = get_market_info(t) or {}
+            mc = info.get("market_cap") or 0
+            if mc > 0:
+                mcaps[t] = float(mc)
+        total = sum(mcaps.values())
+        if total <= 0:
+            return _equal()
+        # Names missing mcap get 0 share; renormalise over those we have.
+        return {t: (mcaps.get(t, 0.0) / total) for t in tickers}
+
+    if mode in ("Fundamental", "VA Model", "Enhanced Model"):
+        scores = compute_enhanced_scores(profile, tickers)
+        pos = {t: max(float(scores.get(t, 0) or 0), 0.0) for t in tickers}
+        total = sum(pos.values())
+        weights = {t: pos[t] / total for t in tickers} if total > 0 else _by_mcap()
+    else:
+        weights = _by_mcap()
+
+    weights = _apply_single_name_cap(weights, cap)
+    label = basket_name.replace(" Basket", "")
+    rows = [_basket_row(t, label, weights.get(t, 0.0)) for t in tickers]
+    rows.sort(key=lambda r: -r["alloc_pct"])
+    return rows
+
+
 def compute_allocations(profile: str, universe: str, mode: str = "Standard") -> list[dict]:
+    # Thematic baskets are pure in-theme index products: no defensive sleeve,
+    # no tier buckets. Dispatch before the profile/tier machinery below.
+    if universe in THEMATIC_BASKETS:
+        return compute_basket_allocations(universe, mode, profile)
     # Defensive sleeve (USDC/EURC/PAXG) is profile-driven and always included,
     # regardless of universe selection. The universe scopes only the crypto sleeve.
     tickers = get_universe_tickers(universe)

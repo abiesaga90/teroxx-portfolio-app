@@ -18,7 +18,7 @@ from app.data import (
     RISK_PROFILES, ALLOCATION_MODES,
     DRAWDOWN_IMPACT, TEN_FACTOR_WEIGHTS,
     TIER_ALLOCATIONS, FIXED_STRATEGIC,
-    ASSET_UNIVERSE, ASSET_BY_TICKER,
+    ASSET_UNIVERSE, ASSET_BY_TICKER, THEMATIC_BASKETS,
     TOKEN_MAP, DEFILLAMA_MAP, DEFILLAMA_FEES_MAP,
 )
 from app.engine import (
@@ -66,10 +66,18 @@ from app.defi_health import refresh_defi_health, get_defi_health
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-UNIVERSE_OPTIONS = [
+MODEL_PORTFOLIOS = [
     "Teroxx Core (9)",
     "Teroxx Expanded (21)",
     "Teroxx Extended (40)",
+]
+THEMATIC_BASKET_NAMES = list(THEMATIC_BASKETS.keys())
+# Flat list kept for back-compat (comparison endpoint, defaults, etc.).
+UNIVERSE_OPTIONS = MODEL_PORTFOLIOS + THEMATIC_BASKET_NAMES
+# Grouped structure for the universe <select> optgroups.
+UNIVERSE_GROUPS = [
+    ("Model Portfolios", MODEL_PORTFOLIOS),
+    ("Thematic Baskets", THEMATIC_BASKET_NAMES),
 ]
 
 
@@ -305,6 +313,7 @@ async def index(request: Request):
         "current_user": user,
         "profiles": RISK_PROFILES,
         "universes": UNIVERSE_OPTIONS,
+        "universe_groups": UNIVERSE_GROUPS,
         "modes": ALLOCATION_MODES,
         "profile": profile,
         "universe": universe,
@@ -405,6 +414,7 @@ async def portfolio_partial(
         "fixed": FIXED_STRATEGIC,
         "price_age": price_age_str(),
         "universe": universe,
+        "mode": mode,
         "clients": list_clients(),
         "gdocs_enabled": google_docs.is_configured(),
     })
@@ -901,6 +911,7 @@ async def scenarios_compare_partial(
         "comp": comp,
         "profiles": RISK_PROFILES,
         "universes": universes,
+        "universe_groups": UNIVERSE_GROUPS,
         "saved_scenarios": saved_payload,
     })
 
@@ -1229,6 +1240,7 @@ def _prospect_inputs_for(
     lang: Optional[str] = None,
     overrides: Optional[dict] = None,
     dca: Optional[dict] = None,
+    mode: Optional[str] = None,
 ) -> ProposalInputs:
     """Assemble ProposalInputs for a brand-new prospect (no DB record).
 
@@ -1300,6 +1312,7 @@ def _prospect_inputs_for(
         overrides=overrides,
         dca=dca,
         proposal_type="new",
+        mode=(mode or "Standard"),
     )
 
 
@@ -1312,6 +1325,7 @@ def _proposal_inputs_for(
     overrides: Optional[dict] = None,
     dca: Optional[dict] = None,
     proposal_type: Optional[str] = None,
+    mode: Optional[str] = None,
 ) -> Optional[ProposalInputs]:
     """Common assembly for /proposal.pdf, /proposal.docx, /proposal.gdoc."""
     c = get_client(client_id)
@@ -1360,6 +1374,7 @@ def _proposal_inputs_for(
         overrides=overrides,
         dca=dca,
         proposal_type=(proposal_type or "new"),
+        mode=(mode or "Standard"),
     )
 
 
@@ -1453,6 +1468,7 @@ async def client_proposal_pdf(
     advisor_email: Optional[str] = None,
     advisor_phone: Optional[str] = None,
     proposal_type: Optional[str] = None,
+    mode: Optional[str] = None,
     theme: Optional[str] = None,
 ):
     """PDF proposal — a conversion of the canonical .docx (LibreOffice),
@@ -1469,7 +1485,7 @@ async def client_proposal_pdf(
         request, client_id, profile=profile, universe=universe,
         portfolio_value=portfolio_value, lang=lang_v,
         overrides=overrides_v, dca=dca_v,
-        proposal_type=proposal_type,
+        proposal_type=proposal_type, mode=mode,
     )
     if inp is None:
         return JSONResponse({"error": "not_found"}, status_code=404)
@@ -1533,6 +1549,7 @@ async def client_proposal_docx(
     advisor_email: Optional[str] = None,
     advisor_phone: Optional[str] = None,
     proposal_type: Optional[str] = None,
+    mode: Optional[str] = None,
     theme: Optional[str] = None,
 ):
     """Editable Word-document version of the proposal — the primary
@@ -1554,7 +1571,7 @@ async def client_proposal_docx(
         request, client_id, profile=profile, universe=universe,
         portfolio_value=portfolio_value, lang=lang_v,
         overrides=overrides_v, dca=dca_v,
-        proposal_type=proposal_type,
+        proposal_type=proposal_type, mode=mode,
     )
     if inp is None:
         return JSONResponse({"error": "not_found"}, status_code=404)
@@ -1666,6 +1683,7 @@ async def client_proposal_gdoc(
     advisor_email: Optional[str] = None,
     advisor_phone: Optional[str] = None,
     proposal_type: Optional[str] = None,
+    mode: Optional[str] = None,
     theme: Optional[str] = None,
 ):
     """Render the proposal and open it as an editable Google Doc.
@@ -1691,7 +1709,7 @@ async def client_proposal_gdoc(
         request, client_id, profile=profile, universe=universe,
         portfolio_value=portfolio_value, lang=lang_v,
         overrides=overrides_v, dca=dca_v,
-        proposal_type=proposal_type,
+        proposal_type=proposal_type, mode=mode,
     )
     if inp is None:
         return _gdoc_error_page("Client not found.", status_code=404)
@@ -1771,6 +1789,7 @@ async def prospect_proposal_pdf(
     consultation_date: Optional[str] = None,
     advisor_email: Optional[str] = None,
     advisor_phone: Optional[str] = None,
+    mode: Optional[str] = None,
     theme: Optional[str] = None,
 ):
     """PDF proposal for a prospect — a conversion of the canonical .docx
@@ -1786,7 +1805,7 @@ async def prospect_proposal_pdf(
     inp = _prospect_inputs_for(
         request, name=name, country=country, currency=currency,
         profile=profile, universe=universe, portfolio_value=portfolio_value,
-        lang=lang_v, overrides=overrides_v, dca=dca_v,
+        lang=lang_v, overrides=overrides_v, dca=dca_v, mode=mode,
     )
     try:
         ctx = build_proposal_context(inp)
@@ -1845,6 +1864,7 @@ async def prospect_proposal_docx(
     consultation_date: Optional[str] = None,
     advisor_email: Optional[str] = None,
     advisor_phone: Optional[str] = None,
+    mode: Optional[str] = None,
     theme: Optional[str] = None,
 ):
     lang_v, overrides_v, dca_v = _parse_proposal_query(
@@ -1858,7 +1878,7 @@ async def prospect_proposal_docx(
     inp = _prospect_inputs_for(
         request, name=name, country=country, currency=currency,
         profile=profile, universe=universe, portfolio_value=portfolio_value,
-        lang=lang_v, overrides=overrides_v, dca=dca_v,
+        lang=lang_v, overrides=overrides_v, dca=dca_v, mode=mode,
     )
     try:
         ctx = build_proposal_context(inp)
@@ -1914,6 +1934,7 @@ async def prospect_proposal_gdoc(
     consultation_date: Optional[str] = None,
     advisor_email: Optional[str] = None,
     advisor_phone: Optional[str] = None,
+    mode: Optional[str] = None,
     theme: Optional[str] = None,
 ):
     """Render a prospect proposal and open it as an editable Google Doc."""
@@ -1933,7 +1954,7 @@ async def prospect_proposal_gdoc(
     inp = _prospect_inputs_for(
         request, name=name, country=country, currency=currency,
         profile=profile, universe=universe, portfolio_value=portfolio_value,
-        lang=lang_v, overrides=overrides_v, dca=dca_v,
+        lang=lang_v, overrides=overrides_v, dca=dca_v, mode=mode,
     )
     try:
         ctx = build_proposal_context(inp)

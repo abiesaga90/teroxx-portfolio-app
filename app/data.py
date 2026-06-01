@@ -146,6 +146,64 @@ ASSET_UNIVERSE = [
 # Build lookup
 ASSET_BY_TICKER = {a["ticker"]: a for a in ASSET_UNIVERSE}
 
+# ── Thematic sector baskets ───────────────────────────────────────────────
+# Index-style products (cf. Bitwise / Grayscale / BitPanda): a curated,
+# 100%-in-theme allocation with NO defensive sleeve. Token weighting is
+# selectable via the existing Allocation Mode toggle:
+#   Standard     → market-cap weighted, single-name capped
+#   Fundamental  → factor-score weighted (compute_enhanced_scores)
+#
+# Constraint: every basket ticker must already live in one of the three
+# Teroxx model portfolios (Core 9 / Expanded 21 / Extended 40) — the 40-token
+# union — so baskets only hold assets the firm can actually acquire today.
+# `cap` is the per-name weight ceiling; the engine uses max(cap, 1/n) so thin
+# baskets (n<=2) stay fillable.
+THEMATIC_BASKETS = {
+    "DeFi Basket": {
+        "tickers": ["AAVE", "UNI", "COMP", "EUL", "PENDLE", "SYRUP",
+                    "ENA", "HYPE", "CRV", "SKY", "AERO"],
+        "cap": 0.35,
+        "blurb": "Decentralised finance: lending, DEXs, perps and yield infrastructure.",
+    },
+    "Smart-Contract L1 Basket": {
+        "tickers": ["ETH", "XRP", "ADA", "SOL", "TRX", "AVAX", "SUI", "ASTER", "DOT"],
+        "cap": 0.35,
+        "blurb": "Layer-1 smart-contract platforms and settlement networks.",
+    },
+    "AI & Compute Basket": {
+        "tickers": ["AR", "AKT", "RENDER", "VVV"],
+        "cap": 0.35,
+        "blurb": "Decentralised AI, GPU compute and permanent storage.",
+    },
+    "RWA Basket": {
+        # 2-name basket: cap > 0.5 so the weighting mode still tilts
+        # (a 0.50 cap would force a flat 50/50 in every mode).
+        "tickers": ["ONDO", "BUIDL"],
+        "cap": 0.70,
+        "blurb": "Tokenised real-world assets and on-chain treasuries.",
+    },
+    "Layer 2 Basket": {
+        "tickers": ["POL", "MNT", "ARB"],
+        "cap": 0.50,
+        "blurb": "Ethereum scaling networks and rollups.",
+    },
+    "Payments Basket": {
+        "tickers": ["LTC", "BCH"],
+        "cap": 0.70,
+        "blurb": "Established peer-to-peer payment networks.",
+    },
+}
+
+# Fail fast on a typo'd ticker or one that escaped the 40-token pool.
+_BASKET_ELIGIBLE_POOL = {
+    t for u in ("Teroxx Core (9)", "Teroxx Expanded (21)", "Teroxx Extended (40)")
+    for t in ASSET_UNIVERSES[u]
+}
+for _bname, _b in THEMATIC_BASKETS.items():
+    for _t in _b["tickers"]:
+        assert _t in ASSET_BY_TICKER, f"{_bname}: unknown ticker {_t}"
+        assert _t in _BASKET_ELIGIBLE_POOL, f"{_bname}: {_t} not in 40-token pool"
+
 # Fixed strategic allocations (stablecoins + gold)
 FIXED_STRATEGIC = {
     "USDC": {"Conservative": 0.35, "Balanced": 0.12, "Growth": 0.04, "Aggressive": 0.00},

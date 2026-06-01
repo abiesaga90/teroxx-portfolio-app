@@ -80,6 +80,42 @@ def allocation_action_title(
     )
 
 
+def basket_exec_action_title(
+    *, theme: str, n_assets: int, weighting_label: str, lang: str = "en"
+) -> str:
+    """Executive-summary finding for a thematic basket (no defensive sleeve)."""
+    if lang == "de":
+        wl = "nach Marktkapitalisierung" if weighting_label == "market-cap" else "nach Fundamental-Score"
+        return (
+            f"Wir empfehlen eine vollständig investierte {theme}-Basket über "
+            f"{n_assets} Titel, {wl} gewichtet, ohne defensiven Anteil."
+        )
+    wl = "market-cap" if weighting_label == "market-cap" else "fundamental-score"
+    return (
+        f"We recommend a fully invested {theme} basket across {n_assets} names, "
+        f"{wl} weighted, with no defensive sleeve."
+    )
+
+
+def basket_allocation_action_title(
+    *, theme: str, top_names: list[str], top_share_pct: float,
+    weighting_label: str, lang: str = "en"
+) -> str:
+    """Recommended-allocation finding for a thematic basket."""
+    top = ", ".join(top_names[:3]) if top_names else (theme + " leaders")
+    if lang == "de":
+        wl = "nach Marktkapitalisierung" if weighting_label == "market-cap" else "nach Fundamental-Score"
+        return (
+            f"Die {theme}-Basket gewichtet {wl} und konzentriert {top_share_pct:.0f}% "
+            f"auf die drei größten Titel ({top})."
+        )
+    wl = "market-cap" if weighting_label == "market-cap" else "fundamental-score"
+    return (
+        f"The {theme} basket is {wl} weighted, with {top_share_pct:.0f}% in its "
+        f"three largest names ({top})."
+    )
+
+
 def macro_action_title(*, regime_label: str, score: float, bias: str, lang: str = "en") -> str:
     """One-sentence finding for the Macro Framing page."""
     if lang == "de":
@@ -188,8 +224,33 @@ def implementation_default(
     dca_weeks: int = 6,
     rebalance_threshold_pp: int = 5,
     lang: str = "en",
+    basket_theme: str = "",
 ) -> str:
-    """Default implementation note. Editable per-client at the Workspace tab."""
+    """Default implementation note. Editable per-client at the Workspace tab.
+
+    When `basket_theme` is set the note describes a single-theme index basket
+    (no defensive sleeve, weight-drift rebalancing) instead of the profiled
+    sleeve-first build-out."""
+    if basket_theme:
+        if lang == "de":
+            return (
+                f"Wir empfehlen einen gestaffelten Aufbau: Neues Kapital wird über "
+                f"{dca_weeks} Wochen im Cost-Average-Verfahren vollständig in die "
+                f"{basket_theme}-Basket investiert, gewichtet gemäß der gewählten "
+                f"Methodik. Nach vollständiger Investition wird die Abweichung "
+                f"gegenüber den Zielgewichten überwacht; ein Rebalancing wird "
+                f"vorgeschlagen, sobald eine Einzelposition ihr Zielgewicht um "
+                f"{rebalance_threshold_pp} Prozentpunkte oder mehr überschreitet."
+            )
+        return (
+            f"We suggest a phased build-out: dollar-cost-average new capital fully "
+            f"into the {basket_theme} basket over {dca_weeks} weeks, weighted per the "
+            f"chosen methodology. Once funded, monitor drift against the target "
+            f"weights; rebalance when any single position exceeds its target weight "
+            f"by {rebalance_threshold_pp} percentage points or more. The basket holds "
+            f"no defensive sleeve, so position in line with the client's overall "
+            f"risk budget at the portfolio level."
+        )
     if lang == "de":
         return (
             f"Wir empfehlen einen gestaffelten Aufbau: Neues Kapital wird über "

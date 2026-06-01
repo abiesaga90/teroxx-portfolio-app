@@ -146,8 +146,12 @@
                 <div class="control-group">
                     <span class="control-label">Asset Universe</span>
                     <select name="universe" onchange="syncGlobal('universe', this.value)">
-                        {% for u in universes %}
-                        <option value="{{ u }}" {% if u == universe %}selected{% endif %}>{{ u }}</option>
+                        {% for group_label, group_universes in universe_groups %}
+                        <optgroup label="{{ group_label }}">
+                            {% for u in group_universes %}
+                            <option value="{{ u }}" {% if u == universe %}selected{% endif %}>{{ u }}</option>
+                            {% endfor %}
+                        </optgroup>
                         {% endfor %}
                     </select>
                 </div>
@@ -270,8 +274,12 @@
                     <div class="control-group">
                         <span class="control-label">Universe</span>
                         <select name="universe">
-                            {% for u in universes %}
-                            <option value="{{ u }}" {% if u == "Teroxx Core (9)" %}selected{% endif %}>{{ u }}</option>
+                            {% for group_label, group_universes in universe_groups %}
+                            <optgroup label="{{ group_label }}">
+                                {% for u in group_universes %}
+                                <option value="{{ u }}" {% if u == "Teroxx Core (9)" %}selected{% endif %}>{{ u }}</option>
+                                {% endfor %}
+                            </optgroup>
                             {% endfor %}
                         </select>
                     </div>

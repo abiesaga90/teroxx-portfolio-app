@@ -399,6 +399,7 @@
             profile: {{ profile|tojson }},
             universe: {{ universe|tojson }},
             portfolio_value: {{ (portfolio_value or 0)|tojson }},
+            mode: {{ (mode or 'Standard')|tojson }},
         };
         var ids = {
             client: 'proposal-export-client',
@@ -453,6 +454,7 @@
             params.set('profile', BASE_QS.profile || '');
             params.set('universe', BASE_QS.universe || '');
             params.set('portfolio_value', String(BASE_QS.portfolio_value || ''));
+            params.set('mode', BASE_QS.mode || 'Standard');
             if (ptype === 'review') {
                 params.set('proposal_type', 'review');
             } else {
