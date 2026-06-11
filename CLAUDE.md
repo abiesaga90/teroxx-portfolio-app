@@ -61,6 +61,25 @@ Proposal card (Allocator results) exports the branded proposal as
 - The Docker image installs `libreoffice-writer` + the brand fonts for
   the PDF conversion. Google Docs setup: `docs/google_docs_setup.md`.
 
+### v5.0 (2026-06-11)
+- **Vector charts:** charts embed as **EMF** (Word-native vector) via
+  `app/pdf/svg_to_emf.py` (same LibreOffice as the PDF step; one soffice
+  spawn for all charts). `_chart_bytes`/`_place_chart` in `proposal_docx.py`
+  resolve EMF then fall back to a high-DPI (2400px) PNG. Toggle with env
+  `TEROXX_VECTOR_CHARTS` (default on; set `0` to force PNG). `render_docx`
+  now spawns LibreOffice, so endpoints call it via `run_in_threadpool`.
+- **App↔proposal alignment:** the proposal is a faithful record of what the
+  advisor saw. A server-side `AllocationSnapshot` (token in the download URL,
+  `&snapshot=`) freezes the on-screen allocation; `build_proposal_context`
+  renders it verbatim and logs `proposal_snapshot_drift` if the engine moved.
+  Working settings (`default_universe/_alloc_mode/_portfolio_value`) persist
+  on the client record. App + proposal share `DEFAULT_ALLOC_MODE` (Fundamental).
+- **Cover:** full-bleed brand Nightblue via a behind-text image in the
+  first-page header (renders in Word AND the LibreOffice PDF; body stays white).
+- **i18n:** DE leaks fixed (no `{n}`/raw underscores; `Vertraulich` footer;
+  localized dates via `format_long_date`). Note: tier/role tags + EUR-by-
+  domicile default are deliberately deferred.
+
 ## Brand
 - Nightblue `#010626`, Deep Indigo `#060d43`, Electric Sky `#0b688c`
 - Sandstone `#bfb3a8`, Sunset Ember `#d06643`
