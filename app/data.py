@@ -543,6 +543,42 @@ RATIONALE_TAGS = {
     "CHZ":    "Consumer brand",
 }
 
+# German rationale tags, keyed to RATIONALE_TAGS. Common crypto anglicisms
+# (DEX, L1/L2, Lending, Yield, Oracle, RWA, Enterprise) are kept as-is, which
+# is idiomatic in German financial writing for an HNW digital-asset audience.
+RATIONALE_TAGS_DE = {
+    "USDC":   "Liquiditätspuffer",
+    "EURC":   "EUR-Liquidität",
+    "PAXG":   "Gold-Absicherung",
+    "BTC":    "Strategischer Anker",
+    "ETH":    "Abwicklungsschicht",
+    "BNB":    "Exchange-Token",
+    "XRP":    "Zahlungsnetz",
+    "ADA":    "L1-Alternative",
+    "POL":    "L2-Etabliert",
+    "MNT":    "L2-Herausforderer",
+    "AAVE":   "Lending-Marktführer",
+    "UNI":    "DEX-Marktführer",
+    "COMP":   "Lending-Klassiker",
+    "EUL":    "Lending-Wachstum",
+    "PENDLE": "Yield-Infrastruktur",
+    "SYRUP":  "Institutioneller Kredit",
+    "ENA":    "Synthetischer Dollar",
+    "ONDO":   "RWA-Tokenisierung",
+    "LINK":   "Oracle-Rückgrat",
+    "QNT":    "Enterprise-Infrastruktur",
+    "CHZ":    "Verbrauchermarke",
+}
+
+
+def rationale_tag(ticker: str, lang: str = "en") -> str:
+    """Short allocation-table role label for a ticker, localized. Falls back
+    to the English tag (then empty) when no German entry exists."""
+    en = RATIONALE_TAGS.get(ticker, "")
+    if lang == "de":
+        return RATIONALE_TAGS_DE.get(ticker, en)
+    return en
+
 # RATIONALE_LIBRARY holds the per-ticker paragraph templates used on the
 # Per-asset Rationale pages of the PDF. Placeholders in curly braces are
 # filled at render time by `app.pdf.narrative.rationale_paragraph()`;

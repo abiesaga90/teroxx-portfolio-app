@@ -17,6 +17,7 @@ from typing import Any, Iterable, Optional
 
 from app.data import (
     ASSET_REGULATORY_FLAGS, DISCLAIMERS, RATIONALE_LIBRARY, RATIONALE_TAGS,
+    rationale_tag as _rationale_tag,
     ASSET_BY_TICKER, get_alloc_tier, THEMATIC_BASKETS,
 )
 from app.engine import (
@@ -220,6 +221,19 @@ def build_proposal_context(inp: ProposalInputs) -> dict[str, Any]:
         domicile_country=client.get("domicile_country"),
     )
 
+    # 0a''. Default the reporting currency from domicile when the client record
+    # doesn't set one, so a German client sees EUR (formatted "500.000 €" by
+    # _money), not USD. An explicit client.currency always wins. CH/LI use CHF.
+    if not (client.get("currency") or "").strip():
+        _dom = (client.get("domicile_country") or "").upper()
+        _domicile_ccy = {
+            "DE": "EUR", "AT": "EUR", "NL": "EUR", "BE": "EUR", "FR": "EUR",
+            "IT": "EUR", "ES": "EUR", "IE": "EUR", "FI": "EUR", "PT": "EUR",
+            "LU": "EUR", "GR": "EUR", "CH": "CHF", "LI": "CHF", "GB": "GBP",
+        }
+        if _dom in _domicile_ccy:
+            client["currency"] = _domicile_ccy[_dom]
+
     # 0a'. Localise the prepared date now that lang is known. Callers pass an
     # ISO date (YYYY-MM-DD); format it with language-aware month names so a
     # German proposal reads "11. Juni 2026", not "11 June 2026". Any
@@ -293,7 +307,7 @@ def build_proposal_context(inp: ProposalInputs) -> dict[str, Any]:
         donut_slices,
         width=240, height=240,
         center_text=f"{len(allocs)}",
-        center_sub="positions",
+        center_sub=t("kpi.num_positions", lang),
     )
     legend = donut_legend(donut_slices)
 
@@ -315,7 +329,7 @@ def build_proposal_context(inp: ProposalInputs) -> dict[str, Any]:
             "target_pct": target_pct,
             "target_usd": target_usd,
             "flags": flags,
-            "rationale_tag": RATIONALE_TAGS.get(ticker, ""),
+            "rationale_tag": _rationale_tag(ticker, lang),
         })
 
     # 5. Defensive / growth split for the executive summary.

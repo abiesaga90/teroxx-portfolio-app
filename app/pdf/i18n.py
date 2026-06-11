@@ -203,7 +203,7 @@ _STRINGS: dict[str, dict[str, str]] = {
     "table.asset": {"en": "Asset", "de": "Anlage"},
     "table.tier": {"en": "Tier", "de": "Stufe"},
     "table.weight_pct": {"en": "Weight %", "de": "Gewicht %"},
-    "table.alloc_usd": {"en": "$ allocation", "de": "Zuteilung $"},
+    "table.alloc_usd": {"en": "Allocation", "de": "Zuteilung"},
     "table.role": {"en": "Role", "de": "Rolle"},
     "table.indicator": {"en": "Indicator", "de": "Indikator"},
     "table.category": {"en": "Category", "de": "Kategorie"},
