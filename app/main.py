@@ -4,8 +4,9 @@ Teroxx Portfolio Allocation Model — FastAPI Web App
 import asyncio
 import json
 import logging
+import secrets
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import FastAPI, Request, Form
@@ -33,7 +34,7 @@ from app.engine import (
 )
 from app.macro_regime import get_macro_regime, refresh_macro_regime
 from app.session_context import SessionContext, load_context, patch_context
-from app.db import SessionLocal, get_db, log_action
+from app.db import SessionLocal, get_db, log_action, AllocationSnapshot
 from app.repos import clients as clients_repo
 from app.pdf.proposal import ProposalInputs, build_proposal_context
 from app.pdf.proposal_docx import render_docx as render_proposal_docx
@@ -218,10 +219,17 @@ async def health():
 
 # ── User Preferences ───────────────────────────────────────────────
 
+# Single source of truth for the default allocation mode and universe. The
+# app and the proposal generator MUST agree on these, otherwise a proposal
+# generated without an explicit mode silently differs from what the advisor
+# saw on screen (the long-standing Fundamental-vs-Standard divergence).
+DEFAULT_ALLOC_MODE = "Fundamental"
+DEFAULT_UNIVERSE = "Teroxx Core (9)"
+
 PREF_DEFAULTS = {
     "profile": "Balanced",
-    "universe": "Teroxx Core (9)",
-    "mode": "Fundamental",
+    "universe": DEFAULT_UNIVERSE,
+    "mode": DEFAULT_ALLOC_MODE,
     "portfolio_value": 100000,
 }
 
@@ -238,6 +246,32 @@ async def save_prefs(request: Request):
     request.session["prefs"] = prefs
     # Mirror into SessionContext so the new context-aware surfaces stay in sync.
     patch_context(request, **{k: v for k, v in body.items() if k in PREF_KEYS})
+    # If a client is currently selected, persist the advisor's working
+    # assumptions onto the client record so a later proposal (even one called
+    # without explicit query args) recomputes the SAME allocation. Best-effort:
+    # a failure here must never break the pref save.
+    ctx = load_context(request)
+    if ctx.client_id:
+        field_map = {
+            "universe": "default_universe",
+            "mode": "default_alloc_mode",
+            "portfolio_value": "default_portfolio_value",
+        }
+        client_fields = {
+            col: body[pref] for pref, col in field_map.items() if pref in body
+        }
+        if client_fields:
+            try:
+                with SessionLocal() as db:
+                    c = clients_repo.get_client(db, ctx.client_id)
+                    if c:
+                        clients_repo.update_client(
+                            db, actor_email=_actor_email(request), client=c,
+                            fields=client_fields,
+                        )
+                        db.commit()
+            except Exception as e:  # noqa: BLE001
+                logger.warning("Persisting client working settings failed: %s", e)
     return {"ok": True}
 
 
@@ -353,7 +387,7 @@ async def portfolio_partial(
     request: Request,
     profile: str = Form("Balanced"),
     universe: str = Form("Teroxx Core (9)"),
-    mode: str = Form("Standard"),
+    mode: str = Form(DEFAULT_ALLOC_MODE),
     portfolio_value: float = Form(100000),
 ):
     positions = compute_portfolio(profile, universe, mode, portfolio_value)
@@ -503,7 +537,7 @@ async def dca_partial(
     request: Request,
     profile: str = Form("Balanced"),
     universe: str = Form("Teroxx Core (9)"),
-    mode: str = Form("Standard"),
+    mode: str = Form(DEFAULT_ALLOC_MODE),
     monthly_amount: float = Form(1000),
     dca_scope: str = Form("BTC + Large Cap"),
     horizon_months: int = Form(12),
@@ -559,7 +593,7 @@ async def dca_backtest_partial(
     request: Request,
     profile: str = Form("Balanced"),
     universe: str = Form("Teroxx Core (9)"),
-    mode: str = Form("Standard"),
+    mode: str = Form(DEFAULT_ALLOC_MODE),
     monthly_amount: float = Form(1000),
     dca_scope: str = Form("All Crypto"),
     months_back: int = Form(12),
@@ -612,7 +646,7 @@ async def rebalance_pnl_partial(
     request: Request,
     profile: str = Form("Balanced"),
     universe: str = Form("Teroxx Core (9)"),
-    mode: str = Form("Standard"),
+    mode: str = Form(DEFAULT_ALLOC_MODE),
     portfolio_value: float = Form(100000),
     positions_json: str = Form("{}"),
 ):
@@ -1226,6 +1260,82 @@ async def client_review_partial(request: Request, client_id: str = ""):
     })
 
 
+# ── Allocation snapshots ─────────────────────────────────────────────
+# A snapshot freezes the exact on-screen allocation when an advisor generates
+# a proposal, so the document is a faithful record of what they saw rather than
+# a later recompute. The proposal download is a plain <a href> GET, so only a
+# small token can travel in the URL; the authoritative rows live server-side.
+
+_SNAPSHOT_TTL_HOURS = 24
+
+
+@app.post("/api/proposal/snapshot")
+async def create_alloc_snapshot(request: Request):
+    """Capture the current on-screen allocation and return a token id.
+
+    The frontend calls this (debounced) whenever the allocation inputs change;
+    the returned id is appended to the proposal download URLs as &snapshot=<id>.
+    Recomputes from the posted profile/universe/mode so the stored rows are
+    byte-identical to what /api/portfolio drew (both call compute_allocations).
+    """
+    body = await request.json()
+    if not isinstance(body, dict):
+        return JSONResponse({"ok": False, "error": "invalid_body"}, status_code=400)
+    profile = (body.get("profile") or "Balanced").strip()
+    universe = (body.get("universe") or DEFAULT_UNIVERSE).strip()
+    alloc_mode = (body.get("mode") or DEFAULT_ALLOC_MODE).strip()
+    try:
+        portfolio_value = float(body.get("portfolio_value") or 0)
+    except (TypeError, ValueError):
+        portfolio_value = 0.0
+    try:
+        rows = compute_allocations(profile, universe, alloc_mode)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Snapshot compute failed: %s", e)
+        return JSONResponse({"ok": False, "error": "compute_failed"}, status_code=500)
+    token = secrets.token_urlsafe(18)
+    try:
+        with SessionLocal() as db:
+            # Opportunistic sweep of stale snapshots so the table stays small.
+            cutoff = datetime.utcnow() - timedelta(hours=_SNAPSHOT_TTL_HOURS)
+            db.query(AllocationSnapshot).filter(
+                AllocationSnapshot.created_at < cutoff
+            ).delete(synchronize_session=False)
+            db.add(AllocationSnapshot(
+                id=token,
+                client_id=(body.get("client_id") or None),
+                actor_email=_actor_email(request),
+                profile=profile, universe=universe, alloc_mode=alloc_mode,
+                portfolio_value=portfolio_value,
+                rows_json=json.dumps(rows),
+            ))
+            db.commit()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Snapshot persist failed: %s", e)
+        return JSONResponse({"ok": False, "error": "persist_failed"}, status_code=500)
+    return {"ok": True, "snapshot": token}
+
+
+def _load_alloc_snapshot(snapshot_id: Optional[str]) -> Optional[list[dict]]:
+    """Return the frozen allocation rows for a snapshot token, or None if the
+    token is missing, unknown, or older than the TTL. Failures are non-fatal:
+    a bad/expired token simply falls back to a fresh recompute."""
+    if not snapshot_id:
+        return None
+    try:
+        with SessionLocal() as db:
+            snap = db.get(AllocationSnapshot, snapshot_id.strip())
+            if not snap:
+                return None
+            age = datetime.utcnow() - snap.created_at.replace(tzinfo=None)
+            if age > timedelta(hours=_SNAPSHOT_TTL_HOURS):
+                return None
+            return json.loads(snap.rows_json)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Snapshot load failed for %s: %s", snapshot_id, e)
+        return None
+
+
 # ── Proposal PDF ─────────────────────────────────────────────────────
 
 
@@ -1241,6 +1351,7 @@ def _prospect_inputs_for(
     overrides: Optional[dict] = None,
     dca: Optional[dict] = None,
     mode: Optional[str] = None,
+    snapshot: Optional[str] = None,
 ) -> ProposalInputs:
     """Assemble ProposalInputs for a brand-new prospect (no DB record).
 
@@ -1253,8 +1364,11 @@ def _prospect_inputs_for(
     user = get_current_user(request) or {}
     ctx = load_context(request)
     profile_use = profile or "Balanced"
-    universe_use = universe or ctx.universe or "Teroxx Core (9)"
+    universe_use = universe or ctx.universe or DEFAULT_UNIVERSE
     pv = portfolio_value if portfolio_value is not None else (ctx.portfolio_value or 100_000)
+    # Prospects have no client record, so the persisted-default tier of the
+    # fallback chain does not apply: explicit arg → shared app default.
+    mode_use = mode or DEFAULT_ALLOC_MODE
 
     country_raw = (country or "").strip()
     # Heuristic: a 2-letter input is an ISO code (DE/AT/CH); anything
@@ -1305,14 +1419,16 @@ def _prospect_inputs_for(
         universe=universe_use,
         portfolio_value=float(pv),
         prepared_by=user.get("name") or user.get("email") or "Teroxx Advisory",
-        prepared_date=datetime.utcnow().strftime("%d %B %Y"),
+        # ISO date; localised to the proposal language in build_proposal_context.
+        prepared_date=datetime.utcnow().strftime("%Y-%m-%d"),
         macro_state=get_macro_regime(),
         spot_prices=spot,
         lang=lang,
         overrides=overrides,
         dca=dca,
         proposal_type="new",
-        mode=(mode or "Standard"),
+        mode=mode_use,
+        alloc_snapshot=_load_alloc_snapshot(snapshot),
     )
 
 
@@ -1326,6 +1442,7 @@ def _proposal_inputs_for(
     dca: Optional[dict] = None,
     proposal_type: Optional[str] = None,
     mode: Optional[str] = None,
+    snapshot: Optional[str] = None,
 ) -> Optional[ProposalInputs]:
     """Common assembly for /proposal.pdf, /proposal.docx, /proposal.gdoc."""
     c = get_client(client_id)
@@ -1333,9 +1450,16 @@ def _proposal_inputs_for(
         return None
     user = get_current_user(request) or {}
     ctx = load_context(request)
+    # Fallback chain: explicit query arg → persisted client default → session
+    # context → global default. The persisted client defaults (1B) keep a
+    # later proposal recomputing identically to what the advisor set up.
     profile_use = profile or c.get("profile") or "Balanced"
-    universe_use = universe or ctx.universe or "Teroxx Core (9)"
-    pv = portfolio_value if portfolio_value is not None else (ctx.portfolio_value or 100_000)
+    universe_use = universe or c.get("default_universe") or ctx.universe or DEFAULT_UNIVERSE
+    pv = (
+        portfolio_value if portfolio_value is not None
+        else (c.get("default_portfolio_value") or ctx.portfolio_value or 100_000)
+    )
+    mode_use = mode or c.get("default_alloc_mode") or DEFAULT_ALLOC_MODE
     # Live spot prices for all tickers in the universe — keeps rationale
     # pages from showing stale numbers.
     spot: dict[str, float] = {}
@@ -1367,14 +1491,16 @@ def _proposal_inputs_for(
         universe=universe_use,
         portfolio_value=float(pv),
         prepared_by=user.get("name") or user.get("email") or "Teroxx Advisory",
-        prepared_date=datetime.utcnow().strftime("%d %B %Y"),
+        # ISO date; localised to the proposal language in build_proposal_context.
+        prepared_date=datetime.utcnow().strftime("%Y-%m-%d"),
         macro_state=get_macro_regime(),
         spot_prices=spot,
         lang=lang_use,
         overrides=overrides,
         dca=dca,
         proposal_type=(proposal_type or "new"),
-        mode=(mode or "Standard"),
+        mode=mode_use,
+        alloc_snapshot=_load_alloc_snapshot(snapshot),
     )
 
 
@@ -1470,6 +1596,7 @@ async def client_proposal_pdf(
     proposal_type: Optional[str] = None,
     mode: Optional[str] = None,
     theme: Optional[str] = None,
+    snapshot: Optional[str] = None,
 ):
     """PDF proposal — a conversion of the canonical .docx (LibreOffice),
     so it is structurally identical to the DOCX and Google Docs outputs."""
@@ -1485,7 +1612,7 @@ async def client_proposal_pdf(
         request, client_id, profile=profile, universe=universe,
         portfolio_value=portfolio_value, lang=lang_v,
         overrides=overrides_v, dca=dca_v,
-        proposal_type=proposal_type, mode=mode,
+        proposal_type=proposal_type, mode=mode, snapshot=snapshot,
     )
     if inp is None:
         return JSONResponse({"error": "not_found"}, status_code=404)
@@ -1551,6 +1678,7 @@ async def client_proposal_docx(
     proposal_type: Optional[str] = None,
     mode: Optional[str] = None,
     theme: Optional[str] = None,
+    snapshot: Optional[str] = None,
 ):
     """Editable Word-document version of the proposal — the primary
     advisor working format per Jannick Bröring.
@@ -1571,7 +1699,7 @@ async def client_proposal_docx(
         request, client_id, profile=profile, universe=universe,
         portfolio_value=portfolio_value, lang=lang_v,
         overrides=overrides_v, dca=dca_v,
-        proposal_type=proposal_type, mode=mode,
+        proposal_type=proposal_type, mode=mode, snapshot=snapshot,
     )
     if inp is None:
         return JSONResponse({"error": "not_found"}, status_code=404)
@@ -1685,6 +1813,7 @@ async def client_proposal_gdoc(
     proposal_type: Optional[str] = None,
     mode: Optional[str] = None,
     theme: Optional[str] = None,
+    snapshot: Optional[str] = None,
 ):
     """Render the proposal and open it as an editable Google Doc.
 
@@ -1709,7 +1838,7 @@ async def client_proposal_gdoc(
         request, client_id, profile=profile, universe=universe,
         portfolio_value=portfolio_value, lang=lang_v,
         overrides=overrides_v, dca=dca_v,
-        proposal_type=proposal_type, mode=mode,
+        proposal_type=proposal_type, mode=mode, snapshot=snapshot,
     )
     if inp is None:
         return _gdoc_error_page("Client not found.", status_code=404)
@@ -1791,6 +1920,7 @@ async def prospect_proposal_pdf(
     advisor_phone: Optional[str] = None,
     mode: Optional[str] = None,
     theme: Optional[str] = None,
+    snapshot: Optional[str] = None,
 ):
     """PDF proposal for a prospect — a conversion of the canonical .docx
     (LibreOffice), structurally identical to the DOCX / Google Docs."""
@@ -1805,7 +1935,7 @@ async def prospect_proposal_pdf(
     inp = _prospect_inputs_for(
         request, name=name, country=country, currency=currency,
         profile=profile, universe=universe, portfolio_value=portfolio_value,
-        lang=lang_v, overrides=overrides_v, dca=dca_v, mode=mode,
+        lang=lang_v, overrides=overrides_v, dca=dca_v, mode=mode, snapshot=snapshot,
     )
     try:
         ctx = build_proposal_context(inp)
@@ -1866,6 +1996,7 @@ async def prospect_proposal_docx(
     advisor_phone: Optional[str] = None,
     mode: Optional[str] = None,
     theme: Optional[str] = None,
+    snapshot: Optional[str] = None,
 ):
     lang_v, overrides_v, dca_v = _parse_proposal_query(
         lang, excluded, wishes, summary, execution_plan,
@@ -1878,7 +2009,7 @@ async def prospect_proposal_docx(
     inp = _prospect_inputs_for(
         request, name=name, country=country, currency=currency,
         profile=profile, universe=universe, portfolio_value=portfolio_value,
-        lang=lang_v, overrides=overrides_v, dca=dca_v, mode=mode,
+        lang=lang_v, overrides=overrides_v, dca=dca_v, mode=mode, snapshot=snapshot,
     )
     try:
         ctx = build_proposal_context(inp)
@@ -1936,6 +2067,7 @@ async def prospect_proposal_gdoc(
     advisor_phone: Optional[str] = None,
     mode: Optional[str] = None,
     theme: Optional[str] = None,
+    snapshot: Optional[str] = None,
 ):
     """Render a prospect proposal and open it as an editable Google Doc."""
     if not google_docs.is_configured():
@@ -1954,7 +2086,7 @@ async def prospect_proposal_gdoc(
     inp = _prospect_inputs_for(
         request, name=name, country=country, currency=currency,
         profile=profile, universe=universe, portfolio_value=portfolio_value,
-        lang=lang_v, overrides=overrides_v, dca=dca_v, mode=mode,
+        lang=lang_v, overrides=overrides_v, dca=dca_v, mode=mode, snapshot=snapshot,
     )
     try:
         ctx = build_proposal_context(inp)

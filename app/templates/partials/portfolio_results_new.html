@@ -399,8 +399,35 @@
             profile: {{ profile|tojson }},
             universe: {{ universe|tojson }},
             portfolio_value: {{ (portfolio_value or 0)|tojson }},
-            mode: {{ (mode or 'Standard')|tojson }},
+            mode: {{ (mode or 'Fundamental')|tojson }},
         };
+        // Token for the allocation snapshot captured at render time. Travels
+        // in the proposal URL (&snapshot=<id>) so the document is a faithful
+        // record of THIS on-screen allocation, not a later recompute. The
+        // partial re-renders whenever the allocation inputs change, so one
+        // capture per render reflects the current screen.
+        var snapshotToken = '';
+        function captureSnapshot() {
+            try {
+                fetch('/api/proposal/snapshot', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        profile: BASE_QS.profile,
+                        universe: BASE_QS.universe,
+                        mode: BASE_QS.mode,
+                        portfolio_value: BASE_QS.portfolio_value,
+                        client_id: (document.getElementById('proposal-export-client') || {}).value || null,
+                    }),
+                }).then(function (r) { return r.ok ? r.json() : null; })
+                  .then(function (d) {
+                      if (d && d.snapshot) {
+                          snapshotToken = d.snapshot;
+                          if (typeof refresh === 'function') refresh();
+                      }
+                  }).catch(function () { /* non-fatal: falls back to recompute */ });
+            } catch (e) { /* non-fatal */ }
+        }
         var ids = {
             client: 'proposal-export-client',
             proposalType: 'proposal-export-type',
@@ -454,7 +481,7 @@
             params.set('profile', BASE_QS.profile || '');
             params.set('universe', BASE_QS.universe || '');
             params.set('portfolio_value', String(BASE_QS.portfolio_value || ''));
-            params.set('mode', BASE_QS.mode || 'Standard');
+            params.set('mode', BASE_QS.mode || 'Fundamental');
             if (ptype === 'review') {
                 params.set('proposal_type', 'review');
             } else {
@@ -478,6 +505,8 @@
                 params.set('dca_horizon', v('dcaHorizon') || '6');
                 params.set('dca_scope', 'all');
             }
+            // Freeze the on-screen allocation into the document when available.
+            if (snapshotToken) params.set('snapshot', snapshotToken);
             return basePath + '?' + params.toString();
         }
         function syncProposalTypeUI() {
@@ -550,6 +579,9 @@
             });
         });
         refresh();
+        // Capture the snapshot for the allocation currently on screen. When it
+        // returns, refresh() re-runs to stamp the token into the export links.
+        captureSnapshot();
     })();
     </script>
 </div>

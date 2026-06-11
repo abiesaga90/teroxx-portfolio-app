@@ -91,6 +91,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "de": "Streng vertraulich. Erstellt von",
     },
     "running.footer_for": {"en": "for", "de": "für"},
+    # Page footer (left side, next to the client name).
+    "running.confidential": {"en": "Confidential", "de": "Vertraulich"},
     # Page tags
     "page.exec_summary": {"en": "Executive summary", "de": "Zusammenfassung"},
     "page.allocation": {"en": "Recommended allocation", "de": "Empfohlene Allokation"},
@@ -118,6 +120,8 @@ _STRINGS: dict[str, dict[str, str]] = {
     "weighting.fundamental": {"en": "Fundamental score", "de": "Fundamental-Score"},
     "kpi.risk_profile": {"en": "Risk profile", "de": "Risikoprofil"},
     "kpi.positions": {"en": "{n} positions", "de": "{n} Positionen"},
+    # Plain noun for label/value KPI tables (the value column carries the count).
+    "kpi.num_positions": {"en": "Positions", "de": "Positionen"},
     # Exhibit titles / subtitles
     "exhibit.what_this_means": {
         "en": "What this means",
@@ -693,6 +697,29 @@ def regime_label(label: str, lang: str = DEFAULT) -> str:
     return entry.get(lang) or entry.get(DEFAULT) or label
 
 
+# Long-form month names per language. ``strftime("%B")`` follows the process
+# locale (always English on our servers), so dates must be formatted from the
+# day/month/year parts against this table instead.
+_MONTH_NAMES = {
+    "en": ["January", "February", "March", "April", "May", "June",
+           "July", "August", "September", "October", "November", "December"],
+    "de": ["Januar", "Februar", "März", "April", "Mai", "Juni",
+           "Juli", "August", "September", "Oktober", "November", "Dezember"],
+}
+
+
+def format_long_date(d, lang: str = DEFAULT) -> str:
+    """Localise a date/datetime to a long form.
+
+    en → "11 June 2026"   de → "11. Juni 2026"
+    """
+    months = _MONTH_NAMES.get(lang) or _MONTH_NAMES[DEFAULT]
+    month = months[d.month - 1]
+    if lang == "de":
+        return f"{d.day}. {month} {d.year}"
+    return f"{d.day} {month} {d.year}"
+
+
 __all__ = [
     "DEFAULT",
     "SUPPORTED",
@@ -701,4 +728,5 @@ __all__ = [
     "profile_label",
     "tier_label",
     "regime_label",
+    "format_long_date",
 ]
