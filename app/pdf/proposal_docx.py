@@ -1814,9 +1814,9 @@ def _allocation_table(doc: Document, ctx: dict) -> None:
         r2 = p.add_run(f"  {row.get('name', '')}")
         r2.font.size = Pt(9)
         r2.font.color.rgb = TEXT_MUTED
-        _set_cell_text(cells[1], tier_label(row.get("tier", ""), lang), size_pt=9.5)
+        _set_cell_text(cells[1], tier_label(row.get("tier_label") or row.get("tier", ""), lang), size_pt=9.5)
         _set_cell_text(cells[2], f"{row.get('target_pct', 0):.2f}%", align=WD_ALIGN_PARAGRAPH.RIGHT, size_pt=9.5)
-        _set_cell_text(cells[3], f"${row.get('target_usd', 0):,.0f}", align=WD_ALIGN_PARAGRAPH.RIGHT, size_pt=9.5)
+        _set_cell_text(cells[3], _money(ctx, row.get('target_usd', 0)), align=WD_ALIGN_PARAGRAPH.RIGHT, size_pt=9.5)
         _set_cell_text(cells[4], row.get("rationale_tag", ""), size_pt=9.5, color=TEXT_MUTED)
         # Zebra stripe
         if i % 2 == 0:
