@@ -425,6 +425,19 @@ DEFILLAMA_MAP = {
     "AERO": "aerodrome-slipstream", "EUL": "euler-v2", "AKT": "akash-network",
 }
 
+# Ticker -> DeFiLlama chain name (as returned by /v2/chains). The /protocols
+# slugs in DEFILLAMA_MAP only cover DeFi *protocols*, so L1/L2 chains (Polygon,
+# Mantle, XRP Ledger, ...) would otherwise show NO TVL on the Data tab. This map
+# fills chain-level TVL. Names not present in /v2/chains are skipped silently.
+DEFILLAMA_CHAIN_MAP = {
+    "BTC": "Bitcoin", "ETH": "Ethereum", "SOL": "Solana", "BNB": "BSC",
+    "POL": "Polygon", "MNT": "Mantle", "XRP": "XRPL", "ADA": "Cardano",
+    "AVAX": "Avalanche", "ARB": "Arbitrum", "SUI": "Sui", "TRX": "Tron",
+    "TON": "TON", "NEAR": "Near", "APT": "Aptos", "HYPE": "Hyperliquid L1",
+    "OP": "OP Mainnet", "ATOM": "Cosmos", "FIL": "Filecoin", "ALGO": "Algorand",
+    "HBAR": "Hedera", "ICP": "ICP",
+}
+
 # DefiLlama per-protocol TVL history mapping
 # "chain:{name}" for L1 chain TVL (historicalChainTvl endpoint)
 # "protocol:{slug}" for protocol TVL (/protocol/{slug} endpoint)

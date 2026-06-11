@@ -12,7 +12,7 @@ from typing import Optional
 
 import httpx
 
-from app.data import TOKEN_MAP, ASSET_UNIVERSE, DEFILLAMA_MAP, DEFILLAMA_FEES_MAP, DEFILLAMA_TVL_MAP, MESSARI_NETWORK_MAP
+from app.data import TOKEN_MAP, ASSET_UNIVERSE, DEFILLAMA_MAP, DEFILLAMA_FEES_MAP, DEFILLAMA_TVL_MAP, DEFILLAMA_CHAIN_MAP, MESSARI_NETWORK_MAP
 
 logger = logging.getLogger(__name__)
 
@@ -525,10 +525,34 @@ async def fetch_defillama_data() -> dict[str, dict]:
         except Exception as e:
             logger.warning(f"DefiLlama fees fetch failed: {e}")
 
+        # 3. Chain-level TVL. The /protocols slugs above only cover DeFi
+        #    protocols, so L1/L2 chains (Polygon, Mantle, XRPL, ...) would show
+        #    no TVL otherwise. Merge their chain TVL from /v2/chains here.
+        try:
+            resp = await client.get("https://api.llama.fi/v2/chains")
+            resp.raise_for_status()
+            tvl_by_chain = {
+                (ch.get("name") or "").lower(): (ch.get("tvl") or 0)
+                for ch in resp.json()
+            }
+            for ticker, chain_name in DEFILLAMA_CHAIN_MAP.items():
+                tvl = tvl_by_chain.get(chain_name.lower())
+                if not tvl:
+                    continue
+                if ticker not in result:
+                    result[ticker] = {}
+                # Fill chain TVL when no real protocol TVL was captured (the
+                # /protocols path leaves a 0 placeholder for chain-name slugs).
+                if not result[ticker].get("tvl"):
+                    result[ticker]["tvl"] = tvl
+                    result[ticker]["tvl_is_chain"] = True
+        except Exception as e:
+            logger.warning(f"DefiLlama chains fetch failed: {e}")
+
     if result:
         _defillama_cache = result
         _defillama_ts = now
-        logger.info(f"DefiLlama data refreshed: {len(result)} protocols")
+        logger.info(f"DefiLlama data refreshed: {len(result)} entries")
     return _defillama_cache
 
 
