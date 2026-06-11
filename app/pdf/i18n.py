@@ -212,8 +212,8 @@ _STRINGS: dict[str, dict[str, str]] = {
     "table.horizon_total": {"en": "Total over horizon", "de": "Summe über Zeitraum"},
     # Source attributions
     "source.pam": {
-        "en": "Source: Teroxx Portfolio Allocation Model v4.1.",
-        "de": "Quelle: Teroxx Portfolio Allocation Model v4.1.",
+        "en": "Source: Teroxx Portfolio Allocation Model v5.0.",
+        "de": "Quelle: Teroxx Portfolio Allocation Model v5.0.",
     },
     "source.as_of": {
         "en": "Data as of {date}.",
@@ -224,16 +224,16 @@ _STRINGS: dict[str, dict[str, str]] = {
         "de": "Über {n} Positionen renormiert.",
     },
     "source.pam_universe": {
-        "en": "Source: Teroxx PAM v4.1, profile {profile}, universe {universe}.",
-        "de": "Quelle: Teroxx PAM v4.1, Profil {profile}, Universum {universe}.",
+        "en": "Source: Teroxx PAM v5.0, profile {profile}, universe {universe}.",
+        "de": "Quelle: Teroxx PAM v5.0, Profil {profile}, Universum {universe}.",
     },
     "source.mica_emt_art": {
         "en": "EMT = e-money token under MiCA Art. 40. ART = asset-referenced token.",
         "de": "EMT = E-Geld-Token gemäß MiCA Art. 40. ART = wertreferenzierter Token.",
     },
     "source.tier_framework": {
-        "en": "Source: Teroxx PAM v4.1 tier framework.",
-        "de": "Quelle: Teroxx PAM v4.1 Stufenkonzept.",
+        "en": "Source: Teroxx PAM v5.0 tier framework.",
+        "de": "Quelle: Teroxx PAM v5.0 Stufenkonzept.",
     },
     "source.macro_composite": {
         "en": "Source: alternative.me, Yahoo Finance, Binance, blockchain.info, CoinMetrics, CryptoCompare. Composite renormalises when sources are unavailable.",
@@ -259,7 +259,7 @@ _STRINGS: dict[str, dict[str, str]] = {
     # Methodology + data sources
     "methodology.body": {
         "en": (
-            "The Teroxx Portfolio Allocation Model v4.1 assigns each asset to a strategic tier "
+            "The Teroxx Portfolio Allocation Model v5.0 assigns each asset to a strategic tier "
             "(defensive, core, large cap, mid cap, small cap) and distributes a profile-specific "
             "budget across the universe using either equal-weight (Standard mode) or factor-weighted "
             "(Fundamental mode) allocation. The factor stack includes value-accrual signals, on-chain "
@@ -267,7 +267,7 @@ _STRINGS: dict[str, dict[str, str]] = {
             "held flat against their reference currencies; no yield is implied or paid."
         ),
         "de": (
-            "Das Teroxx Portfolio Allocation Model v4.1 ordnet jede Anlage einer strategischen Stufe zu "
+            "Das Teroxx Portfolio Allocation Model v5.0 ordnet jede Anlage einer strategischen Stufe zu "
             "(defensiv, Kern, Large Cap, Mid Cap, Small Cap) und verteilt ein profilabhängiges Budget "
             "über das Universum, entweder gleichgewichtet (Standardmodus) oder faktorgewichtet "
             "(Fundamentalmodus). Der Faktorstapel umfasst Werterfassungssignale, On-Chain-Fundamentaldaten "
@@ -277,7 +277,7 @@ _STRINGS: dict[str, dict[str, str]] = {
     },
     "methodology.body_basket": {
         "en": (
-            "This is a thematic sector basket from the Teroxx Portfolio Allocation Model v4.1: "
+            "This is a thematic sector basket from the Teroxx Portfolio Allocation Model v5.0: "
             "a fully invested, single-theme allocation drawn only from assets in the Teroxx model "
             "universe. The basket carries no defensive sleeve. Constituents are weighted either by "
             "market capitalisation with a single-name cap (Market-cap mode) or by the model's "
@@ -286,7 +286,7 @@ _STRINGS: dict[str, dict[str, str]] = {
             "line with the client's overall risk budget at the portfolio level."
         ),
         "de": (
-            "Dies ist eine thematische Sektor-Basket aus dem Teroxx Portfolio Allocation Model v4.1: "
+            "Dies ist eine thematische Sektor-Basket aus dem Teroxx Portfolio Allocation Model v5.0: "
             "eine vollständig investierte, themenbezogene Allokation, die ausschließlich aus Anlagen "
             "des Teroxx-Modelluniversums besteht. Die Basket enthält keine defensive Komponente. Die "
             "Bestandteile werden entweder nach Marktkapitalisierung mit einer Einzeltitelobergrenze "

@@ -1,5 +1,5 @@
 """
-Teroxx Portfolio Allocation Model v4.1 — Static data layer.
+Teroxx Portfolio Allocation Model v5.0 — Static data layer.
 Asset universe, tier allocations, and VA / sector signal config aligned with nickel-ls-rv.
 """
 
@@ -515,7 +515,7 @@ def get_alloc_tier(ticker: str) -> str:
 #
 # RATIONALE_TAGS is the short label that appears next to each ticker in
 # the allocation table on the Recommended Allocation page of the PDF.
-# Two-word maximum. Sourced from the Teroxx PAM v4.1 framework and the
+# Two-word maximum. Sourced from the Teroxx PAM v5.0 framework and the
 # Expanded universe valuation models in
 # `~/teroxx-research/altcoin-alpha-q2-2026/data_layer/`.
 
