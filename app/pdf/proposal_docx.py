@@ -38,6 +38,9 @@ from app.pdf.i18n import (
     tier_label,
     regime_label,
 )
+from app.pdf.svg_to_emf import (
+    svgs_to_emf, svg_bytes_to_emf, vector_charts_enabled,
+)
 
 
 # ── Brand palette (Short Brand Guideline VS1.0 §3.2) ────────────────
@@ -202,6 +205,124 @@ def _svg_to_png(svg: str, width_px: int = 2400) -> Optional[bytes]:
         return cairosvg.svg2png(bytestring=svg.encode("utf-8"), output_width=width_px)
     except Exception:
         return None
+
+
+def _chart_bytes(ctx: dict, svg_key: str) -> Optional[bytes]:
+    """Image bytes for a chart, preferring crisp vector EMF over raster PNG.
+
+    Resolution order:
+      1. EMF from the batch pre-pass in ``render_docx`` (``ctx['_emf']``) — one
+         soffice spawn converted every chart up front.
+      2. Per-chart EMF (covers any chart added after the pre-pass).
+      3. High-DPI PNG via cairosvg — the robust fallback when LibreOffice is
+         unavailable (e.g. local dev) or vector charts are disabled.
+
+    Returns raw bytes (EMF or PNG). Call sites pass the result to
+    ``_place_chart``, which dispatches to the vector or raster embed path.
+    """
+    emf_map = ctx.get("_emf") or {}
+    data = emf_map.get(svg_key)
+    if data:
+        return data
+    svg = ctx.get(svg_key) or ""
+    if not svg:
+        return None
+    if vector_charts_enabled():
+        emf = svg_bytes_to_emf(svg)
+        if emf:
+            return emf
+    return _svg_to_png(svg)
+
+
+def _is_emf(data: bytes) -> bool:
+    """EMF files carry the ASCII signature ' EMF' at byte offset 40 of the
+    header record. Used to dispatch between the vector and raster embed paths
+    (python-docx 1.1.2 cannot sniff EMF itself)."""
+    return len(data) >= 44 and data[40:44] == b" EMF"
+
+
+def _emf_aspect(data: bytes) -> float:
+    """Height/width aspect ratio from the EMF header's rclFrame rectangle
+    (.01 mm units, 4x int32 at offset 24). Needed because the manual embed
+    must set both cx and cy explicitly. Falls back to 1.0."""
+    try:
+        import struct
+        left, top, right, bottom = struct.unpack_from("<4i", data, 24)
+        w, h = (right - left), (bottom - top)
+        return (h / w) if w else 1.0
+    except Exception:
+        return 1.0
+
+
+def _add_emf_picture(run, emf_bytes: bytes, width_cm: float) -> None:
+    """Embed an EMF as a vector inline picture in ``run``.
+
+    python-docx 1.1.2 has no EMF support, so ``add_picture`` rejects it. We
+    create the image part by hand (content type ``image/x-emf``), relate it to
+    the story part for an rId, and append the inline ``<w:drawing>`` XML that
+    references that rId. The result is a true vector picture that stays crisp
+    in Word, the LibreOffice PDF and Google Docs.
+    """
+    from docx.opc.part import Part
+    from docx.opc.constants import RELATIONSHIP_TYPE as RT
+    from docx.oxml import parse_xml
+    from docx.oxml.ns import nsdecls
+
+    story_part = run.part
+    package = story_part.package
+    partname = package.next_partname("/word/media/image%d.emf")
+    image_part = Part(partname, "image/x-emf", emf_bytes, package)
+    rId = story_part.relate_to(image_part, RT.IMAGE)
+
+    cx = int(Cm(width_cm))
+    cy = int(Cm(width_cm * _emf_aspect(emf_bytes)))
+    # Unique-within-doc drawing id from the media part number (image7.emf -> 7).
+    try:
+        pic_id = int("".join(c for c in partname.split("/")[-1] if c.isdigit())) or 1
+    except Exception:
+        pic_id = 1
+
+    drawing = parse_xml(
+        f'<w:drawing {nsdecls("w", "wp", "a", "pic", "r")}>'
+        '<wp:inline distT="0" distB="0" distL="0" distR="0">'
+        f'<wp:extent cx="{cx}" cy="{cy}"/>'
+        '<wp:effectExtent l="0" t="0" r="0" b="0"/>'
+        f'<wp:docPr id="{pic_id}" name="Chart{pic_id}"/>'
+        '<wp:cNvGraphicFramePr>'
+        '<a:graphicFrameLocks noChangeAspect="1"/>'
+        '</wp:cNvGraphicFramePr>'
+        '<a:graphic>'
+        '<a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">'
+        '<pic:pic>'
+        '<pic:nvPicPr>'
+        f'<pic:cNvPr id="{pic_id}" name="Chart{pic_id}"/>'
+        '<pic:cNvPicPr/>'
+        '</pic:nvPicPr>'
+        '<pic:blipFill>'
+        f'<a:blip r:embed="{rId}"/>'
+        '<a:stretch><a:fillRect/></a:stretch>'
+        '</pic:blipFill>'
+        '<pic:spPr>'
+        f'<a:xfrm><a:off x="0" y="0"/><a:ext cx="{cx}" cy="{cy}"/></a:xfrm>'
+        '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>'
+        '</pic:spPr>'
+        '</pic:pic>'
+        '</a:graphicData>'
+        '</a:graphic>'
+        '</wp:inline>'
+        '</w:drawing>'
+    )
+    run._r.append(drawing)
+
+
+def _place_chart(run, data: bytes, width_cm: float) -> None:
+    """Place chart image bytes into ``run`` at ``width_cm``, dispatching to the
+    vector (EMF) or raster (PNG) path. Physical width is fixed; EMF height
+    follows its own aspect, PNG height is inferred by python-docx."""
+    if _is_emf(data):
+        _add_emf_picture(run, data, width_cm)
+    else:
+        run.add_picture(io.BytesIO(data), width=Cm(width_cm))
 
 
 def _apply_font_family(run_or_style_element, family_name: str) -> None:
@@ -965,11 +1086,11 @@ def _portfolio_detail(doc: Document, ctx: dict) -> None:
         doc.add_paragraph()
 
     # ── Donut exhibit ──
-    png = _svg_to_png(ctx.get("donut_svg") or "")
+    png = _chart_bytes(ctx, "donut_svg")
     if png:
         p = doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        p.add_run().add_picture(io.BytesIO(png), width=Cm(10))
+        _place_chart(p.add_run(), png, 10)
         cap = doc.add_paragraph()
         cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
         cr = cap.add_run(_T(ctx, "exhibit.recommended_alloc"))
@@ -1628,13 +1749,13 @@ def _exec_summary(doc: Document, ctx: dict) -> None:
         doc.add_paragraph(b, style="List Bullet")
 
     # Embed the donut exhibit if rasterisation succeeds.
-    png = _svg_to_png(ctx.get("donut_svg") or "")
+    png = _chart_bytes(ctx, "donut_svg")
     if png:
         doc.add_paragraph()
         p = doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         run = p.add_run()
-        run.add_picture(io.BytesIO(png), width=Cm(10))
+        _place_chart(run, png, 10)
         cap = doc.add_paragraph()
         cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
         cr = cap.add_run(_T(ctx, "exhibit.recommended_alloc_sub"))
@@ -1712,12 +1833,12 @@ def _allocation_table(doc: Document, ctx: dict) -> None:
         nr.font.color.rgb = TEXT_MUTED
 
     # Tier-bar exhibit underneath.
-    png = _svg_to_png(ctx.get("tier_bar_svg") or "")
+    png = _chart_bytes(ctx, "tier_bar_svg")
     if png:
         doc.add_paragraph()
         p = doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        p.add_run().add_picture(io.BytesIO(png), width=Cm(15))
+        _place_chart(p.add_run(), png, 15)
         cap = doc.add_paragraph()
         cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
         cr = cap.add_run(_T(ctx, "exhibit.alloc_by_tier"))
@@ -1769,11 +1890,11 @@ def _macro_section(doc: Document, ctx: dict) -> None:
     sr.font.italic = True
     sr.font.color.rgb = TEXT_MUTED
 
-    png = _svg_to_png(ctx.get("regime_gauge_svg") or "")
+    png = _chart_bytes(ctx, "regime_gauge_svg")
     if png:
         p = doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        p.add_run().add_picture(io.BytesIO(png), width=Cm(8.5))
+        _place_chart(p.add_run(), png, 8.5)
 
     body_p = doc.add_paragraph()
     body_p.add_run(ctx.get("macro_paragraph_text", ""))
@@ -1917,6 +2038,17 @@ def render_docx(ctx: dict[str, Any]) -> bytes:
     theme = _resolve_theme(ctx)
     _set_default_font(doc, theme)
     _page_setup(doc, ctx, theme)
+
+    # Convert every chart SVG to vector EMF up front in a SINGLE LibreOffice
+    # spawn (process cold-start dominates, so batching 3 charts beats 3 spawns).
+    # _chart_bytes reads these first, falling back to per-chart EMF then PNG.
+    if vector_charts_enabled():
+        chart_svgs = {
+            k: ctx[k] for k in ("donut_svg", "tier_bar_svg", "regime_gauge_svg")
+            if ctx.get(k)
+        }
+        if chart_svgs:
+            ctx["_emf"] = svgs_to_emf(chart_svgs)
 
     proposal_type = (ctx.get("proposal_type") or "new").strip().lower()
     is_review = proposal_type == "review"

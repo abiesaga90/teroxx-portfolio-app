@@ -1619,7 +1619,7 @@ async def client_proposal_pdf(
     try:
         ctx = build_proposal_context(inp)
         ctx["theme"] = (theme or "light").strip().lower()
-        docx_bytes = render_proposal_docx(ctx)
+        docx_bytes = await run_in_threadpool(render_proposal_docx, ctx)
         pdf_bytes = await run_in_threadpool(docx_bytes_to_pdf, docx_bytes)
     except DocxToPdfError as e:
         logger.error("Proposal PDF conversion failed for %s: %s", client_id, e)
@@ -1706,7 +1706,7 @@ async def client_proposal_docx(
     try:
         ctx = build_proposal_context(inp)
         ctx["theme"] = (theme or "light").strip().lower()
-        docx_bytes = render_proposal_docx(ctx)
+        docx_bytes = await run_in_threadpool(render_proposal_docx, ctx)
     except Exception as e:
         logger.exception("Proposal DOCX render failed for %s: %s", client_id, e)
         return JSONResponse({"error": "render_failed", "detail": str(e)}, status_code=500)
@@ -1845,7 +1845,7 @@ async def client_proposal_gdoc(
     try:
         ctx = build_proposal_context(inp)
         ctx["theme"] = (theme or "light").strip().lower()
-        docx_bytes = render_proposal_docx(ctx)
+        docx_bytes = await run_in_threadpool(render_proposal_docx, ctx)
     except Exception as e:
         logger.exception("Proposal DOCX render failed for %s: %s", client_id, e)
         return _gdoc_error_page(f"Proposal render failed: {e}", status_code=500)
@@ -1940,7 +1940,7 @@ async def prospect_proposal_pdf(
     try:
         ctx = build_proposal_context(inp)
         ctx["theme"] = (theme or "light").strip().lower()
-        docx_bytes = render_proposal_docx(ctx)
+        docx_bytes = await run_in_threadpool(render_proposal_docx, ctx)
         pdf_bytes = await run_in_threadpool(docx_bytes_to_pdf, docx_bytes)
     except DocxToPdfError as e:
         logger.error("Prospect PDF conversion failed: %s", e)
@@ -2014,7 +2014,7 @@ async def prospect_proposal_docx(
     try:
         ctx = build_proposal_context(inp)
         ctx["theme"] = (theme or "light").strip().lower()
-        docx_bytes = render_proposal_docx(ctx)
+        docx_bytes = await run_in_threadpool(render_proposal_docx, ctx)
     except Exception as e:
         logger.exception("Prospect DOCX render failed: %s", e)
         return JSONResponse({"error": "render_failed", "detail": str(e)}, status_code=500)
@@ -2091,7 +2091,7 @@ async def prospect_proposal_gdoc(
     try:
         ctx = build_proposal_context(inp)
         ctx["theme"] = (theme or "light").strip().lower()
-        docx_bytes = render_proposal_docx(ctx)
+        docx_bytes = await run_in_threadpool(render_proposal_docx, ctx)
     except Exception as e:
         logger.exception("Prospect DOCX render failed: %s", e)
         return _gdoc_error_page(f"Proposal render failed: {e}", status_code=500)
