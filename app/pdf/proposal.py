@@ -28,7 +28,7 @@ from app.pdf.exhibits import (
 )
 from app.pdf.i18n import (
     resolve_lang, t, profile_label, tier_label as _i18n_tier_label,
-    regime_label as _i18n_regime_label,
+    regime_label as _i18n_regime_label, format_long_date,
 )
 from app.pdf.narrative import (
     cover_subtitle, exec_action_title, allocation_action_title, macro_action_title,
@@ -37,6 +37,56 @@ from app.pdf.narrative import (
     basket_exec_action_title, basket_allocation_action_title,
 )
 from app.pdf.palette import PALETTE
+
+import logging
+
+logger = logging.getLogger("teroxx.proposal")
+
+# Per-ticker weight delta above which a snapshot is considered to have drifted
+# from a fresh recompute (1pp). Small enough to catch real engine/data moves,
+# large enough to ignore floating-point noise.
+_SNAPSHOT_DRIFT_TOL = 0.01
+
+
+def _snapshot_drift(snapshot: list[dict], fresh: list[dict]) -> dict:
+    """Per-ticker weight differences between a frozen snapshot and a fresh
+    recompute. Returns {ticker: (snapshot_pct, fresh_pct)} for any ticker whose
+    weight moved by more than the tolerance, or that appeared/disappeared."""
+    def _by_ticker(rows: list[dict]) -> dict[str, float]:
+        return {
+            (r.get("ticker") or "").upper(): float(r.get("alloc_pct") or 0)
+            for r in (rows or [])
+        }
+    snap, cur = _by_ticker(snapshot), _by_ticker(fresh)
+    out: dict[str, tuple[float, float]] = {}
+    for tk in set(snap) | set(cur):
+        s, c = snap.get(tk, 0.0), cur.get(tk, 0.0)
+        if abs(s - c) > _SNAPSHOT_DRIFT_TOL:
+            out[tk] = (s, c)
+    return out
+
+
+def _log_snapshot_drift(client_id, profile, universe, mode, drift: dict) -> None:
+    """Record (non-blocking) that the engine moved between view and generate.
+    The snapshot still wins; this only surfaces the divergence for audit."""
+    logger.info(
+        "proposal_snapshot_drift client=%s profile=%s universe=%s mode=%s drift=%s",
+        client_id, profile, universe, mode, drift,
+    )
+    try:
+        from app.db import SessionLocal, log_action
+        with SessionLocal() as db:
+            log_action(
+                db, actor_email=None, action_type="proposal_snapshot_drift",
+                client_id=client_id,
+                payload={
+                    "profile": profile, "universe": universe, "mode": mode,
+                    "drift": {k: list(v) for k, v in drift.items()},
+                },
+            )
+            db.commit()
+    except Exception:  # noqa: BLE001
+        pass
 
 
 TIER_LABELS = {
@@ -82,6 +132,11 @@ class ProposalInputs:
     # (factor-weighted). Must mirror whatever the advisor selected on the
     # Portfolio tab, otherwise the proposal weights drift from the screen.
     mode: str = "Standard"
+    # Frozen on-screen allocation captured at generate time (the exact rows
+    # the advisor saw). When set, the proposal renders these verbatim instead
+    # of recomputing, so the document cannot drift from the screen. Client
+    # exclusions still apply on top as an intentional proposal-time override.
+    alloc_snapshot: Optional[list[dict]] = None
 
 
 # Asset-class buckets for the directional summary table. The mapping
@@ -154,13 +209,27 @@ def build_proposal_context(inp: ProposalInputs) -> dict[str, Any]:
     profile = inp.profile or client.get("profile", "Balanced")
     universe = inp.universe
     portfolio_value = float(inp.portfolio_value or 100_000)
-    mode_use = inp.mode or "Standard"
+    # Safety net only: callers (main.py) always pass an explicit mode resolved
+    # from DEFAULT_ALLOC_MODE, so this fallback should never decide the mode.
+    # Kept as "Fundamental" to match the app default if mode ever arrives empty.
+    mode_use = inp.mode or "Fundamental"
 
     # 0a. Resolve language: explicit input > client record > domicile > EN.
     lang = resolve_lang(
         requested=inp.lang or client.get("proposal_language"),
         domicile_country=client.get("domicile_country"),
     )
+
+    # 0a'. Localise the prepared date now that lang is known. Callers pass an
+    # ISO date (YYYY-MM-DD); format it with language-aware month names so a
+    # German proposal reads "11. Juni 2026", not "11 June 2026". Any
+    # non-ISO string is passed through unchanged for backward compatibility.
+    prepared_date_display = inp.prepared_date
+    try:
+        _d = datetime.strptime(inp.prepared_date, "%Y-%m-%d")
+        prepared_date_display = format_long_date(_d, lang)
+    except (ValueError, TypeError):
+        pass
 
     # 0b. Per-client overrides. Per-render dict beats stored record.
     stored_overrides = client.get("proposal_overrides") or {}
@@ -177,9 +246,21 @@ def build_proposal_context(inp: ProposalInputs) -> dict[str, Any]:
         if s
     }
 
-    # 1. Target allocation from the engine. Drop zero-weighted rows and
-    #    any tickers excluded by the client.
-    allocs_raw = compute_allocations(profile, universe, mode=mode_use)
+    # 1. Target allocation. When the advisor's on-screen allocation was
+    #    snapshotted at generate time, render those exact rows (a frozen
+    #    record of what they signed off on); otherwise recompute from the
+    #    engine. Client exclusions below still apply on top either way.
+    if inp.alloc_snapshot is not None:
+        allocs_raw = inp.alloc_snapshot
+        try:
+            fresh = compute_allocations(profile, universe, mode=mode_use)
+            drift = _snapshot_drift(allocs_raw, fresh)
+            if drift:
+                _log_snapshot_drift(client.get("id"), profile, universe, mode_use, drift)
+        except Exception:  # noqa: BLE001
+            pass
+    else:
+        allocs_raw = compute_allocations(profile, universe, mode=mode_use)
     allocs = [
         a for a in allocs_raw
         if (a.get("alloc_pct") or 0) > 0
@@ -342,7 +423,7 @@ def build_proposal_context(inp: ProposalInputs) -> dict[str, Any]:
 
     cover_sub = cover_subtitle(
         client_name=client.get("name", ""),
-        profile=profile, prepared_by=inp.prepared_by, date_str=inp.prepared_date,
+        profile=profile, prepared_by=inp.prepared_by, date_str=prepared_date_display,
         lang=lang,
     )
     implementation_text = client.get("implementation_note") or implementation_default(
@@ -457,7 +538,7 @@ def build_proposal_context(inp: ProposalInputs) -> dict[str, Any]:
         "universe": universe,
         "portfolio_value": portfolio_value,
         "prepared_by": inp.prepared_by,
-        "prepared_date": inp.prepared_date,
+        "prepared_date": prepared_date_display,
         "cover_subtitle": cover_sub,
         "exec_title": exec_title,
         "exec_bullets": exec_bullets,

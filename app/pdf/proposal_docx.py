@@ -356,7 +356,7 @@ def _page_setup(doc: Document, ctx: dict, theme: Theme = LIGHT_THEME) -> None:
     pPr2.append(tabs2)
     fp.alignment = WD_ALIGN_PARAGRAPH.LEFT
 
-    cname_run = fp.add_run(f"Confidential · {client_name}")
+    cname_run = fp.add_run(f"{_T(ctx, 'running.confidential')} · {client_name}")
     cname_run.font.size = Pt(7.5)
     cname_run.font.color.rgb = theme.running_strip_color
     cname_run.font.name = FONT_LEICHT
@@ -472,7 +472,10 @@ def _add_md_block(doc: Document, md: str) -> None:
         _add_inline_formatted_runs(p, text)
 
 
-_INLINE_RE = re.compile(r"(\*\*[^*]+\*\*|\*[^*]+\*)")
+# Inline markdown: **bold**, *italic*, and _italic_ (underscore form). The
+# underscore form is what advisors most often type, so it must be parsed too
+# rather than leaking literal underscores into the document.
+_INLINE_RE = re.compile(r"(\*\*[^*]+\*\*|\*[^*]+\*|_[^_]+_)")
 
 
 def _add_inline_formatted_runs(paragraph, text: str) -> None:
@@ -483,6 +486,9 @@ def _add_inline_formatted_runs(paragraph, text: str) -> None:
             r = paragraph.add_run(chunk[2:-2])
             r.font.bold = True
         elif chunk.startswith("*") and chunk.endswith("*"):
+            r = paragraph.add_run(chunk[1:-1])
+            r.font.italic = True
+        elif chunk.startswith("_") and chunk.endswith("_"):
             r = paragraph.add_run(chunk[1:-1])
             r.font.italic = True
         else:
@@ -820,7 +826,7 @@ def _portfolio_detail(doc: Document, ctx: dict) -> None:
         (_T(ctx, "table.asset"), ctx.get("universe", "")),
         (_T(ctx, "kpi.portfolio_value"), _money(ctx, ctx.get("portfolio_value", 0))),
         sleeve_or_weighting,
-        (_T(ctx, "kpi.positions"), str(ctx.get("allocation_count", 0))),
+        (_T(ctx, "kpi.num_positions"), str(ctx.get("allocation_count", 0))),
     ]
     h = doc.add_paragraph()
     hr = h.add_run(_T(ctx, "exhibit.what_this_means"))
@@ -1134,8 +1140,10 @@ def _current_allocation(doc: Document, ctx: dict) -> None:
                     _shade_cell(cell, SANDSTONE_50_HEX)
     else:
         # Empty placeholder — 4 blank rows the advisor fills in directly.
+        # Strip the markdown italic underscores from the i18n string so they
+        # don't render literally (the run is italicised explicitly below).
         ph = doc.add_paragraph()
-        pr = ph.add_run(_T(ctx, "current_allocation.placeholder"))
+        pr = ph.add_run(_T(ctx, "current_allocation.placeholder").strip("_ ").strip())
         pr.font.italic = True
         pr.font.color.rgb = TEXT_MUTED
         pr.font.size = Pt(10)

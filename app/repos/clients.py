@@ -39,6 +39,11 @@ def to_legacy_dict(client: Client) -> dict:
         # domicile_country when unset.
         "proposal_language": getattr(client, "proposal_language", None),
         "proposal_overrides_json": getattr(client, "proposal_overrides_json", None),
+        # Advisor's saved working assumptions (NULL → global defaults). Read
+        # by _proposal_inputs_for so a later proposal recomputes identically.
+        "default_universe": getattr(client, "default_universe", None),
+        "default_alloc_mode": getattr(client, "default_alloc_mode", None),
+        "default_portfolio_value": getattr(client, "default_portfolio_value", None),
         "positions": [
             {
                 "ticker": lot.ticker,
@@ -145,6 +150,7 @@ def update_client(
         "name", "profile", "domicile", "domicile_country", "currency",
         "inception_date", "starting_capital_usd", "tagline", "risk_notes",
         "implementation_note",
+        "default_universe", "default_alloc_mode", "default_portfolio_value",
     }
     changed: dict[str, object] = {}
     for k, v in fields.items():

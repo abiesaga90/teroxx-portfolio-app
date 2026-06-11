@@ -105,6 +105,13 @@ class Client(Base):
     # Stored as text so we don't bind ourselves to a specific JSON-column
     # dialect; serialised/parsed at the repo boundary.
     proposal_overrides_json: Mapped[Optional[str]] = mapped_column(Text)
+    # Advisor's saved working assumptions for this client, so a proposal
+    # generated later (e.g. from a CRM call without explicit query args)
+    # recomputes the SAME allocation the advisor set up. NULL → fall back to
+    # the global app defaults. Only `profile` was persisted historically.
+    default_universe: Mapped[Optional[str]] = mapped_column(String(64))
+    default_alloc_mode: Mapped[Optional[str]] = mapped_column(String(32))
+    default_portfolio_value: Mapped[Optional[float]] = mapped_column(Float)
     created_by: Mapped[Optional[str]] = mapped_column(String(160))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utc_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utc_now, onupdate=_utc_now, nullable=False)
@@ -198,11 +205,32 @@ class AdvisorAction(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utc_now, nullable=False, index=True)
 
 
+class AllocationSnapshot(Base):
+    """A frozen copy of the on-screen allocation captured when an advisor
+    generates a proposal, so the document is a faithful record of exactly what
+    they saw (not a later recompute). Short-lived: advisors download within
+    minutes of viewing, and stale rows are swept opportunistically. The token
+    id is what travels in the proposal download URL (&snapshot=<id>); the
+    authoritative allocation lives here server-side so it cannot be forged.
+    """
+
+    __tablename__ = "allocation_snapshots"
+
+    id: Mapped[str] = mapped_column(String(48), primary_key=True)
+    client_id: Mapped[Optional[str]] = mapped_column(String(64), index=True)
+    actor_email: Mapped[Optional[str]] = mapped_column(String(160))
+    profile: Mapped[str] = mapped_column(String(32), nullable=False)
+    universe: Mapped[str] = mapped_column(String(64), nullable=False)
+    alloc_mode: Mapped[str] = mapped_column(String(32), nullable=False)
+    portfolio_value: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    rows_json: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utc_now, nullable=False, index=True)
+
+
 def init_db() -> None:
     """Create tables and seed demo clients if the store is empty."""
     Base.metadata.create_all(engine)
-    if DB_URL.startswith("sqlite"):
-        _ensure_client_columns_sqlite()
+    _ensure_client_columns()
     with SessionLocal() as db:
         has_any = db.execute(select(func.count(Client.id))).scalar_one() > 0
         if not has_any:
@@ -213,26 +241,38 @@ def init_db() -> None:
             logger.info("Clients table already populated; skipping seed")
 
 
-def _ensure_client_columns_sqlite() -> None:
-    """Forward-only column migration for existing SQLite databases.
+def _ensure_client_columns() -> None:
+    """Forward-only, additive column migration for the ``clients`` table.
 
-    SQLAlchemy's create_all does not ALTER existing tables. On Postgres this
-    is handled by running migrations; on SQLite (local dev / legacy) we patch
-    in missing columns manually. Not needed on fresh databases since create_all
-    produces the full schema from the model definitions.
+    SQLAlchemy's ``create_all`` creates missing *tables* but never ALTERs an
+    existing one, so new columns must be patched in by hand on both dialects:
+      * Postgres (production) — ``ADD COLUMN IF NOT EXISTS`` is idempotent.
+      * SQLite (local dev / legacy) — older SQLite lacks ``IF NOT EXISTS`` on
+        ADD COLUMN, so introspect via PRAGMA and add only what's missing.
+    All columns are nullable with no backfill, so this is safe to run on every
+    boot. The portable types below (VARCHAR/TEXT/FLOAT) are valid on both.
     """
     required = {
         "proposal_language": "VARCHAR(8)",
         "proposal_overrides_json": "TEXT",
+        "default_universe": "VARCHAR(64)",
+        "default_alloc_mode": "VARCHAR(32)",
+        "default_portfolio_value": "FLOAT",
     }
     try:
         with engine.begin() as conn:
-            existing = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(clients)")}
-            for col_name, col_type in required.items():
-                if col_name in existing:
-                    continue
-                conn.exec_driver_sql(f"ALTER TABLE clients ADD COLUMN {col_name} {col_type}")
-                logger.info("Added missing column clients.%s", col_name)
+            if engine.dialect.name == "sqlite":
+                existing = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(clients)")}
+                for col_name, col_type in required.items():
+                    if col_name in existing:
+                        continue
+                    conn.exec_driver_sql(f"ALTER TABLE clients ADD COLUMN {col_name} {col_type}")
+                    logger.info("Added missing column clients.%s", col_name)
+            else:
+                for col_name, col_type in required.items():
+                    conn.exec_driver_sql(
+                        f"ALTER TABLE clients ADD COLUMN IF NOT EXISTS {col_name} {col_type}"
+                    )
     except Exception as e:
         logger.warning("Client-column migration failed (non-fatal): %s", e)
 
