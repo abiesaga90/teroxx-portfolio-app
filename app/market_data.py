@@ -12,7 +12,7 @@ from typing import Optional
 
 import httpx
 
-from app.data import TOKEN_MAP, ASSET_UNIVERSE, DEFILLAMA_MAP, DEFILLAMA_FEES_MAP, DEFILLAMA_TVL_MAP, DEFILLAMA_CHAIN_MAP, MESSARI_NETWORK_MAP
+from app.data import TOKEN_MAP, ASSET_UNIVERSE, DEFILLAMA_MAP, DEFILLAMA_FEES_MAP, DEFILLAMA_TVL_MAP, DEFILLAMA_CHAIN_MAP, DEFILLAMA_PROTOCOL_FEES_MAP, MESSARI_NETWORK_MAP
 
 logger = logging.getLogger(__name__)
 
@@ -548,6 +548,40 @@ async def fetch_defillama_data() -> dict[str, dict]:
                     result[ticker]["tvl_is_chain"] = True
         except Exception as e:
             logger.warning(f"DefiLlama chains fetch failed: {e}")
+
+        # 4. Per-protocol fees for a few protocols the bulk /overview/fees feed
+        #    omits (Ondo, Chainlink). One fees + one revenue call each.
+        for ticker, slug in DEFILLAMA_PROTOCOL_FEES_MAP.items():
+            if result.get(ticker, {}).get("fees_30d"):
+                continue  # bulk feed already covered it
+            try:
+                fr = await client.get(f"https://api.llama.fi/summary/fees/{slug}")
+                if fr.status_code != 200:
+                    continue
+                fj = fr.json()
+                total_30d = fj.get("total30d") or 0
+                total_7d = fj.get("total7d") or 0
+                total_1d = fj.get("total24h") or 0
+                if not total_30d:
+                    continue
+                rr = await client.get(
+                    f"https://api.llama.fi/summary/fees/{slug}?dataType=dailyRevenue"
+                )
+                revenue_30d = (rr.json().get("total30d") or 0) if rr.status_code == 200 else 0
+
+                fees_30d_ann, fees_7d_ann = total_30d * 12, total_7d * 52
+                fee_momentum = (
+                    ((fees_7d_ann - fees_30d_ann) / fees_30d_ann) * 100
+                    if fees_30d_ann > 0 else 0
+                )
+                rev_capture = min(1.0, revenue_30d / total_30d) if total_30d > 0 else 0
+                result.setdefault(ticker, {}).update({
+                    "fees_30d": total_30d, "fees_7d": total_7d, "fees_1d": total_1d,
+                    "revenue_30d": revenue_30d, "fee_momentum": fee_momentum,
+                    "revenue_capture": rev_capture,
+                })
+            except Exception as e:
+                logger.warning(f"DefiLlama per-protocol fees ({slug}) failed: {e}")
 
     if result:
         _defillama_cache = result

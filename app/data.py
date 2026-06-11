@@ -438,6 +438,15 @@ DEFILLAMA_CHAIN_MAP = {
     "HBAR": "Hedera", "ICP": "ICP",
 }
 
+# Ticker -> DeFiLlama protocol slug for PER-PROTOCOL fee fetches. Some protocols
+# (Ondo, Chainlink) report real fees via /summary/fees/{slug} but are absent
+# from the bulk /overview/fees feed, so they need a targeted call. Kept small on
+# purpose — only tokens with material fees the bulk endpoint misses.
+DEFILLAMA_PROTOCOL_FEES_MAP = {
+    "ONDO": "ondo-finance",
+    "LINK": "chainlink",
+}
+
 # DefiLlama per-protocol TVL history mapping
 # "chain:{name}" for L1 chain TVL (historicalChainTvl endpoint)
 # "protocol:{slug}" for protocol TVL (/protocol/{slug} endpoint)
