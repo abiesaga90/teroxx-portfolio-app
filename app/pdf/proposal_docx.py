@@ -186,9 +186,15 @@ def _resolve_theme(ctx: dict) -> Theme:
 # ── Helpers ─────────────────────────────────────────────────────────
 
 
-def _svg_to_png(svg: str, width_px: int = 720) -> Optional[bytes]:
+def _svg_to_png(svg: str, width_px: int = 2400) -> Optional[bytes]:
     """Rasterise SVG to PNG bytes via cairosvg. Return None on failure
-    so the renderer can drop the image silently rather than crash."""
+    so the renderer can drop the image silently rather than crash.
+
+    The default width is deliberately high (2400px): the physical display
+    size is set by ``add_picture(width=Cm(...))``, so the extra pixels are
+    pure DPI. At the proposal's chart sizes this lands at ~400-700 DPI, which
+    stays crisp in print and at high zoom (the old 600-720px rasterised soft).
+    """
     if not svg:
         return None
     try:
@@ -569,6 +575,67 @@ def _set_section_page_color(section, hex_color: str) -> None:
         root.insert(0, bg)
 
 
+def _solid_png(hex_color: str, w: int = 240, h: int = 340) -> Optional[bytes]:
+    """A small solid-colour PNG (via Pillow, so it works without cairo). Used
+    as a full-bleed cover background — scaled to A4 by the anchor, so a tiny
+    image is fine. Returns None if Pillow is unavailable."""
+    try:
+        from PIL import Image
+        hx = hex_color.lstrip("#")
+        rgb = (int(hx[0:2], 16), int(hx[2:4], 16), int(hx[4:6], 16))
+        buf = io.BytesIO()
+        Image.new("RGB", (w, h), rgb).save(buf, format="PNG")
+        return buf.getvalue()
+    except Exception:
+        return None
+
+
+def _apply_cover_background(doc: Document, hex_color: str) -> bool:
+    """Paint page 1 edge-to-edge in ``hex_color`` without tinting body pages.
+
+    Word's <w:background> is document-wide, so a dark cover + light body needs
+    a different trick: a full-page picture anchored *behind text* in the
+    first-page header (which only exists on page 1 because the section uses
+    ``different_first_page_header_footer``). Returns True on success; on any
+    failure the cover simply renders without the dark fill (non-fatal)."""
+    png = _solid_png(hex_color)
+    if not png:
+        return False
+    try:
+        sec = doc.sections[0]
+        header = sec.first_page_header
+        run = header.paragraphs[0].add_run()
+        # Add as a normal inline picture first (handles the image part + rId),
+        # then rewrite the <wp:inline> as a behind-text <wp:anchor> sized to A4.
+        run.add_picture(io.BytesIO(png), width=Cm(21.0), height=Cm(29.7))
+        drawing = run._r.find(qn("w:drawing"))
+        inline = drawing.find(qn("wp:inline"))
+        graphic = inline.find(qn("a:graphic"))
+        cx, cy = int(Cm(21.0)), int(Cm(29.7))
+        from docx.oxml import parse_xml
+        from docx.oxml.ns import nsdecls
+        anchor = parse_xml(
+            f'<wp:anchor {nsdecls("wp", "a", "r", "w")} behindDoc="1" '
+            'distT="0" distB="0" distL="0" distR="0" simplePos="0" '
+            'locked="0" layoutInCell="1" allowOverlap="1" relativeHeight="0">'
+            '<wp:simplePos x="0" y="0"/>'
+            '<wp:positionH relativeFrom="page"><wp:posOffset>0</wp:posOffset></wp:positionH>'
+            '<wp:positionV relativeFrom="page"><wp:posOffset>0</wp:posOffset></wp:positionV>'
+            f'<wp:extent cx="{cx}" cy="{cy}"/>'
+            '<wp:effectExtent l="0" t="0" r="0" b="0"/>'
+            '<wp:wrapNone/>'
+            '<wp:docPr id="100" name="CoverBackground"/>'
+            '<wp:cNvGraphicFramePr/>'
+            '</wp:anchor>'
+        )
+        anchor.append(graphic)  # reuse the picture's graphic (carries the rId)
+        drawing.remove(inline)
+        drawing.append(anchor)
+        return True
+    except Exception:
+        return False
+
+
 def _cover(doc: Document, ctx: dict, theme: Theme = LIGHT_THEME) -> None:
     """Brand-aligned cover (Short Brand Guideline §7.1).
 
@@ -585,23 +652,29 @@ def _cover(doc: Document, ctx: dict, theme: Theme = LIGHT_THEME) -> None:
     Jannick's template flow.
     """
     sec = doc.sections[0]
-    # Set the document-wide page color. Word's <w:background> is
-    # document-wide (not section-scoped), so this also colors body
-    # pages — which is exactly what we want for the dark theme. For
-    # the light theme the cover still needs Nightblue but body pages
-    # need white; we work around that by always painting the cover
-    # background via the page color *and* relying on Word's default
-    # white page-fill for body pages (set via "displayBackgroundShape"
-    # being absent for screen viewers; for print the cover image
-    # carries the dark fill itself).
+    # Body page colour (white for light, Nightblue for dark) is document-wide.
     _set_section_page_color(sec, theme.page_bg_hex)
+
+    # The cover is ALWAYS brand Nightblue with light type (Short Brand
+    # Guideline §7.1 — white logo + Sandstone claim on Nightblue), regardless
+    # of the body theme. Paint page 1 edge-to-edge via a behind-text image in
+    # the first-page header: this renders in Word AND in the LibreOffice PDF,
+    # whereas the document-wide <w:background> alone is NOT honoured by
+    # LibreOffice's PDF export (which is why the old dark cover went near-white
+    # in the PDF). Cover content colours therefore always use the light set.
+    _apply_cover_background(doc, "010626")
+    cover_logo_variant = "white"
+    cover_headline = SANDSTONE
+    cover_subline = WHITE
+    cover_claim = SANDSTONE
+    cover_muted = SANDSTONE
 
     # Pull cover layout inward so the logo + headline breathe.
     cover_para = doc.add_paragraph()
     cover_para.paragraph_format.space_before = Pt(6)
 
-    # ── Logo (top-left, variant chosen by theme) ──
-    logo_path = _logo_image_path(theme.cover_logo_variant)
+    # ── Logo (top-left, white variant on Nightblue) ──
+    logo_path = _logo_image_path(cover_logo_variant)
     if logo_path is not None:
         lp = doc.add_paragraph()
         lp.alignment = WD_ALIGN_PARAGRAPH.LEFT
@@ -617,7 +690,7 @@ def _cover(doc: Document, ctx: dict, theme: Theme = LIGHT_THEME) -> None:
     title_run = title_p.add_run(_T(ctx, "cover.title"))
     title_run.font.size = Pt(40)
     title_run.font.bold = False
-    title_run.font.color.rgb = theme.headline_color
+    title_run.font.color.rgb = cover_headline
     title_run.font.name = FONT_HEADING
     _apply_font_family(title_run.element, FONT_HEADING)
 
@@ -627,7 +700,7 @@ def _cover(doc: Document, ctx: dict, theme: Theme = LIGHT_THEME) -> None:
     if sub_text:
         sub_run = sub_p.add_run(sub_text)
         sub_run.font.size = Pt(13)
-        sub_run.font.color.rgb = theme.cover_subline_color
+        sub_run.font.color.rgb = cover_subline
         sub_run.font.name = FONT_LEICHT
         _apply_font_family(sub_run.element, FONT_LEICHT)
 
@@ -643,7 +716,7 @@ def _cover(doc: Document, ctx: dict, theme: Theme = LIGHT_THEME) -> None:
     claim_p.alignment = WD_ALIGN_PARAGRAPH.LEFT
     claim_run = claim_p.add_run(_T(ctx, "cover.brand_claim"))
     claim_run.font.size = Pt(22)
-    claim_run.font.color.rgb = theme.claim_color
+    claim_run.font.color.rgb = cover_claim
     claim_run.font.name = FONT_HEADING
     _apply_font_family(claim_run.element, FONT_HEADING)
 
@@ -655,7 +728,7 @@ def _cover(doc: Document, ctx: dict, theme: Theme = LIGHT_THEME) -> None:
     foot.alignment = WD_ALIGN_PARAGRAPH.LEFT
     foot_run = foot.add_run(_T(ctx, "cover.confidential"))
     foot_run.font.size = Pt(8.5)
-    foot_run.font.color.rgb = theme.muted_text
+    foot_run.font.color.rgb = cover_muted
     foot_run.font.name = FONT_LEICHT
     _apply_font_family(foot_run.element, FONT_LEICHT)
 
@@ -892,7 +965,7 @@ def _portfolio_detail(doc: Document, ctx: dict) -> None:
         doc.add_paragraph()
 
     # ── Donut exhibit ──
-    png = _svg_to_png(ctx.get("donut_svg") or "", width_px=600)
+    png = _svg_to_png(ctx.get("donut_svg") or "")
     if png:
         p = doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -1555,7 +1628,7 @@ def _exec_summary(doc: Document, ctx: dict) -> None:
         doc.add_paragraph(b, style="List Bullet")
 
     # Embed the donut exhibit if rasterisation succeeds.
-    png = _svg_to_png(ctx.get("donut_svg") or "", width_px=600)
+    png = _svg_to_png(ctx.get("donut_svg") or "")
     if png:
         doc.add_paragraph()
         p = doc.add_paragraph()
@@ -1639,7 +1712,7 @@ def _allocation_table(doc: Document, ctx: dict) -> None:
         nr.font.color.rgb = TEXT_MUTED
 
     # Tier-bar exhibit underneath.
-    png = _svg_to_png(ctx.get("tier_bar_svg") or "", width_px=720)
+    png = _svg_to_png(ctx.get("tier_bar_svg") or "")
     if png:
         doc.add_paragraph()
         p = doc.add_paragraph()
@@ -1696,7 +1769,7 @@ def _macro_section(doc: Document, ctx: dict) -> None:
     sr.font.italic = True
     sr.font.color.rgb = TEXT_MUTED
 
-    png = _svg_to_png(ctx.get("regime_gauge_svg") or "", width_px=480)
+    png = _svg_to_png(ctx.get("regime_gauge_svg") or "")
     if png:
         p = doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
