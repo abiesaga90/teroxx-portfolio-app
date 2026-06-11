@@ -189,7 +189,12 @@ def fmt_num(value, decimals=2):
     return f"{value:,.{decimals}f}"
 
 def fmt_compact(value):
-    """Format large numbers: $1.42T, $88.3B, $4.16M, $72.0K"""
+    """Compact CURRENCY formatting: $1.42T, $88.3B, $4.16M, $72.0K.
+
+    Use only for dollar values. For plain counts (addresses, txns, dev
+    commits, etc.) use ``fmt_count`` — prepending ``$`` to a count reads as
+    "$578K active addresses", and wrapping it in a template ``$`` yields ``$$``.
+    """
     if value is None or value == 0:
         return "-"
     abs_val = abs(value)
@@ -204,10 +209,33 @@ def fmt_compact(value):
         return f"{sign}${abs_val / 1e3:.0f}K"
     return f"{sign}${abs_val:,.0f}"
 
+
+def fmt_count(value):
+    """Compact COUNT formatting with no currency symbol: 1.4M, 88.3K, 75, 0.
+
+    None renders as an em dash (data unavailable); a genuine 0 renders as "0".
+    """
+    if value is None:
+        return "—"
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return "—"
+    abs_val = abs(value)
+    sign = "-" if value < 0 else ""
+    if abs_val >= 1e9:
+        return f"{sign}{abs_val / 1e9:.1f}B"
+    if abs_val >= 1e6:
+        return f"{sign}{abs_val / 1e6:.1f}M"
+    if abs_val >= 1e3:
+        return f"{sign}{abs_val / 1e3:.0f}K"
+    return f"{sign}{abs_val:,.0f}"
+
 templates.env.filters["fmt_pct"] = fmt_pct
 templates.env.filters["fmt_usd"] = fmt_usd
 templates.env.filters["fmt_num"] = fmt_num
 templates.env.filters["fmt_compact"] = fmt_compact
+templates.env.filters["fmt_count"] = fmt_count
 templates.env.globals["json_dumps"] = json.dumps
 templates.env.globals["get_logo"] = get_logo_url
 

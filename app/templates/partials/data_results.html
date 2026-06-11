@@ -235,12 +235,12 @@
                     <td style="color:var(--text-muted)">{{ loop.index }}</td>
                     <td class="ticker"><div class="ticker-cell">{% set logo = get_logo(r.ticker) %}{% if logo %}<img src="{{ logo }}" class="token-logo token-logo-sm" alt="{{ r.ticker }}">{% endif %}{{ r.ticker }}</div></td>
                     {% if r.dev_info %}
-                    <td class="right">{{ r.dev_info.commit_count_4_weeks|fmt_compact }}</td>
-                    <td class="right">{{ r.dev_info.pull_requests_merged|fmt_compact }}</td>
-                    <td class="right">{{ r.dev_info.pull_request_contributors|fmt_compact }}</td>
-                    <td class="right">{{ r.dev_info.forks|fmt_compact }}</td>
-                    <td class="right">{{ r.dev_info.reddit_subscribers|fmt_compact }}</td>
-                    <td class="right">{{ r.dev_info.telegram_channel_user_count|fmt_compact }}</td>
+                    <td class="right">{{ r.dev_info.commit_count_4_weeks|fmt_count }}</td>
+                    <td class="right">{{ r.dev_info.pull_requests_merged|fmt_count }}</td>
+                    <td class="right">{{ r.dev_info.pull_request_contributors|fmt_count }}</td>
+                    <td class="right">{{ r.dev_info.forks|fmt_count }}</td>
+                    <td class="right">{{ r.dev_info.reddit_subscribers|fmt_count }}</td>
+                    <td class="right">{{ r.dev_info.telegram_channel_user_count|fmt_count }}</td>
                     {% else %}
                     <td class="right" colspan="6" style="color:var(--text-muted);font-size:0.7rem;">No developer data available</td>
                     {% endif %}
@@ -314,13 +314,13 @@
                     <td style="color:var(--text-muted)">{{ loop.index }}</td>
                     <td class="ticker"><div class="ticker-cell">{% set logo = get_logo(r.ticker) %}{% if logo %}<img src="{{ logo }}" class="token-logo token-logo-sm" alt="{{ r.ticker }}">{% endif %}{{ r.ticker }}</div></td>
                     {% if r.messari_info %}
-                    <td class="right">{{ r.messari_info.active_addresses|fmt_compact }}</td>
-                    <td class="right">{{ r.messari_info.txn_count|fmt_compact }}</td>
-                    <td class="right">{% if r.messari_info.fees_24h_usd %}${{ r.messari_info.fees_24h_usd|fmt_compact }}{% else %}&mdash;{% endif %}</td>
-                    <td class="right">{% if r.messari_info.revenue_24h_usd %}${{ r.messari_info.revenue_24h_usd|fmt_compact }}{% else %}&mdash;{% endif %}</td>
-                    <td class="right">{{ r.messari_info.dev_commits|fmt_compact }}</td>
-                    <td class="right">{{ r.messari_info.active_devs|fmt_compact }}</td>
-                    <td class="right">{% if r.messari_info.dex_volume_usd %}${{ r.messari_info.dex_volume_usd|fmt_compact }}{% else %}&mdash;{% endif %}</td>
+                    <td class="right">{{ r.messari_info.active_addresses|fmt_count }}</td>
+                    <td class="right">{{ r.messari_info.txn_count|fmt_count }}</td>
+                    <td class="right">{% if r.messari_info.fees_24h_usd %}{{ r.messari_info.fees_24h_usd|fmt_compact }}{% else %}&mdash;{% endif %}</td>
+                    <td class="right">{% if r.messari_info.revenue_24h_usd %}{{ r.messari_info.revenue_24h_usd|fmt_compact }}{% else %}&mdash;{% endif %}</td>
+                    <td class="right">{{ r.messari_info.dev_commits|fmt_count }}</td>
+                    <td class="right">{{ r.messari_info.active_devs|fmt_count }}</td>
+                    <td class="right">{% if r.messari_info.dex_volume_usd %}{{ r.messari_info.dex_volume_usd|fmt_compact }}{% else %}&mdash;{% endif %}</td>
                     {% else %}
                     <td class="right" colspan="7" style="color:var(--text-muted);font-size:0.7rem;">No Messari data available</td>
                     {% endif %}
