@@ -45,5 +45,30 @@ class BrandPalette:
             self.deep_indigo,
         )
 
+    @property
+    def chart_series(self) -> tuple[str, ...]:
+        """Distinct, harmonious sequence for charts with many segments
+        (donut, tier bar). The strict brand ``primary_series`` works for <=4
+        slices but breaks down beyond that: Nightblue and Deep Indigo read as
+        the same near-black, and the legacy overflow tints repeated Sandstone
+        and ended on a near-white ``cream`` that vanished on the page.
+
+        This leads with the four clearly-distinct brand colours, then extends
+        with restrained tints from the same families (a muted indigo-slate, a
+        softer ember, a cool slate grey, a light teal) so an eight-name
+        allocation still reads as one precise, private-bank palette with no two
+        segments confusable and nothing washing out.
+        """
+        return (
+            self.nightblue,      # deep navy
+            self.electric_sky,   # teal
+            self.sunset_ember,   # terracotta accent
+            self.sandstone,      # warm neutral
+            "#3C4A6B",           # muted indigo-slate
+            "#E2A98F",           # soft ember tint
+            "#6E7B82",           # cool slate grey
+            "#5E9DB5",           # light teal
+        )
+
 
 PALETTE = BrandPalette()

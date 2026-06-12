@@ -68,12 +68,16 @@ def donut(
         rows = head + [("Other", tail_share)]
 
     cx, cy = width / 2, height / 2
-    r_outer = min(cx, cy) - 16
-    r_inner = r_outer - 36
-    palette_colors = palette.primary_series + (palette.sandstone, palette.cream)
+    # Elite-private-bank proportions: a slim ring with generous breathing
+    # room around it, and hairline white separators between segments so the
+    # palette reads as precise rather than blocky.
+    r_outer = min(cx, cy) - 18
+    r_inner = r_outer - 24
+    palette_colors = palette.chart_series
 
     paths: list[str] = []
     angle = -math.pi / 2  # start at 12 o'clock
+    single = len(rows) == 1
     for i, (_, share) in enumerate(rows):
         if share <= 0:
             continue
@@ -92,7 +96,10 @@ def donut(
             f"L {x1i:.2f} {y1i:.2f} "
             f"A {r_inner:.2f} {r_inner:.2f} 0 {large} 0 {x2i:.2f} {y2i:.2f} Z"
         )
-        paths.append(f'<path d="{d}" fill="{color}" />')
+        # No separator stroke on a single full-circle slice (it would draw a
+        # seam across the join); otherwise a 2px white gap between segments.
+        sep = "" if single else f' stroke="{palette.white}" stroke-width="2" stroke-linejoin="round"'
+        paths.append(f'<path d="{d}" fill="{color}"{sep} />')
         angle = end
 
     center: list[str] = []
@@ -127,7 +134,7 @@ def donut_legend(slices: list[tuple[str, float]], *, palette: BrandPalette = PAL
         head = rows_raw[: max_slices - 1]
         tail_share = sum(r[1] for r in rows_raw[max_slices - 1 :])
         rows_raw = head + [("Other", tail_share)]
-    colors = palette.primary_series + (palette.sandstone, palette.cream)
+    colors = palette.chart_series
     for i, (label, share) in enumerate(rows_raw):
         rows.append({
             "label": label,
@@ -144,7 +151,7 @@ def tier_bar(
     tiers: list[tuple[str, float]],
     *,
     width: int = 520,
-    height: int = 180,
+    height: int = 150,
     palette: BrandPalette = PALETTE,
 ) -> str:
     """Stacked horizontal bar by tier (defensive/core/extended/...) summing to 100%.
@@ -152,11 +159,13 @@ def tier_bar(
     `tiers` is a list of (tier_label, share) pairs.
     """
     total = sum(max(0.0, v) for _, v in tiers) or 1.0
-    bar_h = 36
-    bar_y = height - bar_h - 36
+    bar_h = 30
+    # Bar sits just under the title so there is room below for a legend that
+    # may wrap to a second row (5+ tiers) without colliding with the frame.
+    bar_y = 58
     bar_w = width - 32
     bar_x = 16
-    palette_colors = palette.primary_series
+    palette_colors = palette.chart_series
 
     parts: list[str] = []
     # Title
@@ -170,35 +179,51 @@ def tier_bar(
         f'opacity="0.55">SHARE OF PORTFOLIO</text>'
     )
 
+    # First pass: draw the stacked segments with hairline white separators.
     x = bar_x
-    legend_y = bar_y + bar_h + 22
-    legend_x = bar_x
     for i, (label, share) in enumerate(tiers):
         share = max(0.0, share)
         seg_w = (share / total) * bar_w
         color = palette_colors[i % len(palette_colors)]
         parts.append(
-            f'<rect x="{x:.2f}" y="{bar_y}" width="{seg_w:.2f}" height="{bar_h}" fill="{color}" />'
+            f'<rect x="{x:.2f}" y="{bar_y}" width="{seg_w:.2f}" height="{bar_h}" '
+            f'fill="{color}" stroke="{palette.white}" stroke-width="1.5" />'
         )
-        # In-bar percent label if wide enough
-        if seg_w > 38:
+        # In-bar percent label if wide enough — lighter weight, letter-spaced.
+        if seg_w > 42:
             parts.append(
-                f'<text x="{x + seg_w / 2:.2f}" y="{bar_y + bar_h / 2 + 4:.2f}" '
+                f'<text x="{x + seg_w / 2:.2f}" y="{bar_y + bar_h / 2 + 3.5:.2f}" '
                 f'text-anchor="middle" font-family="Sohne, Arial, sans-serif" '
-                f'font-size="11" font-weight="600" fill="{palette.white}">'
-                f'{share * 100:.1f}%</text>'
+                f'font-size="10.5" font-weight="500" letter-spacing="0.02em" '
+                f'fill="{palette.white}">{share * 100:.1f}%</text>'
             )
-        # Legend row
+        x += seg_w
+
+    # Second pass: legend below the bar, flowing left-to-right and wrapping to
+    # a new row when the next entry would overrun the bar width (so 5-6 tiers
+    # never spill off the canvas).
+    legend_y = bar_y + bar_h + 24
+    legend_x = bar_x
+    row_h = 20
+    for i, (label, share) in enumerate(tiers):
+        share = max(0.0, share)
+        color = palette_colors[i % len(palette_colors)]
+        pct = f"{share * 100:.1f}%"
+        # Approximate rendered width at 10px Sohne (~5.4px/char) plus the
+        # swatch, gaps and a trailing margin.
+        item_w = 16 + (len(label) + 1 + len(pct)) * 5.4 + 22
+        if legend_x > bar_x and legend_x + item_w > bar_x + bar_w:
+            legend_x = bar_x
+            legend_y += row_h
         parts.append(
-            f'<rect x="{legend_x}" y="{legend_y - 8}" width="10" height="10" fill="{color}" />'
+            f'<rect x="{legend_x}" y="{legend_y - 8}" width="9" height="9" rx="2" fill="{color}" />'
             f'<text x="{legend_x + 16}" y="{legend_y + 1}" '
             f'font-family="Sohne, Arial, sans-serif" font-size="10" '
             f'fill="{palette.deep_indigo}">{_escape(label)} '
-            f'<tspan fill="{palette.deep_indigo}" opacity="0.55">{share * 100:.1f}%</tspan>'
+            f'<tspan fill="{palette.deep_indigo}" opacity="0.55">{pct}</tspan>'
             f'</text>'
         )
-        x += seg_w
-        legend_x += 130
+        legend_x += item_w
 
     return _HEAD.format(w=width, h=height) + "".join(parts) + _FOOT
 
