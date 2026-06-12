@@ -24,6 +24,12 @@ COINGECKO_API_KEY = os.getenv("COINGECKO_API_KEY", "CG-gv9KxWUpB1cZHTGj95d9GXJk"
 _CG_HEADERS = {"x-cg-demo-api-key": COINGECKO_API_KEY}
 DEFILLAMA_BASE = "https://api.llama.fi"
 BINANCE_FAPI = "https://fapi.binance.com/fapi/v1"
+BINANCE_SPOT = "https://api.binance.com"
+# Binance spot trading symbols differ from our tickers for a handful of names;
+# default is {TICKER}USDT and CoinGecko fills any gap, so this stays small.
+BINANCE_SYMBOL_OVERRIDES = {
+    "POL": "POL",   # ex-MATIC, now trades as POLUSDT
+}
 
 PRICE_TTL = 300        # 5 minutes
 MARKET_DATA_TTL = 3600 # 1 hour
@@ -829,16 +835,112 @@ CRYPTOCOMPARE_BASE = "https://min-api.cryptocompare.com"
 _SKIP_HISTORICAL = {"USDC", "EURC"}  # stablecoins — constant $1
 
 
-async def fetch_historical_prices(tickers: list[str], days: int = 365) -> dict[str, list[tuple[float, float]]]:
-    """Fetch daily historical prices from CryptoCompare for DCA backtesting.
+def _parse_cryptocompare_histoday(payload: dict) -> list[tuple[float, float]]:
+    """[(ts_sec, close)] from a CryptoCompare /histoday body."""
+    out: list[tuple[float, float]] = []
+    for e in payload.get("Data", {}).get("Data", []) or []:
+        ts = e.get("time", 0)
+        close = e.get("close", 0)
+        if ts and close and close > 0:
+            out.append((float(ts), float(close)))
+    return out
 
-    Uses CryptoCompare /data/v2/histoday — free, no API key, generous rate limits.
-    Returns {ticker: [(unix_ts, price_usd), ...]} sorted ascending by date.
-    Cached 24h.
+
+def _parse_binance_klines(arr: list) -> list[tuple[float, float]]:
+    """[(ts_sec, close)] from Binance /api/v3/klines rows.
+
+    Each row is [openTime_ms, open, high, low, close, volume, ...]; we take the
+    close (index 4) keyed on the open time."""
+    out: list[tuple[float, float]] = []
+    for k in arr or []:
+        try:
+            ts = float(k[0]) / 1000.0
+            close = float(k[4])
+        except (IndexError, TypeError, ValueError):
+            continue
+        if ts > 0 and close > 0:
+            out.append((ts, close))
+    return out
+
+
+def _parse_coingecko_market_chart(payload: dict) -> list[tuple[float, float]]:
+    """[(ts_sec, price)] from a CoinGecko /market_chart body."""
+    out: list[tuple[float, float]] = []
+    for row in payload.get("prices", []) or []:
+        try:
+            ts = float(row[0]) / 1000.0
+            price = float(row[1])
+        except (IndexError, TypeError, ValueError):
+            continue
+        if ts > 0 and price > 0:
+            out.append((ts, price))
+    return out
+
+
+async def _daily_closes(client, ticker: str, days: int) -> tuple[list[tuple[float, float]], str]:
+    """Daily ``(ts_sec, close)`` ascending for one ticker, trying sources in
+    order until one returns usable data: CryptoCompare → Binance spot klines →
+    CoinGecko market_chart. Returns ``(series, source)``; ``source`` is "" when
+    every source failed. Never raises.
+
+    Resilience matters because CryptoCompare's keyless histoday endpoint has
+    started returning empties on cloud IPs (it took the DCA backtest and BTC
+    realized-vol to $0 / "—%"). Binance gives long daily history; CoinGecko is
+    the broad-coverage backstop (demo tier caps history near 365 days)."""
+    # 1. CryptoCompare (legacy primary — still tried first; cheap when it works)
+    try:
+        sym = CMC_SYMBOL_OVERRIDES.get(ticker, ticker)
+        resp = await _fetch_with_retry(
+            client, "GET", f"{CRYPTOCOMPARE_BASE}/data/v2/histoday",
+            params={"fsym": sym, "tsym": "USD", "limit": str(min(days, 1900))},
+            timeout=15,
+        )
+        series = _parse_cryptocompare_histoday(resp.json())
+        if len(series) >= 2:
+            return series, "cryptocompare"
+    except Exception as e:
+        logger.warning(f"CryptoCompare historical failed for {ticker}: {e}")
+    # 2. Binance spot klines (keyless; up to 1000 daily candles)
+    try:
+        sym = BINANCE_SYMBOL_OVERRIDES.get(ticker, ticker) + "USDT"
+        resp = await _fetch_with_retry(
+            client, "GET", f"{BINANCE_SPOT}/api/v3/klines",
+            params={"symbol": sym, "interval": "1d", "limit": str(min(max(days, 30), 1000))},
+            timeout=15,
+        )
+        series = _parse_binance_klines(resp.json())
+        if len(series) >= 2:
+            return series, "binance"
+    except Exception as e:
+        logger.warning(f"Binance historical failed for {ticker}: {e}")
+    # 3. CoinGecko market_chart (broad coverage; demo tier ~365d)
+    try:
+        cg_id = TOKEN_MAP.get(ticker)
+        if cg_id:
+            resp = await _fetch_with_retry(
+                client, "GET", f"{COINGECKO_BASE}/coins/{cg_id}/market_chart",
+                params={"vs_currency": "usd", "days": str(min(days, 365))},
+                headers=_CG_HEADERS, timeout=20,
+            )
+            series = _parse_coingecko_market_chart(resp.json())
+            if len(series) >= 2:
+                return series, "coingecko"
+    except Exception as e:
+        logger.warning(f"CoinGecko historical failed for {ticker}: {e}")
+    return [], ""
+
+
+async def fetch_historical_prices(tickers: list[str], days: int = 365) -> dict[str, list[tuple[float, float]]]:
+    """Fetch daily historical prices for DCA backtesting, resilient to any one
+    source failing.
+
+    Tries CryptoCompare, then Binance spot klines, then CoinGecko market_chart
+    per ticker (see ``_daily_closes``). Returns ``{ticker: [(unix_ts,
+    price_usd), ...]}`` ascending by date. Cached 24h.
     """
     global _historical_cache, _historical_cache_days, _historical_cache_ts
 
-    days = min(days, 1900)  # CryptoCompare supports up to 2000
+    days = min(days, 1900)
     fetch_tickers = [t for t in tickers if t not in _SKIP_HISTORICAL]
 
     now = time.time()
@@ -850,35 +952,22 @@ async def fetch_historical_prices(tickers: list[str], days: int = 365) -> dict[s
     if not missing:
         return {t: _historical_cache[t] for t in fetch_tickers if t in _historical_cache}
 
-    logger.info(f"Fetching historical prices from CryptoCompare for {len(missing)} tokens ({days} days)")
+    logger.info(f"Fetching historical prices for {len(missing)} tokens ({days} days)")
 
     async with httpx.AsyncClient() as client:
         for t in missing:
-            sym = CMC_SYMBOL_OVERRIDES.get(t, t)
-            try:
-                resp = await _fetch_with_retry(
-                    client, "GET",
-                    f"{CRYPTOCOMPARE_BASE}/data/v2/histoday",
-                    params={"fsym": sym, "tsym": "USD", "limit": str(days)},
-                    timeout=15,
-                )
-                data = resp.json()
-                entries = data.get("Data", {}).get("Data", [])
-                daily = []
-                for e in entries:
-                    ts = e.get("time", 0)
-                    close = e.get("close", 0)
-                    if ts > 0 and close > 0:
-                        daily.append((float(ts), float(close)))
-                if daily:
-                    _historical_cache[t] = daily
-                    _historical_cache_days[t] = days
-                    logger.info(f"  {t}: {len(daily)} daily prices")
-                else:
-                    logger.warning(f"  {t}: no data from CryptoCompare")
-            except Exception as e:
-                logger.warning(f"CryptoCompare historical failed for {t}: {e}")
-            await asyncio.sleep(0.3)  # CryptoCompare is generous but be polite
+            series, source = await _daily_closes(client, t, days)
+            if series:
+                _historical_cache[t] = series
+                # Record the span we actually got so a later, longer request
+                # re-fetches rather than trusting a short (e.g. CoinGecko 365d)
+                # series for a 36-month backtest.
+                got_days = int((series[-1][0] - series[0][0]) / 86400) if len(series) >= 2 else 0
+                _historical_cache_days[t] = max(got_days, 0)
+                logger.info(f"  {t}: {len(series)} daily prices via {source}")
+            else:
+                logger.warning(f"  {t}: no historical data from any source")
+            await asyncio.sleep(0.3)
 
     _historical_cache_ts = now
     return {t: _historical_cache[t] for t in fetch_tickers if t in _historical_cache}
@@ -917,21 +1006,17 @@ async def fetch_btc_volatility() -> dict:
     # Realized vol — pull 91 daily closes (need 90 returns for 90d, 30 for 30d)
     realized_30d = realized_90d = None
     try:
+        # Same resilient source chain as the DCA backtest, so a CryptoCompare
+        # outage no longer blanks realized vol to "—%".
         async with httpx.AsyncClient() as client:
-            resp = await _fetch_with_retry(
-                client, "GET",
-                f"{CRYPTOCOMPARE_BASE}/data/v2/histoday",
-                params={"fsym": "BTC", "tsym": "USD", "limit": "91"},
-                timeout=15,
-            )
-            entries = resp.json().get("Data", {}).get("Data", [])
-            closes = [float(e.get("close", 0)) for e in entries if float(e.get("close", 0)) > 0]
-            if len(closes) >= 31:
-                realized_30d = _annualized_realized_vol(closes[-31:])
-            if len(closes) >= 91:
-                realized_90d = _annualized_realized_vol(closes[-91:])
-            elif len(closes) >= 31:
-                realized_90d = _annualized_realized_vol(closes)  # best-effort
+            series, _src = await _daily_closes(client, "BTC", 95)
+        closes = [c for _, c in series if c > 0]
+        if len(closes) >= 31:
+            realized_30d = _annualized_realized_vol(closes[-31:])
+        if len(closes) >= 91:
+            realized_90d = _annualized_realized_vol(closes[-91:])
+        elif len(closes) >= 31:
+            realized_90d = _annualized_realized_vol(closes)  # best-effort
     except Exception as e:
         logger.warning(f"BTC realized vol fetch failed: {e}")
 
