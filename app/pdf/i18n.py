@@ -469,8 +469,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "de": "Aktuelle Allokation",
     },
     "current_allocation.subheading": {
-        "en": "Your existing digital-asset holdings before this proposal.",
-        "de": "Ihre aktuellen digitalen Vermögenswerte vor diesem Vorschlag.",
+        "en": "The portfolio selected for this client in the Teroxx allocator.",
+        "de": "Die für diesen Kunden im Teroxx-Allokator ausgewählte Allokation.",
     },
     "current_allocation.placeholder": {
         "en": (

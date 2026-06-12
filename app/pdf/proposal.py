@@ -565,6 +565,26 @@ def build_proposal_context(inp: ProposalInputs) -> dict[str, Any]:
         "donut_legend": legend,
         "allocation_title": allocation_title,
         "allocation_rows": alloc_rows,
+        # Current-allocation section. New-client proposals previously left
+        # this as a blank hand-fill table, which read as broken/unfinished
+        # (Jannick, 2026-06-12). Pre-fill it with the portfolio selected in
+        # the app so the slot is populated; map the selected allocation onto
+        # the keys _current_allocation expects (ticker/name/weight_pct/value).
+        # Review-flow proposals use _current_holdings instead, so this is
+        # scoped to new-client proposals.
+        "current_allocation": (
+            [
+                {
+                    "ticker": r["ticker"],
+                    "name": r["name"],
+                    "weight_pct": r["target_pct"],
+                    "value": r["target_usd"],
+                }
+                for r in alloc_rows
+            ]
+            if proposal_type == "new"
+            else []
+        ),
         "tier_bar_svg": tier_bar_svg,
         "macro_title": macro_title,
         "regime_gauge_svg": regime_gauge_svg,
