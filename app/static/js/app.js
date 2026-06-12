@@ -159,6 +159,65 @@ function getChartColors() {
     };
 }
 
+// ── Institutional chart theming ──────────────────────────────────────
+// One global Chart.js default set, applied before any chart renders, so
+// every chart in the app shares the brand typeface, a light bordered
+// tooltip, point-style legends, hairline gridlines and crisp hi-DPI
+// rendering — the difference between "default Chart.js" and a desk-grade
+// look. Individual charts only override data/scale specifics.
+(function themeCharts() {
+    if (typeof Chart === 'undefined') return;
+    const css = getComputedStyle(document.documentElement);
+    const ink = css.getPropertyValue('--text-body').trim() || '#060D43';
+    const muted = css.getPropertyValue('--text-muted').trim() || 'rgba(6,13,67,0.55)';
+    const card = css.getPropertyValue('--bg-card').trim() || '#ffffff';
+    const grid = 'rgba(6,13,67,0.06)';
+    const FONT = "'Sohne', Arial, Helvetica, sans-serif";
+
+    Chart.defaults.font.family = FONT;
+    Chart.defaults.font.size = 12;
+    Chart.defaults.color = muted;
+    // Render the backing bitmap at >=2x so lines/text stay sharp even on
+    // non-retina displays and after the responsive resize.
+    Chart.defaults.devicePixelRatio = Math.max(window.devicePixelRatio || 1, 2);
+
+    // Elements — thin crisp lines, hidden points until hover, hairline arc
+    // separators on doughnuts, gently rounded bars.
+    Chart.defaults.elements.line.borderWidth = 2;
+    Chart.defaults.elements.line.tension = 0.35;
+    Chart.defaults.elements.point.radius = 0;
+    Chart.defaults.elements.point.hoverRadius = 4;
+    Chart.defaults.elements.point.hitRadius = 8;
+    Chart.defaults.elements.arc.borderWidth = 2;
+    Chart.defaults.elements.arc.borderColor = card;
+    Chart.defaults.elements.bar.borderRadius = 3;
+
+    // Legend — small circular swatches, comfortable padding.
+    Object.assign(Chart.defaults.plugins.legend.labels, {
+        usePointStyle: true, pointStyle: 'circle',
+        boxWidth: 7, boxHeight: 7, padding: 14,
+        color: ink, font: { family: FONT, size: 11 },
+    });
+
+    // Tooltip — light card with a hairline border, not the default dark slab.
+    Object.assign(Chart.defaults.plugins.tooltip, {
+        backgroundColor: '#ffffff', titleColor: ink, bodyColor: muted,
+        borderColor: 'rgba(6,13,67,0.12)', borderWidth: 1,
+        cornerRadius: 6, padding: 10, boxPadding: 6, usePointStyle: true,
+        titleFont: { family: FONT, size: 12, weight: '700' },
+        bodyFont: { family: FONT, size: 11.5 },
+    });
+
+    // Scales — hairline grid, no axis border, no tick marks.
+    Chart.defaults.scale.grid.color = grid;
+    Chart.defaults.scale.grid.drawTicks = false;
+    Chart.defaults.scale.grid.lineWidth = 1;
+    if (Chart.defaults.scale.border) Chart.defaults.scale.border.display = false;
+    Object.assign(Chart.defaults.scale.ticks, {
+        color: muted, padding: 8, font: { family: FONT, size: 10.5 },
+    });
+})();
+
 // ── Chart registry (for cleanup on HTMX swap) ──
 const _charts = {};
 function _destroyChart(id) {
@@ -345,6 +404,7 @@ function tryRenderDCA() {
             data: { labels: data.months, datasets: datasets },
             options: {
                 responsive: true,
+                maintainAspectRatio: false,
                 interaction: { mode: 'index', intersect: false },
                 plugins: {
                     legend: { position: 'bottom', labels: { color: tc.text, font: { size: 11 }, padding: 12 } },

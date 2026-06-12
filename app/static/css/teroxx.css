@@ -743,22 +743,34 @@ sup.src {
 }
 .chart-box-wide {
     flex: 1 1 600px;
-    max-width: 100%;
+    /* Cap the width so a single wide chart on a large screen reads as a
+       proportioned panel rather than a stretched, low-density band. */
+    max-width: 880px;
     width: 100%;
+    margin: 0 auto;
 }
 .chart-box-wide canvas {
     width: 100% !important;
-    height: 400px !important;
-    max-height: 500px;
+    height: 360px !important;
+    max-height: 420px;
 }
-/* Visual Analysis — bubble chart deserves the full canvas for easy navigation */
-.chart-box-bubble canvas {
-    height: 620px !important;
-    max-height: 720px;
+
+/* Dedicated, centred holder for the DCA accumulation chart: a fixed-height
+   relative box lets Chart.js (maintainAspectRatio:false) render the canvas
+   crisply at the right proportions instead of being CSS-stretched. */
+.dca-chart-wrap {
+    width: 100%;
+    max-width: 860px;
+    margin: 0 auto;
 }
-.chart-box-dilution canvas {
-    height: 520px !important;
-    max-height: 620px;
+.dca-chart-holder {
+    position: relative;
+    width: 100%;
+    height: 340px;
+}
+.dca-chart-holder > canvas {
+    width: 100% !important;
+    height: 100% !important;
 }
 .chart-label {
     font-size: 0.7rem;
