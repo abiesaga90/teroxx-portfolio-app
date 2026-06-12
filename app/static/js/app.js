@@ -218,6 +218,64 @@ function getChartColors() {
     });
 })();
 
+// ── Always-on data labels (Visual Analysis charts) ──────────────────
+// A chart only opts in by setting options.plugins.valueLabels = { mode }.
+//   mode 'bubble'  → draws each point's ticker centred on the bubble
+//   mode 'bar-x'   → draws the value just past the end of a horizontal bar
+// A white halo keeps the text legible over any fill. Visibility is gated
+// on the global _vaLabels toggle so the user can switch labels off.
+window._vaLabels = (function () {
+    try { return localStorage.getItem('vaLabels') !== '0'; } catch (e) { return true; }
+})();
+
+const valueLabelPlugin = {
+    id: 'valueLabels',
+    afterDatasetsDraw(chart) {
+        const cfg = chart.options.plugins && chart.options.plugins.valueLabels;
+        if (!cfg || !window._vaLabels) return;
+        const ctx = chart.ctx;
+        ctx.save();
+        ctx.font = "600 10px 'Sohne', Arial, Helvetica, sans-serif";
+        ctx.textBaseline = 'middle';
+        chart.data.datasets.forEach((ds, di) => {
+            const meta = chart.getDatasetMeta(di);
+            if (meta.hidden) return;
+            meta.data.forEach((el, idx) => {
+                if (!el || el.skip) return;
+                if (cfg.mode === 'bubble') {
+                    const raw = ds.data[idx] || {};
+                    const text = raw.label || '';
+                    if (!text) return;
+                    ctx.textAlign = 'center';
+                    ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,0.92)';
+                    ctx.strokeText(text, el.x, el.y);
+                    ctx.fillStyle = '#060D43';
+                    ctx.fillText(text, el.x, el.y);
+                } else if (cfg.mode === 'bar-x') {
+                    const v = ds.data[idx];
+                    if (v == null) return;
+                    const text = (typeof v === 'number' ? v.toFixed(1) : v) + 'x';
+                    ctx.textAlign = 'left';
+                    ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,0.92)';
+                    ctx.strokeText(text, el.x + 5, el.y);
+                    ctx.fillStyle = '#060D43';
+                    ctx.fillText(text, el.x + 5, el.y);
+                }
+            });
+        });
+        ctx.restore();
+    },
+};
+if (typeof Chart !== 'undefined') Chart.register(valueLabelPlugin);
+
+// Toggle handler wired to the "Show values" checkbox in Visual Analysis.
+function toggleVaLabels(on) {
+    window._vaLabels = !!on;
+    try { localStorage.setItem('vaLabels', on ? '1' : '0'); } catch (e) {}
+    if (_charts['bubble']) _charts['bubble'].update();
+    if (_charts['dilution']) _charts['dilution'].update();
+}
+
 // ── Chart registry (for cleanup on HTMX swap) ──
 const _charts = {};
 function _destroyChart(id) {
@@ -275,6 +333,9 @@ function tryRenderBubble() {
         const data = JSON.parse(el.textContent);
         const ctx = document.getElementById('bubble-chart');
         if (!ctx) return;
+        // Keep the toggle in sync with the persisted preference after a swap.
+        const _vt = document.getElementById('va-labels-toggle');
+        if (_vt) _vt.checked = window._vaLabels;
         _destroyChart('bubble');
         const tc = getChartColors();
         const catColors = {
@@ -306,7 +367,9 @@ function tryRenderBubble() {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                layout: { padding: 6 },
                 plugins: {
+                    valueLabels: { mode: 'bubble' },
                     legend: { position: 'bottom', labels: { color: tc.text, font: { size: 10 }, padding: 10 } },
                     tooltip: {
                         callbacks: {
@@ -347,7 +410,9 @@ function tryRenderDilution() {
                 indexAxis: 'y',
                 responsive: true,
                 maintainAspectRatio: false,
+                layout: { padding: { right: 34 } },
                 plugins: {
+                    valueLabels: { mode: 'bar-x' },
                     legend: { display: false },
                     tooltip: { callbacks: { label: (ctx) => `FDV/MCap: ${ctx.raw.toFixed(2)}x` } },
                 },

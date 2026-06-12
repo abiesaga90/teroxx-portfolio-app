@@ -28,7 +28,13 @@
 
 <!-- Charts -->
 <div class="card">
-    <div class="card-header">Visual Analysis</div>
+    <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;">
+        <span>Visual Analysis</span>
+        <label style="display:inline-flex;align-items:center;gap:6px;font-size:0.7rem;font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-muted);cursor:pointer;">
+            <input type="checkbox" id="va-labels-toggle" onchange="toggleVaLabels(this.checked)" checked>
+            Show values on chart
+        </label>
+    </div>
     <div class="chart-section">
         <div class="chart-box">
             <canvas id="bubble-chart"></canvas>
