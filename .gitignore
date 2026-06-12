@@ -10,3 +10,4 @@ build/
 data/
 *.db
 *.db-journal
+.scratch_tmp/

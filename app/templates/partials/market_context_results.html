@@ -19,9 +19,16 @@
         <div style="text-align:center;min-width:160px;">
             <div style="font-family:'SometimesTimes',serif;font-size:3rem;font-weight:700;color:{{ r.regime_color }};line-height:1;">{{ r.composite_score }}</div>
             <div style="font-size:0.65rem;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);margin-top:4px;">Composite Score</div>
+            {% if r.low_coverage %}
+            <div style="margin-top:6px;display:inline-block;padding:3px 10px;border-radius:3px;background:#9CA3AF22;color:#6B7280;font-size:0.75rem;font-weight:700;">
+                Low confidence
+            </div>
+            <div style="font-size:0.6rem;color:var(--text-muted);margin-top:4px;">({{ r.regime_label }}, unconfirmed)</div>
+            {% else %}
             <div style="margin-top:6px;display:inline-block;padding:3px 10px;border-radius:3px;background:{{ r.regime_color }}22;color:{{ r.regime_color }};font-size:0.75rem;font-weight:700;">
                 {{ r.regime_label }}
             </div>
+            {% endif %}
         </div>
         <!-- Horizontal regime bar -->
         <div style="flex:1;">
@@ -41,6 +48,18 @@
             </div>
         </div>
     </div>
+    {% if r.low_coverage %}
+    <div style="margin:0 32px 18px;padding:10px 14px;border-radius:4px;background:#F59E0B14;border:1px solid #F59E0B55;font-size:0.72rem;color:var(--text-body);line-height:1.5;">
+        <strong>⚠ Low data coverage ({{ r.coverage_pct }}% of indicators).</strong>
+        The composite is computed from a partial set of indicators, so the regime
+        call is <em>unconfirmed</em> and should not be read as a confident signal.
+        {% if r.missing_categories %}
+        Whole blocks are currently unavailable:
+        <strong>{{ r.missing_categories | map('capitalize') | join(', ') }}</strong>
+        (commonly the TradFi feed being rate-limited or IP-blocked at the data source).
+        {% endif %}
+    </div>
+    {% endif %}
 </div>
 
 <!-- BTC Cycle indicators -->

@@ -1955,7 +1955,9 @@ def _implementation_section(doc: Document, ctx: dict) -> None:
     hr2.font.bold = True
     hr2.font.size = Pt(12)
     hr2.font.color.rgb = NIGHTBLUE
-    for key in ("review.drift_window", "review.single_drift", "review.rescore_cadence"):
+    # review.rescore_cadence (macro-regime re-scoring) omitted — the regime
+    # read was removed from the proposal.
+    for key in ("review.drift_window", "review.single_drift"):
         doc.add_paragraph(_T(ctx, key), style="List Bullet")
 
     doc.add_page_break()
@@ -1979,7 +1981,9 @@ def _appendix(doc: Document, ctx: dict) -> None:
     hr2.font.bold = True
     hr2.font.size = Pt(12)
     hr2.font.color.rgb = NIGHTBLUE
-    for key in ("datasources.spot", "datasources.macro", "datasources.onchain", "datasources.history"):
+    # datasources.macro omitted — the macro/regime composite no longer feeds
+    # the proposal, so its data sources are not disclosed here.
+    for key in ("datasources.spot", "datasources.onchain", "datasources.history"):
         doc.add_paragraph(_T(ctx, key), style="List Bullet")
 
     doc.add_paragraph()
@@ -2043,8 +2047,11 @@ def render_docx(ctx: dict[str, Any]) -> bytes:
     # spawn (process cold-start dominates, so batching 3 charts beats 3 spawns).
     # _chart_bytes reads these first, falling back to per-chart EMF then PNG.
     if vector_charts_enabled():
+        # NOTE: the regime gauge is intentionally excluded — the macro/regime
+        # page was removed from the proposal (see _macro_section call below),
+        # so converting it would be wasted soffice work.
         chart_svgs = {
-            k: ctx[k] for k in ("donut_svg", "tier_bar_svg", "regime_gauge_svg")
+            k: ctx[k] for k in ("donut_svg", "tier_bar_svg")
             if ctx.get(k)
         }
         if chart_svgs:
@@ -2071,7 +2078,12 @@ def render_docx(ctx: dict[str, Any]) -> bytes:
     if is_review:
         _rebalance_actions(doc, ctx)
     _strategy_section(doc, ctx)
-    _macro_section(doc, ctx)
+    # Macro / market-regime page removed from the proposal per advisor
+    # feedback (2026-06): the regime read did not present well in the PDF and
+    # is better consulted live in the app's Market Context tab. The macro
+    # context is still computed in build_proposal_context (and may inform the
+    # strategy narrative) — only the standalone regime page is omitted here.
+    # _macro_section(doc, ctx)
     _fazit_section(doc, ctx)
     _wishes_section(doc, ctx)
     _fees_section(doc, ctx)

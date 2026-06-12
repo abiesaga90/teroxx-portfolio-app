@@ -12,3 +12,11 @@ services:
         value: "92086fab50534fe78d552e3a86dfb0d7"
       - key: SESSION_SECRET
         value: "yWA6t5xdbhUT6Kl_FVLShJrlC1-vityaYZMd43dDtew"
+      # Free-tier instances have ~512MB RAM. Spawning headless LibreOffice to
+      # vectorise charts (EMF) during DOCX generation can OOM-kill the worker,
+      # which the proxy surfaces as a 502 on /proposal.docx. Force the fast,
+      # in-process high-DPI PNG chart path instead; the .pdf endpoint still
+      # uses LibreOffice once for the DOCX→PDF conversion. Set to "1" to
+      # re-enable vector (EMF) charts on a larger instance.
+      - key: TEROXX_VECTOR_CHARTS
+        value: "0"

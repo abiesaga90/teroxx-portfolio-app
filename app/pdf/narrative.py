@@ -170,7 +170,10 @@ def exec_summary_bullets(
     lang: str = "en",
 ) -> list[str]:
     """The three "What this means" bullets on the Executive Summary page."""
-    _, regime_sentence = regime_bias(regime_label, lang=lang)
+    # The market-regime read was removed from the proposal (advisor feedback,
+    # 2026-06), so the exec summary no longer surfaces a regime-context bullet
+    # or a regime-triggered review window — it leads with the allocation
+    # rationale and a plain review cadence instead.
     if lang == "de":
         holdings_clause = ""
         if notable_holdings:
@@ -178,9 +181,9 @@ def exec_summary_bullets(
             holdings_clause = f" Die Kernpositionierung stützt sich auf {names}."
         return [
             f"Die Allokation spiegelt die genannte Risikotoleranz des Kunden und die Hausmeinung der Firma wider." + holdings_clause,
-            f"Regime-Kontext: {regime_sentence}",
+            f"Die Gewichtung folgt dem disziplinierten, mehrstufigen Allokationsmodell von Teroxx.",
             f"Vorgeschlagener nächster Überprüfungszeitpunkt: in {next_review_weeks} Wochen "
-            f"oder früher, sobald sich das Regime-Komposit um mehr als 10 Punkte verschiebt.",
+            f"oder früher bei wesentlichen Marktbewegungen.",
         ]
     holdings_clause = ""
     if notable_holdings:
@@ -188,9 +191,9 @@ def exec_summary_bullets(
         holdings_clause = f" Core positioning anchors on {names}."
     return [
         f"The allocation reflects the client's stated risk tolerance and the firm's house view." + holdings_clause,
-        f"Regime context: {regime_sentence}",
+        f"Weightings follow Teroxx's disciplined, multi-tier allocation model.",
         f"Suggested next portfolio review window: in {next_review_weeks} weeks, "
-        f"or sooner if the regime composite shifts by more than 10 points.",
+        f"or sooner on material market moves.",
     ]
 
 

@@ -45,7 +45,7 @@ def vector_charts_enabled() -> bool:
     return os.getenv("TEROXX_VECTOR_CHARTS", "1").strip().lower() not in ("0", "false", "no")
 
 
-def svgs_to_emf(svgs: dict[str, str], *, timeout: int = 90) -> dict[str, bytes]:
+def svgs_to_emf(svgs: dict[str, str], *, timeout: int = 30) -> dict[str, bytes]:
     """Convert ``{name: svg_string}`` to ``{name: emf_bytes}`` in one soffice
     spawn. Names missing from the result simply failed to convert and the
     caller falls back per chart. Returns ``{}`` on total failure.

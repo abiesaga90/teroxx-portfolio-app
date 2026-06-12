@@ -230,7 +230,7 @@
                 <form class="controls"
                       hx-post="/api/dca"
                       hx-target="#dca-results"
-                      hx-trigger="change, keyup changed delay:500ms"
+                      hx-trigger="load, change, keyup changed delay:500ms"
                       hx-include="#global-controls"
                       hx-indicator="#dca-loading"
                       hx-on::after-settle="requestAnimationFrame(function(){setTimeout(tryRenderAllCharts,50)})">
@@ -323,7 +323,7 @@
                   hx-trigger="change"
                   hx-include="#global-controls"
                   hx-indicator="#rpnl-loading"
-                  hx-on::after-settle="requestAnimationFrame(function(){setTimeout(tryRenderAllCharts,50)})">
+                  hx-on::after-settle="restoreRpnlFocus();requestAnimationFrame(function(){setTimeout(tryRenderAllCharts,50)})">
                 <div class="control-group">
                     <span class="control-label">Portfolio Value ($)</span>
                     <input type="number" name="portfolio_value" value="100000" min="0" step="1000"
@@ -840,12 +840,59 @@ function saveRPnlPositions() {
     return positions;
 }
 
+// First-open compute for the Rebalancing & P&L tab. Seeds any holdings the
+// user already entered (persisted in localStorage) into the hidden
+// positions_json field so the very first render shows the correct BUY/SELL
+// amounts, then triggers the form. Runs once per page load.
+let _rpnlAutoLoaded = false;
+function ensureRebalancePnlLoaded() {
+    const form = document.getElementById('rebalance-pnl-form');
+    if (!form) return;
+    try {
+        const saved = localStorage.getItem('rpnlPositions');
+        const field = form.querySelector('[name=positions_json]');
+        if (saved && field) field.value = saved;
+    } catch (e) {}
+    if (_rpnlAutoLoaded) return;
+    _rpnlAutoLoaded = true;
+    htmx.trigger(form, 'change');
+}
+
+// Captured just before a P&L recompute so the swap doesn't yank the page to
+// the bottom or drop the caret out of the cell the user is editing.
+let _rpnlRestore = null;
+
 function triggerRebalancePnl() {
     const positions = saveRPnlPositions();
     const form = document.getElementById('rebalance-pnl-form');
-    if (form) {
-        form.querySelector('[name=positions_json]').value = JSON.stringify(positions);
-        htmx.trigger(form, 'change');
+    if (!form) return;
+    // Remember scroll + the active P&L cell so we can restore both after the
+    // results block is re-rendered (the edited input is destroyed by the swap).
+    _rpnlRestore = { scrollY: window.scrollY, scrollX: window.scrollX };
+    const ae = document.activeElement;
+    if (ae && ae.classList &&
+        (ae.classList.contains('rpnl-current') || ae.classList.contains('rpnl-entry'))) {
+        _rpnlRestore.ticker = ae.dataset.ticker;
+        _rpnlRestore.cls = ae.classList.contains('rpnl-current') ? 'rpnl-current' : 'rpnl-entry';
+        try { _rpnlRestore.selStart = ae.selectionStart; _rpnlRestore.selEnd = ae.selectionEnd; } catch (e) {}
+    }
+    form.querySelector('[name=positions_json]').value = JSON.stringify(positions);
+    htmx.trigger(form, 'change');
+}
+
+// Restore scroll position and (if applicable) refocus the edited P&L cell after
+// the results swap settles. Called from the form's hx-on::after-settle.
+function restoreRpnlFocus() {
+    const r = _rpnlRestore;
+    if (!r) return;
+    _rpnlRestore = null;
+    window.scrollTo(r.scrollX || 0, r.scrollY || 0);
+    if (r.ticker && r.cls) {
+        const el = document.querySelector(`.rpnl-row[data-ticker="${r.ticker}"] .${r.cls}`);
+        if (el) {
+            el.focus({ preventScroll: true });
+            try { if (r.selStart != null) el.setSelectionRange(r.selStart, r.selEnd); } catch (e) {}
+        }
     }
 }
 

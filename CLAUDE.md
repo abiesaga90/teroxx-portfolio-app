@@ -61,6 +61,35 @@ Proposal card (Allocator results) exports the branded proposal as
 - The Docker image installs `libreoffice-writer` + the brand fonts for
   the PDF conversion. Google Docs setup: `docs/google_docs_setup.md`.
 
+### v5.2 (2026-06-12) — advisor bug-fix pass (Jannick feedback)
+- **Proposal: market regime removed.** The standalone macro/regime page,
+  the regime gauge chart, the exec-summary "regime context" bullet, the
+  regime-triggered review wording and the macro data-source line are all
+  gone from the DOCX/PDF (`_macro_section` no longer called; `regime_gauge_svg`
+  dropped from the EMF pre-pass). `build_proposal_context` still computes the
+  macro state (it may inform the strategy narrative); only the rendering is
+  removed. The regime lives on in the app's Market Context tab.
+- **DOCX 502 on Render free tier.** Headless LibreOffice (EMF charts) under
+  ~512 MB could OOM-kill the worker → proxy 502 on `/proposal.docx`. Set
+  `TEROXX_VECTOR_CHARTS=0` in `render.yaml` so DOCX generation uses the fast
+  in-process hi-DPI PNG path; the `.pdf` endpoint still spawns LibreOffice
+  once for the DOCX→PDF convert. EMF batch timeout lowered 90s→30s. (Residual
+  cold-start 502s are a free-tier characteristic — consider a keep-warm ping.)
+- **Market Context coverage guard.** When data blocks fail to load (e.g. the
+  Yahoo TradFi feed is IP-blocked), the composite no longer asserts a
+  confident "Early Bull" off a skewed subset — `score_all` now flags
+  `low_coverage`/`missing_categories` and the tab shows a "Low confidence"
+  badge + warning instead.
+- **DCA planner + Rebalancing tab auto-load.** Both forms lacked a `load`
+  trigger, so the tabs looked empty until an input changed. DCA now triggers
+  on `load`; Rebalancing computes on first tab-open (`switchTab` hook),
+  seeding saved holdings so BUY/SELL shows immediately.
+- **P&L no longer jumps.** Editing a P&L cell preserved neither scroll nor
+  caret across the HTMX swap; `triggerRebalancePnl`/`restoreRpnlFocus` now
+  restore both.
+- **Scoring "Visual Analysis" side-by-side again.** Reverted the stacked
+  (full-width) bubble + dilution layout to the original `.chart-box` pair.
+
 ### v5.0 (2026-06-11)
 - **Vector charts:** charts embed as **EMF** (Word-native vector) via
   `app/pdf/svg_to_emf.py` (same LibreOffice as the PDF step; one soffice

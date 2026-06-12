@@ -25,6 +25,14 @@ function switchTab(tabId) {
     document.querySelector(`[data-tab="${tabId}"]`)?.classList.add('active');
     document.body.setAttribute('data-active-tab', tabId);
     localStorage.setItem('activeTab', tabId);
+    // The Rebalancing & P&L results only render after a compute, and the form
+    // has no load trigger — so the tab looked empty (no BUY/SELL shown) until
+    // the user poked an input. Compute on first open, seeding any holdings the
+    // user already entered (saved in localStorage) so the buy/sell amounts
+    // reflect them immediately.
+    if (tabId === 'tab-rebalance-pnl' && typeof ensureRebalancePnlLoaded === 'function') {
+        ensureRebalancePnlLoaded();
+    }
 }
 
 // Always land on Portfolio when opening the app.

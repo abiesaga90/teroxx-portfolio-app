@@ -245,8 +245,8 @@ _STRINGS: dict[str, dict[str, str]] = {
     },
     # Review cadence bullets
     "review.drift_window": {
-        "en": "Portfolio drift checked at each review window or on regime shifts greater than 10 composite points.",
-        "de": "Die Portfolio-Abweichung wird bei jedem Überprüfungstermin oder bei Regimewechseln von mehr als 10 Kompositpunkten geprüft.",
+        "en": "Portfolio drift is checked at each scheduled review window.",
+        "de": "Die Portfolio-Abweichung wird bei jedem geplanten Überprüfungstermin geprüft.",
     },
     "review.single_drift": {
         "en": "Single-position drift over 5 percentage points triggers a rebalance proposal.",

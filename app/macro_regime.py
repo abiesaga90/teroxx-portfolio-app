@@ -682,8 +682,30 @@ def score_all(inputs: dict, prev_regime: Optional[str] = None) -> dict:
     # We don't keep an hourly multi-token matrix; leave them None so weights renormalize.
     # (Future: derive from the existing CryptoCompare daily history we already cache.)
 
-    composite, n_avail, n_total = compute_composite(scores)
+    composite, n_avail, n_total, avail_w, all_w = compute_composite(scores)
     regime = classify_regime(composite, prev_regime)
+
+    # ── Coverage guard ──────────────────────────────────────────────────
+    # The composite renormalises over whatever scored, so a confident regime
+    # can be produced from a lopsided subset (e.g. all TradFi sources down but
+    # the crypto-native indicators reading bullish). Track weight coverage and,
+    # below a floor, flag the regime as low-confidence so the UI does not assert
+    # "Early Bull" off partial data. We also surface which categories are dark.
+    coverage_pct = round((avail_w / all_w * 100.0), 1) if all_w else 0.0
+    by_key = {ind["key"]: ind for ind in INDICATORS}
+    cat_weight: dict[str, float] = {}
+    cat_have: dict[str, float] = {}
+    for ind in INDICATORS:
+        cat_weight[ind["category"]] = cat_weight.get(ind["category"], 0.0) + ind["weight"]
+    for k in scores:
+        if scores.get(k) is not None and k in by_key:
+            cat = by_key[k]["category"]
+            cat_have[cat] = cat_have.get(cat, 0.0) + by_key[k]["weight"]
+    missing_categories = [
+        cat for cat, w in cat_weight.items()
+        if cat_have.get(cat, 0.0) < 0.25 * w  # <25% of a block's weight present
+    ]
+    low_coverage = coverage_pct < 60.0 or bool(missing_categories)
 
     # For every indicator that didn't score, attach a human-readable reason.
     # Prefer specific fetch-time errors; fall back to a generic "Insufficient
@@ -702,6 +724,9 @@ def score_all(inputs: dict, prev_regime: Optional[str] = None) -> dict:
         "regime_range": REGIMES[regime]["range"],
         "sources_available": n_avail,
         "sources_total": n_total,
+        "coverage_pct": coverage_pct,
+        "low_coverage": low_coverage,
+        "missing_categories": missing_categories,
         "scores": scores,
         "raw": raw,
         "indicators": INDICATORS,
@@ -710,15 +735,25 @@ def score_all(inputs: dict, prev_regime: Optional[str] = None) -> dict:
     }
 
 
-def compute_composite(scores: dict[str, Optional[float]]) -> tuple[float, int, int]:
+def compute_composite(scores: dict[str, Optional[float]]) -> tuple[float, int, int, float, float]:
+    """Weighted composite over the indicators that scored.
+
+    Returns ``(composite, n_available, n_total, available_weight,
+    total_weight)``. The weight figures let callers judge *coverage* — when a
+    whole data block (e.g. all the Yahoo-sourced TradFi indicators) fails to
+    load, the composite silently renormalises onto the remaining indicators and
+    can read confidently bullish/bearish off a skewed subset. Coverage lets the
+    caller refuse to assert a confident regime in that case.
+    """
     by_key = {ind["key"]: ind for ind in INDICATORS}
+    all_weight = float(sum(ind["weight"] for ind in INDICATORS))
     total_w = 0.0; weighted_sum = 0.0; available = 0
     for k, s in scores.items():
         if s is None or k not in by_key: continue
         w = by_key[k]["weight"]
         weighted_sum += s * w; total_w += w; available += 1
-    if total_w == 0: return 50.0, 0, len(INDICATORS)
-    return round(weighted_sum / total_w, 1), available, len(INDICATORS)
+    if total_w == 0: return 50.0, 0, len(INDICATORS), 0.0, all_weight
+    return round(weighted_sum / total_w, 1), available, len(INDICATORS), total_w, all_weight
 
 
 def classify_regime(score: float, prev: Optional[str] = None) -> str:
