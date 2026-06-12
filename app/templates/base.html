@@ -306,6 +306,13 @@
                             <option value="60">60 months</option>
                         </select>
                     </div>
+                    <div class="control-group">
+                        <span class="control-label">&nbsp;</span>
+                        <button type="button" class="btn-primary"
+                                onclick="htmx.trigger(document.getElementById('dca-backtest-form'), 'runBacktest')">
+                            Run Backtest
+                        </button>
+                    </div>
                     <span id="backtest-loading" class="htmx-indicator"><span class="spinner"></span></span>
                 </form>
             </div>
