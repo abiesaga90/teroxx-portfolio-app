@@ -46,10 +46,12 @@ cd portfolio-allocation-model
 Teroxx group (not a personal account), and reduce Aleksander's access after handover.
 
 > **On "no database":** in the kickoff chat the app was described as "FastAPI in
-> Docker, no database." That is true *operationally today* — nothing durable exists
-> (it runs on ephemeral SQLite, see §8). But the code has a full SQLAlchemy layer and
-> is built to use PostgreSQL. For a Teroxx deployment, add an RDS Postgres (§2) so
-> client records persist — it is a config change (`DATABASE_URL`), not a code change.
+> Docker, no database." The code actually has a full SQLAlchemy layer and is built for
+> PostgreSQL (`psycopg2-binary` is a dependency). It reads `DATABASE_URL` at startup: if
+> set (likely in the Render dashboard) it uses that managed Postgres; if unset it falls
+> back to local SQLite, which is ephemeral on Render's free tier. **Verify the current
+> backend in the Render dashboard.** For the Teroxx deployment, use a managed RDS
+> Postgres either way (§2) — a config change (`DATABASE_URL`), not a code change.
 
 ---
 
@@ -66,8 +68,8 @@ Copy the connection string. SQLAlchemy 2.x expects the `postgresql://` scheme
 postgresql://USER:PASSWORD@HOST:5432/teroxx
 ```
 
-Enable **automated daily backups** — this is the durability the current SQLite-on-
-ephemeral-disk setup lacks.
+Enable **automated daily backups** on the new instance — that guarantees durability
+regardless of what the current setup uses.
 
 ---
 
@@ -201,21 +203,21 @@ custom domain and the DNS record they specify.
 
 ## 8. (If needed) migrate existing data
 
-The current deployment uses **ephemeral SQLite**, so there is likely little or no
-durable client data to move — clients are re-entered as needed.
+Client data is **mostly test / throwaway**, so migration can start with a **fresh**
+Teroxx database — clients are re-entered as needed.
 
-If any records must be preserved, export the current SQLite tables and load them into
-the new Postgres before cut-over (schema is identical; SQLAlchemy created both):
+First **confirm the current backend** (Render dashboard → is `DATABASE_URL` set?):
 
-```bash
-# on a machine with the current DB file (app/data/teroxx.db or /tmp/teroxx.db):
-sqlite3 teroxx.db .dump > dump.sql
-# hand-port the INSERTs for: clients, client_lots, scenarios
-# (skip SQLite-specific pragmas; adjust types if needed) then load into Postgres:
-psql "$DATABASE_URL" -f cleaned_inserts.sql
-```
-
-Or use a tool like `pgloader` for a one-shot SQLite→Postgres transfer.
+- **If it's a managed Postgres** and holds anything worth keeping, dump and restore into
+  the new Teroxx Postgres before cut-over:
+  ```bash
+  pg_dump "$OLD_DATABASE_URL" > dump.sql
+  psql   "$NEW_DATABASE_URL" -f dump.sql
+  ```
+- **If it's SQLite** (`DATABASE_URL` unset, ephemeral disk) and something must be kept,
+  dump the tables (`clients`, `client_lots`, `scenarios`) and load them into Postgres, or
+  use `pgloader` for a one-shot SQLite→Postgres transfer. The schema is identical —
+  SQLAlchemy creates it automatically on first boot.
 
 ---
 

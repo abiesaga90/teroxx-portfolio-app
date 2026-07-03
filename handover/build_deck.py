@@ -595,7 +595,7 @@ def s_status():
     text(s, Inches(7.08), Inches(1.7), Inches(5.4), Inches(0.4),
          [[("KNOWN LIMITATIONS & GOTCHAS", SANS_SEMI, 12, EMBER, True, False, 1.5)]])
     bullets(s, Inches(7.08), Inches(2.2), Inches(5.4), Inches(4.2), [
-        ("Data is not durable today — ", "runs SQLite on Render's free tier, whose disk resets on restart. Managed Postgres fixes this (Section 4)."),
+        ("Confirm the DB backend — ", "the app supports managed Postgres via DATABASE_URL; verify in the Render dashboard, and put the Teroxx deployment on managed Postgres (Section 4)."),
         ("No automated test suite — ", "changes are verified manually in the UI."),
         ("Free-tier memory — ", "vector charts are off to avoid out-of-memory on 512 MB; PNG charts used instead."),
         ("Google Docs geo-blocks — ", "export must run from an allowed region; some servers get 403."),
@@ -644,7 +644,7 @@ def s_wherelives():
     items = [
         ("1  Code", "Already on Teroxx GitLab — nothing to move"),
         ("2  A host", "Any Docker-capable cloud (Section 4)"),
-        ("3  A database", "New managed Postgres for durable client data"),
+        ("3  A database", "A Teroxx-managed Postgres (RDS); verify current backend"),
         ("4  Credentials", "API keys, session secret, Google service account"),
     ]
     x = 0.85; w = 2.9
@@ -727,21 +727,21 @@ def s_data():
     # persistence note
     card(s, Inches(6.83), Inches(2.15), Inches(5.9), Inches(4.35), fill=RGBColor(0xFB,0xF0,0xEC), line=EMBER)
     text(s, Inches(7.08), Inches(2.32), Inches(5.4), Inches(0.35),
-         [[("THE DURABILITY GAP", SANS_SEMI, 11, EMBER, True, False, 1.5)]])
+         [[("CONFIRM THE BACKEND", SANS_SEMI, 11, ELECTRIC, True, False, 1.5)]])
     text(s, Inches(7.08), Inches(2.78), Inches(5.4), Inches(3.5),
-         [[("Today no ", SANS, 12, INK_70), ("DATABASE_URL", SANS_SEMI, 12, INK, True),
-           (" is set, so the app uses SQLite on Render's free tier — whose filesystem is ",
-            SANS, 12, INK_70), ("ephemeral", SANS_SEMI, 12, DANGER, True),
-           (". It resets on every deploy and periodic restart.", SANS, 12, INK_70)],
+         [[("The app reads ", SANS, 12, INK_70), ("DATABASE_URL", SANS_SEMI, 12, INK, True),
+           (" at startup. If it points at a managed Postgres (likely set in the Render dashboard), "
+            "data is durable. If it is unset, the app falls back to SQLite on Render's free tier, whose "
+            "disk is ", SANS, 12, INK_70), ("ephemeral", SANS_SEMI, 12, EMBER, True),
+           (".", SANS, 12, INK_70)],
           [("", SANS, 6, INK_70)],
-          [("Consequence: ", SANS_SEMI, 12, INK, True),
-           ("client records entered in the CRM are not guaranteed to survive a restart. In practice the "
-            "app is used to build allocations and proposals on the fly, which do not depend on stored state.",
-            SANS, 12, INK_70)],
+          [("Action: ", SANS_SEMI, 12, INK, True),
+           ("confirm the current backend in the Render dashboard. Client data is mostly test/throwaway, "
+            "so this is not blocking — a fresh database is fine.", SANS, 12, INK_70)],
           [("", SANS, 6, INK_70)],
-          [("The fix: ", SANS_SEMI, 12, SUCCESS, True),
-           ("provision a managed PostgreSQL and set DATABASE_URL. The code already supports it — "
-            "no changes needed. This is step 2 of the migration runbook.", SANS, 12, INK_70)]],
+          [("For Teroxx: ", SANS_SEMI, 12, SUCCESS, True),
+           ("deploy on a managed Postgres (RDS) with DATABASE_URL set, and enable backups. The code "
+            "already supports it — no changes needed (step 2 of the runbook).", SANS, 12, INK_70)]],
          line_spacing=1.16, space_after=2)
 
 
@@ -1014,18 +1014,19 @@ def s_credentials():
     text(s, Inches(7.08), Inches(2.22), Inches(5.4), Inches(0.35),
          [[("MOVING EXISTING DATA", SANS_SEMI, 11, ELECTRIC, True, False, 1.3)]])
     text(s, Inches(7.08), Inches(2.68), Inches(5.4), Inches(3.6),
-         [[("Because the current deployment uses ephemeral SQLite, there is likely ", SANS, 12, INK_70),
-           ("little or no durable client data", SANS_SEMI, 12, INK, True),
-           (" to migrate — clients are typically re-entered as needed.", SANS, 12, INK_70)],
+         [[("Client data is ", SANS, 12, INK_70),
+           ("mostly test / throwaway", SANS_SEMI, 12, INK, True),
+           (", so migration can start with a fresh Teroxx database — clients are re-entered as needed.",
+            SANS, 12, INK_70)],
           [("", SANS, 5, INK_70)],
-          [("If any records must be preserved: ", SANS_SEMI, 12, INK, True),
-           ("export the current SQLite tables (Client, ClientLot, Scenario) and import them into the new "
-            "Postgres before cut-over. The schema is identical — SQLAlchemy creates it automatically.",
+          [("If anything must be kept: ", SANS_SEMI, 12, INK, True),
+           ("confirm the current backend, then dump it (Postgres or SQLite) and restore into the new "
+            "Teroxx Postgres before cut-over. The schema is identical — SQLAlchemy creates it automatically.",
             SANS, 12, INK_70)],
           [("", SANS, 5, INK_70)],
           [("Going forward: ", SANS_SEMI, 12, SUCCESS, True),
-           ("with managed Postgres, enable automated daily backups. Client data then survives restarts and "
-            "is recoverable.", SANS, 12, INK_70)]],
+           ("managed Postgres + automated daily backups keeps client data durable and recoverable.",
+            SANS, 12, INK_70)]],
          line_spacing=1.16, space_after=2)
 
 
