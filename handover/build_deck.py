@@ -484,8 +484,10 @@ def s_universes():
            ("risk profile ", SANS_SEMI, 10.5, INK, True),
            ("(Conservative · Balanced · Growth · Aggressive)  ×  ", SANS, 10.5, INK_70),
            ("allocation mode ", SANS_SEMI, 10.5, INK, True),
-           ("(Standard = market-cap weighted · Fundamental = factor-score weighted).   The full research model "
-            "scores 79 tokens; the 40-token union is what the firm can acquire today.", SANS, 10.5, INK_70)]],
+           ("(Standard = market-cap weighted · ", SANS, 10.5, INK_70),
+           ("Fundamental = factor-score weighted, the default", SANS_SEMI, 10.5, INK, True),
+           (").   The full research model scores 79 tokens; the 40-token union is what the firm can acquire today.",
+            SANS, 10.5, INK_70)]],
          line_spacing=1.1)
 
 
@@ -499,9 +501,9 @@ def s_model():
             "up or down. All transparent and rules-based.", SANS, 13, INK_70)]], line_spacing=1.15)
     cols = [
         ("SCORE EACH ASSET", ELECTRIC, [
-            "5-factor model (momentum, value, quality, and more)",
-            "10-factor fundamental model for deeper diligence",
-            "Live inputs: dev activity, TVL, funding, supply change",
+            "Value-accrual signals: valuation (FDV/fees, FDV/TVL), fee revenue, dilution, buybacks",
+            "Sector-tailored signals incl. price momentum & developer activity",
+            "Every signal computed live from market & on-chain data",
         ]),
         ("BUILD THE TIERS", DEEP_INDIGO, [
             "Assets sorted into strategic tiers (core → satellite)",
