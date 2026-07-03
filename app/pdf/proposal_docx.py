@@ -989,7 +989,24 @@ def _market_analysis(doc: Document, ctx: dict) -> None:
     sr.font.italic = True
     sr.font.color.rgb = TEXT_MUTED
     ov = ctx.get("overrides") or {}
-    _md_or_placeholder(doc, ctx, ov.get("market_analysis_md", ""), "market_analysis.placeholder")
+    advisor_md = (ov.get("market_analysis_md") or "").strip()
+    if advisor_md:
+        # Advisor wrote their own — render it verbatim, no draft banner.
+        _add_md_block(doc, advisor_md)
+    else:
+        # No override: ship a generated, editable draft so the slot is not
+        # blank. Banner makes clear it is a starting point to review/edit.
+        draft = (ctx.get("market_analysis_draft") or "").strip()
+        if draft:
+            banner = doc.add_paragraph()
+            br = banner.add_run(_T(ctx, "market_analysis.draft_banner"))
+            br.font.italic = True
+            br.font.bold = True
+            br.font.size = Pt(9)
+            br.font.color.rgb = SUNSET_EMBER
+            _add_md_block(doc, draft)
+        else:
+            _md_or_placeholder(doc, ctx, "", "market_analysis.placeholder")
     doc.add_page_break()
 
 
@@ -1282,8 +1299,16 @@ def _current_allocation(doc: Document, ctx: dict) -> None:
         pnl = review.get("pnl") or {}
         rows = pnl.get("ticker_summary") or pnl.get("by_ticker") or []
 
+    # New-client proposals fill this section with the *proposed* allocation
+    # (the client holds nothing yet), so "Current" would misdescribe it.
+    # Review proposals show the client's actual current holdings — keep
+    # "Current" there. Bookmark anchor stays "page.current_allocation".
+    is_new = (ctx.get("proposal_type") or "new").strip().lower() == "new"
+    heading_key = "page.proposed_allocation" if is_new else "page.current_allocation"
+    weight_col_key = "table.weight_proposed" if is_new else "table.weight_now"
+
     _section_header(doc, ctx, "page.current_allocation",
-                    _T(ctx, "page.current_allocation"))
+                    _T(ctx, heading_key))
 
     sub = doc.add_paragraph()
     sr = sub.add_run(_T(ctx, "current_allocation.subheading"))
@@ -1299,7 +1324,7 @@ def _current_allocation(doc: Document, ctx: dict) -> None:
         table = doc.add_table(rows=1 + len(rows), cols=3)
         headers = [
             _T(ctx, "table.asset"),
-            _T(ctx, "table.weight_now"),
+            _T(ctx, weight_col_key),
             _T(ctx, "table.market_value"),
         ]
         for i, hd in enumerate(headers):
@@ -1347,7 +1372,7 @@ def _current_allocation(doc: Document, ctx: dict) -> None:
         table = doc.add_table(rows=5, cols=3)
         headers = [
             _T(ctx, "table.asset"),
-            _T(ctx, "table.weight_now"),
+            _T(ctx, weight_col_key),
             _T(ctx, "table.market_value"),
         ]
         for i, hd in enumerate(headers):

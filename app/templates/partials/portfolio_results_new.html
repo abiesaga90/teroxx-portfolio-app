@@ -404,9 +404,11 @@
         // Token for the allocation snapshot captured at render time. Travels
         // in the proposal URL (&snapshot=<id>) so the document is a faithful
         // record of THIS on-screen allocation, not a later recompute. The
-        // partial re-renders whenever the allocation inputs change, so one
-        // capture per render reflects the current screen.
-        var snapshotToken = '';
+        // server freezes the exact rendered rows and seeds the token here, so
+        // it is present synchronously at first paint (no async race). The
+        // partial re-renders whenever the allocation inputs change, so each
+        // render carries a fresh token reflecting the current screen.
+        var snapshotToken = {{ (snapshot_token or '')|tojson }};
         function captureSnapshot() {
             try {
                 fetch('/api/proposal/snapshot', {
@@ -579,9 +581,10 @@
             });
         });
         refresh();
-        // Capture the snapshot for the allocation currently on screen. When it
-        // returns, refresh() re-runs to stamp the token into the export links.
-        captureSnapshot();
+        // The server already froze the exact rendered rows and seeded
+        // snapshotToken above. Only fall back to a client-side recompute
+        // capture if that token is somehow missing (e.g. a DB hiccup).
+        if (!snapshotToken) captureSnapshot();
     })();
     </script>
 </div>

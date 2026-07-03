@@ -33,7 +33,7 @@ from app.pdf.i18n import (
 )
 from app.pdf.narrative import (
     cover_subtitle, exec_action_title, allocation_action_title, macro_action_title,
-    exec_summary_bullets, macro_paragraph, implementation_default,
+    exec_summary_bullets, macro_paragraph, market_analysis_draft, implementation_default,
     rationale_paragraph, regime_bias,
     basket_exec_action_title, basket_allocation_action_title,
 )
@@ -372,6 +372,24 @@ def build_proposal_context(inp: ProposalInputs) -> dict[str, Any]:
     decisive.sort(key=lambda x: -x["abs_dev"])
     top_indicators = decisive[:6]
 
+    # Draft market analysis. The advisor's own market_analysis_md override
+    # (if any) always wins downstream; this is the fallback so the slot
+    # ships pre-filled with a sober, editable general read rather than a
+    # bare "to be added" placeholder. Anchor sleeve = the non-defensive,
+    # non-BTC names that carry the portfolio's beta.
+    _btc_pct = next((r["target_pct"] for r in alloc_rows if r["ticker"] == "BTC"), 0.0)
+    _anchor_names = [
+        r["name"] for r in alloc_rows
+        if r["tier"] != "Fixed" and r["ticker"] != "BTC"
+    ][:4]
+    market_analysis_draft_text = market_analysis_draft(
+        regime_label=regime_label, score=score,
+        sources_available=sources_available, sources_total=sources_total,
+        profile=profile, btc_pct=_btc_pct, defensive_pct=defensive_pct,
+        anchor_names=_anchor_names, top_indicators=top_indicators,
+        lang=lang,
+    )
+
     # 7. Per-asset rationale chunks (2 per page).
     rationale_pages: list[list[dict]] = []
     chunk: list[dict] = []
@@ -589,6 +607,7 @@ def build_proposal_context(inp: ProposalInputs) -> dict[str, Any]:
         "macro_title": macro_title,
         "regime_gauge_svg": regime_gauge_svg,
         "macro_paragraph_text": macro_paragraph_text,
+        "market_analysis_draft": market_analysis_draft_text,
         "top_indicators": top_indicators,
         "rationale_pages": rationale_pages,
         "implementation_text": implementation_text,

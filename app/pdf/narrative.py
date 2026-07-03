@@ -221,6 +221,131 @@ def macro_paragraph(
     )
 
 
+def market_analysis_draft(
+    *,
+    regime_label: str,
+    score: float,
+    sources_available: int,
+    sources_total: int,
+    profile: str,
+    btc_pct: float = 0.0,
+    defensive_pct: float = 0.0,
+    anchor_names: Optional[Iterable[str]] = None,
+    top_indicators: Optional[list[dict]] = None,
+    next_review_weeks: int = 4,
+    lang: str = "en",
+) -> str:
+    """A ready-to-edit DRAFT of the long-form market analysis.
+
+    The market-analysis slot is the section the advisor invests the most
+    time in; leaving it blank reads as unfinished. This generates a
+    sober, general digital-asset market read grounded in the current
+    macro composite and this client's allocation, covering the four
+    themes the advisor is expected to address (Bitcoin context, Ethereum /
+    higher-beta positioning, institutional flows and stablecoin
+    liquidity). It is explicitly a starting point: the advisor edits it
+    before sending. Returns markdown (blank-line-separated paragraphs).
+    No hard price calls — those age badly between generation and send.
+    """
+    _, bias_sentence = regime_bias(regime_label, lang=lang)
+    names = [n for n in (anchor_names or []) if n]
+    names_clause = ", ".join(names[:4])
+    inds = top_indicators or []
+    lead = inds[0] if inds else None
+
+    if lang == "de":
+        from app.pdf.i18n import regime_label as _regime
+        regime_de = _regime(regime_label, "de")
+        lead_sentence = (
+            f" Das deutlichste Einzelsignal ist aktuell {lead.get('label')} "
+            f"({float(lead.get('score', 50)):.0f}/100)." if lead else ""
+        )
+        names_sentence = (
+            f" Diese Beta-Schicht umfasst Positionen wie {names_clause}." if names_clause else ""
+        )
+        return "\n\n".join([
+            (
+                f"**Marktregime.** Das Teroxx-Makrokomposit liegt bei {score:.0f}/100 "
+                f"({regime_de}) und aggregiert {sources_available} von {sources_total} "
+                f"Indikatoren über Sentiment, traditionelle Märkte, On-Chain-Aktivität "
+                f"und Technik.{lead_sentence} {bias_sentence}"
+            ),
+            (
+                f"**Bitcoin.** Bitcoin bleibt der strategische Anker des Marktes für "
+                f"digitale Vermögenswerte und dieser Allokation mit {btc_pct:.0f}%. Als "
+                f"liquidestes und qualitativ hochwertigstes Krypto-Asset trägt es das "
+                f"geringste idiosynkratische Risiko im Portfolio; die zunehmende "
+                f"institutionelle Adoption über Spot-ETFs und Unternehmensbestände "
+                f"vertieft die Liquidität weiter. Wir behandeln Bitcoin als Kern-"
+                f"Wertaufbewahrungsposition, um die herum das übrige Portfolio "
+                f"dimensioniert wird."
+            ),
+            (
+                f"**Ethereum und höheres Beta.** Ethereum und die breitere Smart-Contract-"
+                f"Ebene liefern die produktive, höher gehebelte Exponierung des "
+                f"Portfolios. Aktivität auf Ethereum und konkurrierenden Layer-1-/Layer-2-"
+                f"Netzwerken — Staking, Stablecoin-Settlement und tokenisierte Real-World-"
+                f"Assets — untermauert die mittleren Positionen.{names_sentence} Diese "
+                f"Werte verstärken Auf- und Abwärtsbewegungen gegenüber Bitcoin und sind "
+                f"daher unterhalb des Kerns und gemäß dem Risikobudget "
+                f"({profile_label(profile, 'de')}) gewichtet."
+            ),
+            (
+                f"**Stablecoin-Liquidität und defensive Haltung.** Die defensive Schicht "
+                f"von {defensive_pct:.0f}% (USDC, EURC, PAXG) sichert Kaufkraft und hält "
+                f"Pulver trocken, um bei Volatilität zu investieren. Das Stablecoin-"
+                f"Angebot ist ein nützlicher Indikator für wartendes Kapital; ein "
+                f"wachsendes Angebot ging historisch Risk-on-Rotationen voraus. Wir "
+                f"überprüfen diese Markteinschätzung beim nächsten Review in rund "
+                f"{next_review_weeks} Wochen oder früher bei einer wesentlichen "
+                f"Veränderung des Komposits."
+            ),
+        ])
+
+    lead_sentence = (
+        f" The single strongest read is {lead.get('label')} "
+        f"({float(lead.get('score', 50)):.0f}/100)." if lead else ""
+    )
+    names_sentence = (
+        f" This beta sleeve includes positions such as {names_clause}." if names_clause else ""
+    )
+    return "\n\n".join([
+        (
+            f"**Market regime.** The Teroxx macro composite currently reads "
+            f"{score:.0f}/100 ({regime_label}), aggregating {sources_available} of "
+            f"{sources_total} indicators across sentiment, traditional markets, "
+            f"on-chain activity and technicals.{lead_sentence} {bias_sentence}"
+        ),
+        (
+            f"**Bitcoin.** Bitcoin remains the strategic anchor of the digital-asset "
+            f"market and of this allocation at {btc_pct:.0f}%. As the most liquid, "
+            f"highest-quality crypto asset it carries the lowest idiosyncratic risk in "
+            f"the book; deepening institutional adoption through spot ETFs and corporate "
+            f"treasuries continues to broaden its liquidity and shorten drawdown "
+            f"recoveries. We treat Bitcoin as the core store-of-value position around "
+            f"which the rest of the portfolio is sized."
+        ),
+        (
+            f"**Ethereum and higher beta.** Ethereum and the broader smart-contract "
+            f"layer provide the portfolio's productive, higher-beta exposure. Activity "
+            f"across Ethereum and competing Layer 1 / Layer 2 networks — staking, "
+            f"stablecoin settlement and tokenised real-world assets — underpins the "
+            f"mid-tier positions.{names_sentence} These names amplify both upside and "
+            f"drawdown relative to Bitcoin, which is why they sit below the core and are "
+            f"scaled to the {profile.lower()} risk budget."
+        ),
+        (
+            f"**Stablecoin liquidity and defensive posture.** On the defensive side, the "
+            f"{defensive_pct:.0f}% stablecoin and gold-hedge sleeve (USDC, EURC, PAXG) "
+            f"preserves purchasing power and keeps dry powder ready to deploy into "
+            f"volatility. Stablecoin supply is a useful proxy for capital waiting on the "
+            f"sidelines; expanding supply has historically preceded risk-on rotations. "
+            f"We will revisit this read at the next review in roughly "
+            f"{next_review_weeks} weeks, or sooner on a material change in the composite."
+        ),
+    ])
+
+
 def implementation_default(
     *,
     profile: str,
@@ -338,6 +463,7 @@ __all__ = [
     "macro_action_title",
     "exec_summary_bullets",
     "macro_paragraph",
+    "market_analysis_draft",
     "regime_bias",
     "implementation_default",
     "rationale_paragraph",

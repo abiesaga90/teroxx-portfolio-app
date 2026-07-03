@@ -468,6 +468,10 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "Current allocation",
         "de": "Aktuelle Allokation",
     },
+    "page.proposed_allocation": {
+        "en": "Proposed allocation",
+        "de": "Vorgeschlagene Allokation",
+    },
     "current_allocation.subheading": {
         "en": "The portfolio selected for this client in the Teroxx allocator.",
         "de": "Die für diesen Kunden im Teroxx-Allokator ausgewählte Allokation.",
@@ -492,6 +496,10 @@ _STRINGS: dict[str, dict[str, str]] = {
             "Ziele des Kunden, Rahmenbedingungen, Risikoaspekte, Anlagehorizont "
             "und vereinbarte Positionierung._"
         ),
+    },
+    "market_analysis.draft_banner": {
+        "en": "DRAFT — auto-generated general market read. Review and edit before sending.",
+        "de": "ENTWURF — automatisch erzeugte allgemeine Markteinschätzung. Vor dem Versand prüfen und anpassen.",
     },
     "market_analysis.placeholder": {
         "en": (
@@ -618,6 +626,7 @@ _STRINGS: dict[str, dict[str, str]] = {
     "table.pnl_unrealized": {"en": "Unrealized P&L", "de": "Unrealisiertes Ergebnis"},
     "table.pnl_pct": {"en": "P&L %", "de": "Ergebnis %"},
     "table.weight_now": {"en": "Current %", "de": "Aktuell %"},
+    "table.weight_proposed": {"en": "Proposed %", "de": "Vorschlag %"},
     "table.weight_target": {"en": "Target %", "de": "Ziel %"},
     "table.drift_pp": {"en": "Drift pp", "de": "Drift PP"},
     "table.delta_usd": {"en": "Delta", "de": "Delta"},

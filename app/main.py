@@ -455,6 +455,18 @@ async def portfolio_partial(
     stress = compute_stress_scenarios(positions, portfolio_value)
     diversity = compute_diversification_score(positions)
 
+    # Freeze THIS exact allocation server-side and hand the token to the
+    # template so the proposal export is a faithful record of what is on
+    # screen — not a recompute against later-moved live data. Stores the
+    # rendered rows verbatim (factor weights drift with market data, so a
+    # download-time recompute would silently diverge from this screen).
+    snapshot_token = _persist_alloc_snapshot(
+        positions,
+        profile=profile, universe=universe, alloc_mode=mode,
+        portfolio_value=portfolio_value,
+        actor_email=_actor_email(request),
+    ) or ""
+
     return templates.TemplateResponse("partials/portfolio_results_new.html", {
         "request": request,
         "positions": positions,
@@ -479,6 +491,7 @@ async def portfolio_partial(
         "mode": mode,
         "clients": list_clients(),
         "gdocs_enabled": google_docs.is_configured(),
+        "snapshot_token": snapshot_token,
     })
 
 
@@ -1297,14 +1310,52 @@ async def client_review_partial(request: Request, client_id: str = ""):
 _SNAPSHOT_TTL_HOURS = 24
 
 
+def _persist_alloc_snapshot(
+    rows: list[dict], *,
+    profile: str, universe: str, alloc_mode: str,
+    portfolio_value: float,
+    client_id: Optional[str] = None,
+    actor_email: Optional[str] = None,
+) -> Optional[str]:
+    """Freeze a set of allocation rows server-side and return its token id.
+
+    The exact ``rows`` passed in are stored verbatim — this is what makes the
+    later proposal a faithful record of what the advisor saw rather than a
+    recompute against moved live data. Returns ``None`` on failure (callers
+    fall back to a recompute), never raises.
+    """
+    token = secrets.token_urlsafe(18)
+    try:
+        with SessionLocal() as db:
+            # Opportunistic sweep of stale snapshots so the table stays small.
+            cutoff = datetime.utcnow() - timedelta(hours=_SNAPSHOT_TTL_HOURS)
+            db.query(AllocationSnapshot).filter(
+                AllocationSnapshot.created_at < cutoff
+            ).delete(synchronize_session=False)
+            db.add(AllocationSnapshot(
+                id=token,
+                client_id=(client_id or None),
+                actor_email=actor_email,
+                profile=profile, universe=universe, alloc_mode=alloc_mode,
+                portfolio_value=portfolio_value,
+                rows_json=json.dumps(rows),
+            ))
+            db.commit()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Snapshot persist failed: %s", e)
+        return None
+    return token
+
+
 @app.post("/api/proposal/snapshot")
 async def create_alloc_snapshot(request: Request):
     """Capture the current on-screen allocation and return a token id.
 
-    The frontend calls this (debounced) whenever the allocation inputs change;
-    the returned id is appended to the proposal download URLs as &snapshot=<id>.
-    Recomputes from the posted profile/universe/mode so the stored rows are
-    byte-identical to what /api/portfolio drew (both call compute_allocations).
+    Kept as a fallback path: the live screen already embeds a server-rendered
+    snapshot token (see /api/portfolio), but this endpoint lets the frontend
+    re-capture if that token is ever missing. Recomputes from the posted
+    profile/universe/mode so the stored rows match what /api/portfolio drew
+    (both call compute_allocations).
     """
     body = await request.json()
     if not isinstance(body, dict):
@@ -1321,25 +1372,13 @@ async def create_alloc_snapshot(request: Request):
     except Exception as e:  # noqa: BLE001
         logger.warning("Snapshot compute failed: %s", e)
         return JSONResponse({"ok": False, "error": "compute_failed"}, status_code=500)
-    token = secrets.token_urlsafe(18)
-    try:
-        with SessionLocal() as db:
-            # Opportunistic sweep of stale snapshots so the table stays small.
-            cutoff = datetime.utcnow() - timedelta(hours=_SNAPSHOT_TTL_HOURS)
-            db.query(AllocationSnapshot).filter(
-                AllocationSnapshot.created_at < cutoff
-            ).delete(synchronize_session=False)
-            db.add(AllocationSnapshot(
-                id=token,
-                client_id=(body.get("client_id") or None),
-                actor_email=_actor_email(request),
-                profile=profile, universe=universe, alloc_mode=alloc_mode,
-                portfolio_value=portfolio_value,
-                rows_json=json.dumps(rows),
-            ))
-            db.commit()
-    except Exception as e:  # noqa: BLE001
-        logger.warning("Snapshot persist failed: %s", e)
+    token = _persist_alloc_snapshot(
+        rows, profile=profile, universe=universe, alloc_mode=alloc_mode,
+        portfolio_value=portfolio_value,
+        client_id=(body.get("client_id") or None),
+        actor_email=_actor_email(request),
+    )
+    if not token:
         return JSONResponse({"ok": False, "error": "persist_failed"}, status_code=500)
     return {"ok": True, "snapshot": token}
 
